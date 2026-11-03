@@ -4,14 +4,33 @@ const AVATARS = ["🦁","🐘","🐪","🕊️","🐑","🐢","🦋","🐬","�
 const S = { token: localStorage.getItem("serah_token"), user: JSON.parse(localStorage.getItem("serah_user") || "null") };
 
 /* ---------- الاتصال بالـ API ---------- */
+/* مؤشر تحميل عام: يظهر لأي طلب يتأخر أكثر من 0.3 ثانية حتى لا يظن المستخدم أن الموقع متجمد */
+let _pending = 0, _loaderTimer = null;
+function loaderEl() {
+  let el = document.getElementById("loader");
+  if (!el) { el = document.createElement("div"); el.id = "loader"; el.className = "loader";
+    el.innerHTML = '<div class="spin">🌙</div><div class="dotsload"><i></i><i></i><i></i></div><div>جارٍ التحميل…</div>'; document.body.appendChild(el); }
+  return el;
+}
+function loading(on) {
+  _pending += on ? 1 : -1;
+  if (_pending > 0 && !_loaderTimer) _loaderTimer = setTimeout(() => loaderEl().classList.add("on"), 300);
+  if (_pending <= 0) { _pending = 0; clearTimeout(_loaderTimer); _loaderTimer = null; loaderEl().classList.remove("on"); }
+}
 async function api(action, params = {}) {
-  const res = await fetch(SERAH.API_URL, {
-    method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, // يتجنب طلب preflight
-    body: JSON.stringify({ action, token: S.token, ...params })
-  });
-  const j = await res.json();
-  if (!j.ok) throw new Error(j.error);
-  return j.data;
+  loading(true);
+  try {
+    const res = await fetch(SERAH.API_URL, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, // يتجنب طلب preflight
+      body: JSON.stringify({ action, token: S.token, ...params })
+    });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error);
+    return j.data;
+  } catch (e) {
+    if (e instanceof TypeError) throw new Error("لا يوجد اتصال بالإنترنت، حاولي مرة أخرى");
+    throw e;
+  } finally { loading(false); }
 }
 const h = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const audioUrl = id => `https://drive.usercontent.google.com/download?id=${id}&export=download`;
