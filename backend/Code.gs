@@ -24,14 +24,17 @@ const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من ت
 function props_() { return PropertiesService.getScriptProperties(); }
 function prop_(k) { return props_().getProperty(k); }
 
+// معرّف الشيت (ليس سرًا). السكريبت يعمل كمشروع مستقل ويفتح الشيت بهذا المعرّف.
+const DEFAULT_SHEET_ID = '1rSVqAiyoQKLvlOYMCXaTYHR_7q3HSz2RHwFN2zwHjPU';
+
 function ss_() {
-  const id = prop_('SHEET_ID');
-  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  const id = prop_('SHEET_ID') || DEFAULT_SHEET_ID;
+  return SpreadsheetApp.openById(id);
 }
 
 /** شغّلها مرة واحدة من المحرر: تنشئ الجداول ومجلدات درايف */
 function setup() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = ss_();
   props_().setProperty('SHEET_ID', ss.getId());
   Object.keys(SCHEMA).forEach(name => {
     let sh = ss.getSheetByName(name) || ss.insertSheet(name);
