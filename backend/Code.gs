@@ -226,6 +226,54 @@ const ACTIONS = {
     return { uploadUrl: res.getHeaders()['Location'] || res.getHeaders()['location'] };
   },
 
+  // ===== إدارة الطلاب (للمعلمات) =====
+  students: (p, me) => {
+    needTeacher_(me);
+    const pts = {};
+    rows_('Points').forEach(r => pts[r.user_id] = (pts[r.user_id] || 0) + Number(r.points));
+    return rows_('Users').filter(u => u.class_id === me.class_id && u.role === 'student' && u.active !== false)
+      .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar, points: pts[u.user_id] || 0 }));
+  },
+
+  addStudent: (p, me) => {
+    needTeacher_(me);
+    const name = String(p.name || '').trim().slice(0, 40);
+    const pin = normDigits_(p.pin);
+    if (!name) throw new Error('اكتبي اسم الطفل');
+    if (!/^\d{4}$/.test(pin)) throw new Error('الرمز السري 4 أرقام');
+    const u = append_('Users', { user_id: id_('U'), role: 'student', name, class_id: me.class_id, avatar: String(p.avatar || '🌟').slice(0, 8),
+      pin_hash: hashPin_(pin), city: p.city || '', country: p.country || '', active: true, created_at: now_() });
+    return { user_id: u.user_id };
+  },
+
+  setStudentPin: (p, me) => {
+    needTeacher_(me);
+    const pin = normDigits_(p.pin);
+    if (!/^\d{4}$/.test(pin)) throw new Error('الرمز السري 4 أرقام');
+    const u = rows_('Users').find(x => x.user_id === p.user_id && x.class_id === me.class_id && x.role === 'student');
+    if (!u) throw new Error('الطالب غير موجود');
+    update_('Users', 'user_id', u.user_id, { pin_hash: hashPin_(pin) });
+    return true;
+  },
+
+  removeStudent: (p, me) => {
+    needTeacher_(me);
+    const u = rows_('Users').find(x => x.user_id === p.user_id && x.class_id === me.class_id && x.role === 'student');
+    if (!u) throw new Error('الطالب غير موجود');
+    update_('Users', 'user_id', u.user_id, { active: false });
+    return true;
+  },
+
+  changeMyPin: (p, me) => {
+    needTeacher_(me);
+    const u = rows_('Users').find(x => x.user_id === me.user_id);
+    if (!u || u.pin_hash !== hashPin_(p.oldPin)) throw new Error('الرمز الحالي غير صحيح');
+    const np = normDigits_(p.newPin);
+    if (np.length < 4) throw new Error('الرمز الجديد 4 أرقام على الأقل');
+    update_('Users', 'user_id', me.user_id, { pin_hash: hashPin_(np) });
+    return true;
+  },
+
   // بعد اكتمال الرفع من المتصفح: نسجل المحاضرة
   createLecture: (p, me) => {
     needTeacher_(me);

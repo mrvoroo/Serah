@@ -83,12 +83,16 @@ async function viewHome() {
          <button class="btn" data-play="${h(l.lecture_id)}">▶ استمع وشاهد</button>
          ${teacher ? `<button class="btn alt" data-pub="${h(l.lecture_id)}" data-st="${l.status === "draft" ? "published" : "draft"}">${l.status === "draft" ? "اعتماد ونشر للأطفال" : "إخفاء"}</button>` : ""}</div>`).join("")
         : '<div class="card">لا توجد محاضرات بعد 🌙</div>'}
+      ${teacher ? `<button class="btn alt" id="st">👧 الطلاب</button><a class="btn" href="upload.html" style="text-decoration:none">🎙 رفع محاضرة جديدة</a>` : ""}
       <button class="btn ghost" id="lb">🏆 لوحة النجوم</button>
       <button class="btn ghost" id="sg">💡 عندي فكرة</button>
+      ${teacher ? '<button class="btn ghost" id="pw">🔑 تغيير الرمز السري</button>' : ""}
       <button class="btn ghost" id="out">خروج</button>`;
+    if (teacher) document.getElementById("pw").onclick = viewChangePin;
     $app.querySelectorAll("[data-play]").forEach(b => b.onclick = () => viewPlayer(lectures.find(l => l.lecture_id === b.dataset.play)));
     $app.querySelectorAll("[data-pub]").forEach(b => b.onclick = async () => { await api("setLectureStatus", { lecture_id: b.dataset.pub, status: b.dataset.st }); viewHome(); });
     document.getElementById("lb").onclick = viewBoard;
+    if (teacher) document.getElementById("st").onclick = viewStudents;
     document.getElementById("sg").onclick = viewSuggest;
     document.getElementById("out").onclick = logout;
   } catch (e) { if (/جلسة|مسجل|رمز/.test(e.message)) return logout(); $app.innerHTML = `<div class="card err">${h(e.message)}</div>`; }
@@ -120,6 +124,43 @@ function viewPlayer(l) {
   document.getElementById("back").onclick = () => { au.pause(); viewHome(); };
   au.addEventListener("play", () => { if (S.user.role === "student") api("markAttendance", { lecture_id: l.lecture_id }).catch(() => {}); }, { once: true });
   show(0);
+}
+
+/* ---------- إدارة الطلاب (للمعلمة) ---------- */
+async function viewStudents(msg) {
+  const list = await api("students");
+  let av = AVATARS[0];
+  $app.innerHTML = `<h2>👧 الطلاب (${list.length})</h2>${typeof msg === "string" ? `<div class="card">${h(msg)}</div>` : ""}
+    ${list.map(k => `<div class="card"><div style="font-size:40px">${h(k.avatar)}</div><b>${h(k.name)}</b> — ${k.points} ⭐
+      <div class="row"><button class="btn ghost" data-pin="${h(k.user_id)}">رمز جديد</button><button class="btn ghost" data-del="${h(k.user_id)}">حذف</button></div></div>`).join("") || '<div class="card">لم تتم إضافة طلاب بعد</div>'}
+    <div class="card"><h3>إضافة طفل</h3><input id="nm" placeholder="اسم الطفل"><input id="pn" inputmode="numeric" maxlength="4" placeholder="رمز سري من 4 أرقام">
+      <div>اختاري الشكل:</div><div class="avatars" id="avs">${AVATARS.map(a => `<div class="av ${a === av ? "sel" : ""}" data-a="${a}">${a}</div>`).join("")}</div>
+      <div class="err" id="err"></div><button class="btn" id="add">إضافة</button></div>
+    <button class="btn ghost" id="back">رجوع</button>`;
+  document.getElementById("back").onclick = viewHome;
+  $app.querySelectorAll("#avs .av").forEach(el => el.onclick = () => { av = el.dataset.a; $app.querySelectorAll("#avs .av").forEach(x => x.classList.toggle("sel", x === el)); });
+  document.getElementById("add").onclick = async () => {
+    try { await api("addStudent", { name: document.getElementById("nm").value, pin: document.getElementById("pn").value, avatar: av }); viewStudents("تمت إضافة الطفل ✔"); }
+    catch (e) { document.getElementById("err").textContent = e.message; }
+  };
+  $app.querySelectorAll("[data-pin]").forEach(b => b.onclick = async () => {
+    const pin = prompt("اكتبي الرمز السري الجديد (4 أرقام)"); if (!pin) return;
+    try { await api("setStudentPin", { user_id: b.dataset.pin, pin }); viewStudents("تم تغيير الرمز ✔"); } catch (e) { alert(e.message); }
+  });
+  $app.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    if (!confirm("حذف هذا الطفل من الفصل؟")) return;
+    try { await api("removeStudent", { user_id: b.dataset.del }); viewStudents("تم الحذف"); } catch (e) { alert(e.message); }
+  });
+}
+
+function viewChangePin() {
+  $app.innerHTML = `<div class="card"><h2>🔑 تغيير الرمز السري</h2><input id="o" type="password" inputmode="numeric" placeholder="الرمز الحالي"><input id="n" type="password" inputmode="numeric" placeholder="الرمز الجديد">
+    <div class="err" id="err"></div><button class="btn" id="go">حفظ</button><button class="btn ghost" id="back">رجوع</button></div>`;
+  document.getElementById("back").onclick = viewHome;
+  document.getElementById("go").onclick = async () => {
+    try { await api("changeMyPin", { oldPin: document.getElementById("o").value, newPin: document.getElementById("n").value }); viewHome(); }
+    catch (e) { document.getElementById("err").textContent = e.message; }
+  };
 }
 
 /* ---------- لوحة النجوم ---------- */
