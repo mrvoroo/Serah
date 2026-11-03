@@ -155,7 +155,7 @@ const ACTIONS = {
 
   // الطفل: كود الفصل → قائمة الأطفال بالأفاتار
   classInfo: (p) => {
-    const c = rows_('Classes').find(x => x.join_code === normDigits_(p.code).toUpperCase().replace(/\s+/g, ''));
+    const c = rows_('Classes').find(x => String(x.join_code).toUpperCase() === normDigits_(p.code).toUpperCase().replace(/\s+/g, ''));
     if (!c) throw new Error('كود الفصل غير صحيح');
     const kids = rows_('Users').filter(u => u.class_id === c.class_id && u.role === 'student' && u.active !== false)
       .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar }));
@@ -230,14 +230,14 @@ const ACTIONS = {
   classCode: (p, me) => {
     needTeacher_(me);
     const c = rows_('Classes').find(x => x.class_id === me.class_id);
-    return { code: c ? c.join_code : '' };
+    return { code: c ? String(c.join_code) : '' };
   },
 
   setClassCode: (p, me) => {
     needTeacher_(me);
     const code = normDigits_(p.code).toUpperCase().replace(/\s+/g, '');
     if (!/^[A-Z0-9]{3,12}$/.test(code)) throw new Error('الكود من 3 إلى 12 حرفًا إنجليزيًا أو أرقام');
-    if (rows_('Classes').some(c => c.join_code === code && c.class_id !== me.class_id)) throw new Error('هذا الكود مستخدم، اختاري غيره');
+    if (rows_('Classes').some(c => String(c.join_code).toUpperCase() === code && c.class_id !== me.class_id)) throw new Error('هذا الكود مستخدم، اختاري غيره');
     update_('Classes', 'class_id', me.class_id, { join_code: code });
     return { code };
   },
@@ -332,7 +332,7 @@ function onTelegram_(upd) {
   // ربط حساب المعلمة: /start رمز-الفصل (نفس كود الفصل في الشيت)
   if (text.indexOf('/start') === 0) {
     const code = text.split(/\s+/)[1];
-    const cls = code && rows_('Classes').find(c => c.join_code === code.toUpperCase());
+    const cls = code && rows_('Classes').find(c => String(c.join_code).toUpperCase() === code.toUpperCase());
     if (cls) {
       const t = rows_('Users').find(u => u.user_id === cls.teacher_id);
       if (t) { update_('Users', 'user_id', t.user_id, { telegram_id: chat }); return say_(chat, 'أهلاً بكِ ' + t.name + ' ✨\nتم ربط حسابكِ. ابعتي لي تسجيل المحاضرة وسأرفعه فورًا.'); }
