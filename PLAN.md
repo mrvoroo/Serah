@@ -85,11 +85,11 @@
 **كود (`backend/Code.gs`):**
 1. ✅ ثابت `VERSION` يرجع مع `ping`، و✅ **نشر الخلفية الحالية** (`me`, `dashboard`, `suggestions`) — النسخة 7 حيّة ومُتحقق منها (2026-11-04).
 2. `SCHEMA`: إضافة الأعمدة الجديدة للجداول الموجودة (القسم 2 في الخطة) + جداول `AuditLog`, `LoginAttempts`, `Settings`. وتعديل `setup()` بحيث **تضيف الأعمدة والأوراق الناقصة فقط** ولا تمس البيانات.
-3. الصلاحيات: `RANK`, `need_(me, role)`, `sameClassOrSuper_(me, class_id)`، وجدول `ACTIONS` بصيغة `{ fn, minRole, write }` بدل `needTeacher_` المتفرقة. `setLectureStatus` ترتفع لـ `admin`.
-4. `createSuperAdmin()` تقرأ `NEW_SUPER_PIN` من Script Properties، تنشئ `م.احمد` بدور `superadmin`، تحذف الـ Property، وتسجّل في `AuditLog`.
+3. 🟡 الصلاحيات: ✅ `RANK`, `need_`, `cls_` (فصل المطوّر) — v8. الباقي: جدول `ACTIONS` بصيغة `{ fn, minRole, write }`. الأصل: `RANK`, `need_(me, role)`, `sameClassOrSuper_(me, class_id)`، وجدول `ACTIONS` بصيغة `{ fn, minRole, write }` بدل `needTeacher_` المتفرقة. `setLectureStatus` ترتفع لـ `admin`.
+4. ✅ (v8) `createSuperAdmin()` تقرأ `NEW_SUPER_PIN` من Script Properties، تنشئ `م.احمد` بدور `superadmin`، تحذف الـ Property، وتسجّل في `AuditLog`.
 5. `viewAs { user_id }`: توكن ساعتين فيه `imp`، وأي `write` بتوكن فيه `imp` يُرفض.
 6. `LoginAttempts`: 5 أخطاء ← قفل 10 دقائق ثم 30، على `classInfo` و`login`، + `last_login_at`.
-7. `AuditLog` لكل عملية كتابة إدارية.
+7. 🟡 `AuditLog`: ✅ الجدول و`audit_()` و`ensureSheet_`/`append_` الآمنين (v8). الباقي: تسجيل كل عملية كتابة إدارية.
 8. كاش `CacheService` لـ `rows_` (60 ثانية، يُمسح عند الكتابة) + `LockService` للنقاط والحضور.
 9. `users`, `setRole`, `systemHealth` (للـ superadmin).
 
