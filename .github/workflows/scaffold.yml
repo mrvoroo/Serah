@@ -1,0 +1,32 @@
+name: Scaffold Next.js app (tooling only)
+on:
+  push:
+    branches: [ci/scaffold]
+permissions:
+  contents: read
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bash tools/scaffold.sh
+      - name: Pack sources and node_modules
+        run: |
+          cd app
+          tar --exclude=node_modules --exclude=.next -czf ../app-src.tgz .
+          tar -czf ../node_modules.tgz node_modules
+          ls -la ..
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-src
+          path: app-src.tgz
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-modules
+          path: node_modules.tgz
+          retention-days: 3
+          compression-level: 0
