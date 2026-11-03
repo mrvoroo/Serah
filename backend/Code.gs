@@ -86,8 +86,17 @@ function id_(p) { return p + Utilities.getUuid().slice(0, 8); }
 function now_() { return new Date().toISOString(); }
 
 /* ============ 3) المصادقة (رمز موقّع بدون تخزين) ============ */
+// يحوّل الأرقام العربية/الفارسية إلى إنجليزية ويحذف المسافات (لوحة المفاتيح العربية)
+function normDigits_(s) {
+  return String(s == null ? '' : s).trim()
+    .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x06F0));
+}
+function normName_(s) {
+  return String(s == null ? '' : s).trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
+}
 function hashPin_(pin) {
-  const d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, prop_('PIN_SALT') + String(pin));
+  const d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, prop_('PIN_SALT') + normDigits_(pin));
   return d.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
 }
 function sign_(s) {
@@ -146,7 +155,7 @@ const ACTIONS = {
 
   // الطفل: كود الفصل → قائمة الأطفال بالأفاتار
   classInfo: (p) => {
-    const c = rows_('Classes').find(x => x.join_code === String(p.code).trim().toUpperCase());
+    const c = rows_('Classes').find(x => x.join_code === normDigits_(p.code).toUpperCase().replace(/\s+/g, ''));
     if (!c) throw new Error('كود الفصل غير صحيح');
     const kids = rows_('Users').filter(u => u.class_id === c.class_id && u.role === 'student' && u.active !== false)
       .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar }));
@@ -157,7 +166,7 @@ const ACTIONS = {
   login: (p) => {
     const users = rows_('Users');
     let u = p.user_id ? users.find(x => x.user_id === p.user_id)
-                      : users.find(x => x.role !== 'student' && x.name === p.name);
+                      : users.find(x => x.role !== 'student' && normName_(x.name) === normName_(p.name));
     if (!u || u.active === false || u.pin_hash !== hashPin_(p.pin)) throw new Error('الرمز غير صحيح');
     return { token: makeToken_(u), user: { user_id: u.user_id, name: u.name, role: u.role, class_id: u.class_id, avatar: u.avatar } };
   },
