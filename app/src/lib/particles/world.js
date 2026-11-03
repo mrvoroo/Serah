@@ -1,10 +1,10 @@
 // @ts-nocheck
-// خلفية الرحلة ثلاثية الأبعاد: آلاف النقاط المضيئة تتجمّع في مجسم لكل محطة
-// (هلال ونجوم، سفينة نوح، عصا موسى والبحر المنشق، ذو الفقار، المصحف)
+// خلفية الرحلة ثلاثية الأبعاد: آلاف النقاط المضيئة تتجمّع لكل محطة في اسم النبي بخط الرقعة
+// وتحته رمزه (هلال ونجمة، سفينة نوح، عصا موسى والبحر المنشق، الكعبة، الحوت، المسجد النبوي، ذو الفقار، المصحف)
 // مع نجوم تدور حول المجسم وتتسارع مع سرعة السكرول.
 import * as THREE from 'three';
 
-export const SHAPES = ['crescent', 'ark', 'staff', 'sword', 'book'];
+export const SHAPES = ['crescent', 'ark', 'staff', 'kaaba', 'fish', 'dome', 'sword', 'book'];
 const TAU = Math.PI * 2;
 const MORPH_SECONDS = 1.6;
 
@@ -15,7 +15,7 @@ function rand(seed) {
 
 // ---------- الأشكال ----------
 // كل شكل = أجزاء موزونة؛ معظم النقاط على الحواف والخطوط (مثل الرسم بالضوء) لا على الكتل.
-// flow: 0 ثابت، 1 موج يتحرك أفقيًا، 2 ماء يصعد، 3 نور يصعد ببطء
+// flow: 0 ثابت، 1 موج يتحرك أفقيًا، 2 ماء يصعد، 3 نور يصعد ببطء، 4 حروف الاسم
 function buildShape(name, n, r) {
   const pos = new Float32Array(n * 3);
   const flow = new Float32Array(n);
@@ -61,13 +61,60 @@ function buildShape(name, n, r) {
     parts = [[0.12, deck(1)], [0.12, deck(-1)], [0.09, keel], [0.12, ribs], [0.12, house], [0.07, roof], [0.04, windows], [0.06, dust(4.2)]];
     parts.waves = [0.26, () => { const row = Math.floor(r() * 5), z = -1.8 + row * 0.9 + J(0.05); return [(r() - 0.5) * 12, -1.25 + J(0.02), z]; }];
   } else if (name === 'staff') {
-    // العصا ورأسها المنحني + ستائر ماء على الجانبين (خطوط رأسية متموجة) + طريق
-    const staff = curve((u) => [u * 0.18 - 0.05, -2.5 + u * 4.3, 0], 0.012);
-    const crook = curve((u) => { const a = Math.PI + u * Math.PI * 1.25; return [0.49 + Math.cos(a) * 0.36, 1.8 - Math.sin(a) * 0.36, 0]; }, 0.012);
-    const halo = () => { const th = r() * TAU, rad = 0.25 + r() * 0.35; return [Math.cos(th) * rad, -0.6 + r() * 2.6, Math.sin(th) * rad]; };
+    // العصا غصن شجرة: ساق متعرّج بلحاء وعُقد، فرعان صغيران وأوراق في الأعلى + ستائر ماء على الجانبين + طريق
+    const c = (u) => [0.1 * Math.sin(u * 4.2 + 0.5) - 0.05 + 0.08 * u, -2.5 + u * 4.1, 0.06 * Math.sin(u * 3)];
+    const rad = (u) => 0.11 * (1 - 0.45 * u) + 0.05 * Math.exp(-(((u - 0.3) / 0.03) ** 2)) + 0.04 * Math.exp(-(((u - 0.62) / 0.03) ** 2));
+    const bark = () => { const u = r(), a = r() < 0.6 ? Math.floor(r() * 6) * TAU / 6 : r() * TAU, p = c(u), q = rad(u); return [p[0] + Math.cos(a) * q, p[1] + J(0.006), p[2] + Math.sin(a) * q]; };
+    const knots = () => { const u = r() < 0.5 ? 0.3 : 0.62, a = r() * TAU, p = c(u), q = rad(u) * 1.05; return [p[0] + Math.cos(a) * q, p[1] + J(0.02), p[2] + Math.sin(a) * q]; };
+    const twig = (u0, d, bend) => curve((u) => { const p = c(u0); return [p[0] + d[0] * u + Math.sin(u * Math.PI) * bend, p[1] + d[1] * u, p[2] + d[2] * u]; }, 0.01);
+    const tip = (u0, d) => { const p = c(u0); return [p[0] + d[0], p[1] + d[1], p[2] + d[2]]; };
+    const T1 = [0.6, 0.55, 0.1], T2 = [-0.42, 0.5, 0], T3 = [0.22, 0.58, -0.1];
+    const twigs = many([twig(0.62, T1, -0.06), twig(1, T2, 0.05), twig(1, T3, -0.04)]);
+    // ورقة: محيط بيضاوي مدبب + عرق في المنتصف
+    const leaf = (base, ang) => many([
+      curve((u) => { const t = u * TAU, lx = 0.26 + Math.cos(t) * 0.26, ly = Math.sin(t) * 0.1 * Math.sin(Math.acos(Math.cos(t)) || 0.0001); return [base[0] + lx * Math.cos(ang) - ly * Math.sin(ang), base[1] + lx * Math.sin(ang) + ly * Math.cos(ang), base[2] + J(0.01)]; }, 0.006),
+      curve((u) => [base[0] + u * 0.52 * Math.cos(ang), base[1] + u * 0.52 * Math.sin(ang), base[2]], 0.005)
+    ]);
+    const b1 = tip(0.62, T1), b2 = tip(1, T2), b3 = tip(1, T3);
+    const leaves = many([leaf(b1, 0.5), leaf(b1, 1.5), leaf(b2, 2.2), leaf(b2, 1.2), leaf(b3, 0.9), leaf(b3, 1.9), leaf(tip(0.8, [0, 0, 0]), 0.2)]);
+    const halo = () => { const th = r() * TAU, q = 0.25 + r() * 0.35; return [Math.cos(th) * q, -0.6 + r() * 2.6, Math.sin(th) * q]; };
     const path = ground(-2.55, 1.0);
-    parts = [[0.16, staff], [0.08, crook], [0.05, halo], [0.08, path], [0.08, dust(4.6)]];
-    parts.water = [0.55, () => { const side = r() < 0.5 ? -1 : 1, col = Math.floor(r() * 6), x = side * (1.25 + col * 0.36); return [x, -2.5 + r() * 4.3, -1.4 + r() * 2.8]; }];
+    parts = [[0.2, bark], [0.03, knots], [0.06, twigs], [0.13, leaves], [0.03, halo], [0.07, path], [0.06, dust(4.6)]];
+    parts.water = [0.46, () => { const side = r() < 0.5 ? -1 : 1, col = Math.floor(r() * 6), x = side * (1.25 + col * 0.36); return [x, -2.5 + r() * 4.3, -1.4 + r() * 2.8]; }];
+  } else if (name === 'kaaba') {
+    // الكعبة: حواف المكعب + حزام الكسوة + الباب + أوجه خفيفة + حلقات المطاف
+    const W = 1.15, D = 1.0, Y0 = -1.3, Y1 = 1.15;
+    const cube = boxEdges(-W, W, Y0, Y1, -D, D, 0.012);
+    const onFace = (y) => { const f = Math.floor(r() * 4), u = r() * 2 - 1; return f === 0 ? [u * W, y, D] : f === 1 ? [u * W, y, -D] : f === 2 ? [W, y, u * D] : [-W, y, u * D]; };
+    const band = () => { const p = onFace(0.62 + r() * 0.2); return [p[0], p[1], p[2] + J(0.01)]; };
+    const door = many([seg([0.25, -0.9, D + 0.01], [0.25, 0.15, D + 0.01]), seg([0.65, -0.9, D + 0.01], [0.65, 0.15, D + 0.01]), seg([0.25, 0.15, D + 0.01], [0.65, 0.15, D + 0.01]), seg([0.25, -0.9, D + 0.01], [0.65, -0.9, D + 0.01])]);
+    const faces = () => { const p = onFace(Y0 + r() * (Y1 - Y0)); return [p[0], p[1], p[2]]; };
+    const rings = () => { const R = [1.8, 2.3, 2.8][Math.floor(r() * 3)], a = r() * TAU; return [Math.cos(a) * R, Y0 - 0.05 + J(0.02), Math.sin(a) * R * 0.8]; };
+    parts = [[0.22, cube], [0.12, band], [0.05, door], [0.12, faces], [0.22, rings], [0.07, dust(4.2)]];
+  } else if (name === 'fish') {
+    // الحوت (نبي الله يونس): خط الظهر والبطن + مقاطع عرضية للعمق + ذيل + عين + موج
+    const top = (t) => 0.9 * Math.pow(Math.sin(Math.PI * t), 0.7) * (1 - 0.3 * t);
+    const bot = (t) => -0.62 * Math.pow(Math.sin(Math.PI * t), 0.8);
+    const X0 = -1.9, LEN = 3.4;
+    const back = curve((u) => [X0 + u * LEN, top(u), 0], 0.012);
+    const belly = curve((u) => [X0 + u * LEN, bot(u), 0], 0.012);
+    const ribs = () => { const t = Math.round(r() * 10) / 10, a = r() * TAU, mid = (top(t) + bot(t)) / 2, h = (top(t) - bot(t)) / 2; return [X0 + t * LEN, mid + Math.cos(a) * h, Math.sin(a) * h * 0.6]; };
+    const tail = many([seg([1.45, 0.08, 0], [2.45, 0.8, 0]), seg([2.45, 0.8, 0], [2.15, 0.05, 0]), seg([2.15, 0.05, 0], [2.45, -0.65, 0]), seg([2.45, -0.65, 0], [1.45, -0.08, 0])]);
+    const eye = () => { const a = r() * TAU; return [-1.3 + Math.cos(a) * 0.09, 0.25 + Math.sin(a) * 0.09, 0.32]; };
+    const mouth = seg([-1.88, -0.08, 0.1], [-1.35, -0.18, 0.2], 0.008);
+    const fin = many([seg([-0.2, -0.3, 0.35], [0.35, -0.75, 0.45]), seg([0.35, -0.75, 0.45], [0.3, -0.25, 0.35])]);
+    parts = [[0.15, back], [0.13, belly], [0.18, ribs], [0.1, tail], [0.03, eye], [0.02, mouth], [0.03, fin], [0.06, dust(4.2)]];
+    parts.waves = [0.22, () => { const row = Math.floor(r() * 5), z = -1.8 + row * 0.9 + J(0.05); return [(r() - 0.5) * 12, -1.25 + J(0.02), z]; }];
+  } else if (name === 'dome') {
+    // المسجد النبوي: مبنى بالحواف + أسطوانة + قبة بخطوط الطول والعرض + هلال صغير + مئذنة
+    const base = boxEdges(-1.4, 1.4, -2.0, -0.6, -0.9, 0.9, 0.012);
+    const drum = () => { const a = r() * TAU, y = r() < 0.5 ? [-0.6, -0.2][Math.floor(r() * 2)] : -0.6 + r() * 0.4; return [Math.cos(a) * 0.8, y, Math.sin(a) * 0.8]; };
+    const R = 0.85;
+    const dome = () => { const meridian = r() < 0.55; const th = meridian ? r() * Math.PI / 2 : [0.5, 1.0, 1.3][Math.floor(r() * 3)]; const ph = meridian ? Math.floor(r() * 10) * TAU / 10 : r() * TAU; return [R * Math.sin(th) * Math.cos(ph), -0.2 + 1.15 * R * Math.cos(th), R * Math.sin(th) * Math.sin(ph)]; };
+    const finial = many([seg([0, 0.78, 0], [0, 1.12, 0], 0.008), curve((u) => { const a = -0.9 + u * 4.2; return [Math.cos(a) * 0.13, 1.28 + Math.sin(a) * 0.13, 0]; }, 0.008)]);
+    const MX = 2.0;
+    const minaret = () => { const k = r(); if (k < 0.55) { const a = Math.floor(r() * 6) * TAU / 6; return [MX + Math.cos(a) * 0.14, -2.0 + r() * 3.2, Math.sin(a) * 0.14]; } if (k < 0.75) { const a = r() * TAU; return [MX + Math.cos(a) * 0.26, 0.6, Math.sin(a) * 0.26]; } const v = r(), a = r() * TAU; return [MX + Math.cos(a) * 0.15 * (1 - v), 1.2 + v * 0.5, Math.sin(a) * 0.15 * (1 - v)]; };
+    parts = [[0.18, base], [0.1, drum], [0.3, dome], [0.05, finial], [0.17, minaret], [0.07, dust(4.2)]];
   } else if (name === 'sword') {
     // ذو الفقار: حافتا النصل + خط المنتصف + طرفان متفرعان + واقٍ مقوّس + مقبض بحلقات + كرة
     const w = (y) => 0.2 - (y + 0.55) * 0.012;
@@ -110,6 +157,105 @@ function buildShape(name, n, r) {
   if (name === 'book') for (let i = 0; i < n; i++) { const y = pos[i * 3 + 1], z = pos[i * 3 + 2], c = Math.cos(0.75), s2 = Math.sin(0.75); pos[i * 3 + 1] = y * c - z * s2; pos[i * 3 + 2] = y * s2 + z * c; }
   if (name === 'crescent') for (let i = 0; i < n; i++) pos[i * 3] -= 0.35;
   if (name === 'sword') for (let i = 0; i < n; i++) { const x = pos[i * 3], y = pos[i * 3 + 1], c = Math.cos(-0.3), s2 = Math.sin(-0.3); pos[i * 3] = x * c - y * s2; pos[i * 3 + 1] = x * s2 + y * c; }
+  if (name === 'dome') for (let i = 0; i < n; i++) pos[i * 3] -= 0.3;
+  return { pos, flow };
+}
+
+// ---------- اسم النبي بخط الرقعة ----------
+// نرسم النص على لوحة مخفية ثم نأخذ بكسلاته كنقاط: نصفها على حواف الحروف (رسم بالضوء) والباقي يملأها
+const textCache = {};
+function textPixels(text, font) {
+  const key = font + '|' + text;
+  if (textCache[key]) return textCache[key];
+  const fs = 150;
+  const cv = document.createElement('canvas');
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  const css = `700 ${fs}px ${font}`;
+  ctx.font = css;
+  const w = Math.ceil(ctx.measureText(text).width + fs), h = Math.ceil(fs * 2.2);
+  cv.width = w; cv.height = h;
+  ctx.font = css; ctx.direction = 'rtl'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+  ctx.fillText(text, w / 2, h / 2);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const on = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 128;
+  const fill = [], edge = [];
+  let x0 = w, x1 = 0, y0 = h, y1 = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!on(x, y)) continue;
+    (on(x - 1, y) && on(x + 1, y) && on(x, y - 1) && on(x, y + 1) ? fill : edge).push(x, y);
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  return (textCache[key] = { fill, edge, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, bw: Math.max(1, x1 - x0), bh: Math.max(1, y1 - y0) });
+}
+
+// نقاط النص داخل صندوق (عرض أقصى، ارتفاع أقصى) مركزه (ox, oy) مع عمق خفيف ليظهر مجسمًا عند الدوران
+function textSampler(text, font, r, { maxW, maxH, ox = 0, oy = 0 }) {
+  const t = textPixels(text, font);
+  const s = Math.min(maxW / t.bw, maxH / t.bh);
+  return () => {
+    const src = (r() < 0.5 && t.edge.length) || !t.fill.length ? t.edge : t.fill;
+    if (!src.length) return [ox, oy, 0];
+    const k = Math.floor(r() * (src.length / 2)) * 2;
+    const back = r() < 0.28;
+    return [ox + (src[k] + r() - t.cx) * s, oy - (src[k + 1] + r() - t.cy) * s, back ? -0.16 + (r() - 0.5) * 0.04 : (r() - 0.5) * 0.06];
+  };
+}
+
+// زخرفة تحت الاسم في المحطات التي ليس لها مجسم بعد: نجمة ثمانية + خطان جانبيان
+function ornament(r, cy) {
+  const R = 0.42;
+  const star = () => {
+    const sq = Math.floor(r() * 2), k = Math.floor(r() * 4), u = r();
+    const a0 = sq * Math.PI / 4 + k * Math.PI / 2 + Math.PI / 4, a1 = a0 + Math.PI / 2;
+    return [Math.cos(a0) * R + (Math.cos(a1) - Math.cos(a0)) * R * u, cy + Math.sin(a0) * R + (Math.sin(a1) - Math.sin(a0)) * R * u, (r() - 0.5) * 0.04];
+  };
+  const line = () => { const side = r() < 0.5 ? -1 : 1, u = r(); return [side * (0.65 + u * 1.2), cy + (r() - 0.5) * 0.02 - Math.sin(u * Math.PI) * 0.04, 0]; };
+  return () => (r() < 0.6 ? star() : line());
+}
+
+// تكبير المجسم وإنزاله تحت الاسم. ثوابت الموج والماء في الشيدر محسوبة على نفس القيم
+export const SYM_SCALE = 0.6, SYM_Y = -0.75;
+const TEXT = 4; // قيمة flow لنقاط الاسم: لون ذهبي موحّد في الشيدر
+
+// مجسم المحطة كاملًا: اسم بالرقعة + رمز النبي (أو زخرفة لو لم يُحدد رمز بعد)
+// layout: 'stack' اسم فوق الرمز، 'side' اسم وبجانبه الرمز (البداية)، 'name' اسم فقط
+function buildStation(st, n, r, font) {
+  const pos = new Float32Array(n * 3), flow = new Float32Array(n);
+  let o = 0;
+  const take = (count, gen, f = 0) => { for (let i = 0; i < count && o < n; i++, o++) { const p = gen(); pos[o * 3] = p[0]; pos[o * 3 + 1] = p[1]; pos[o * 3 + 2] = p[2]; flow[o] = f; } };
+  const takeShape = (count, name, sc, dx, dy) => {
+    const s = buildShape(name, count, r);
+    for (let i = 0; i < count && o < n; i++, o++) { pos[o * 3] = s.pos[i * 3] * sc + dx; pos[o * 3 + 1] = s.pos[i * 3 + 1] * sc + dy; pos[o * 3 + 2] = s.pos[i * 3 + 2] * sc; flow[o] = s.flow[i]; }
+  };
+  const g = () => (r() + r() + r() - 1.5) / 1.5;
+  const dust = (R, cy) => () => { const th = r() * TAU, ph = Math.acos(2 * r() - 1), q = R * (0.6 + r() * 0.4); return [Math.sin(ph) * Math.cos(th) * q, cy + Math.cos(ph) * q * 0.6 + g() * 0.02, Math.sin(ph) * Math.sin(th) * q * 0.6]; };
+  const label = st.label || '';
+  if (st.layout === 'side') {
+    const nt = Math.floor(n * 0.55);
+    take(nt, textSampler(label, font, r, { maxW: 3.5, maxH: 1.5, ox: -1.05, oy: 0 }), TEXT);
+    takeShape(n - nt, st.symbol || 'crescent', 0.55, 2.35, 0);
+  } else if (st.layout === 'name' || !st.symbol) {
+    const nt = Math.floor(n * 0.72), no = Math.floor(n * 0.1);
+    take(nt, textSampler(label, font, r, { maxW: 4.2, maxH: 1.75, ox: 0, oy: 0.35 }), TEXT);
+    take(no, ornament(r, -1.05));
+    take(n - nt - no, dust(3.6, 0));
+  } else if (st.sub) {
+    // اسم + سطر صغير تحته (مثل: صلى الله عليه وسلم) ثم الرمز
+    const nt = Math.floor(n * 0.33), ns = Math.floor(n * 0.12);
+    take(nt, textSampler(label, font, r, { maxW: 3.4, maxH: 1.0, ox: 0, oy: 2.05 }), TEXT);
+    take(ns, textSampler(st.sub, font, r, { maxW: 2.6, maxH: 0.5, ox: 0, oy: 1.2 }), TEXT);
+    takeShape(n - nt - ns, st.symbol, SYM_SCALE, 0, SYM_Y - 0.1);
+  } else {
+    const nt = Math.floor(n * 0.4);
+    take(nt, textSampler(label, font, r, { maxW: 3.6, maxH: 1.25, ox: 0, oy: 1.85 }), TEXT);
+    takeShape(n - nt, st.symbol, SYM_SCALE, 0, SYM_Y);
+  }
+  // خلط الترتيب حتى لا يختفي جزء كامل عند تخفيف عدد النقاط على الأجهزة الضعيفة
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    for (let a = 0; a < 3; a++) { const t = pos[i * 3 + a]; pos[i * 3 + a] = pos[j * 3 + a]; pos[j * 3 + a] = t; }
+    const f = flow[i]; flow[i] = flow[j]; flow[j] = f;
+  }
   return { pos, flow };
 }
 
@@ -124,15 +270,16 @@ const vertex = /* glsl */`
   varying float vRand;
   varying float vFlow;
   varying float vDepth;
+  // الموج والماء يتحركان داخل حدود الرمز بعد تصغيره وإنزاله تحت الاسم (SYM_SCALE = 0.6, SYM_Y = -0.75)
   vec3 flowed(vec3 p, float f, float t) {
     if (f > 0.5 && f < 1.5) {
-      p.x = mod(p.x + t * 0.9 + 6.0, 12.0) - 6.0;
-      p.y += sin(p.x * 1.4 + p.z * 1.1 + t * 1.6) * 0.16;
+      p.x = mod(p.x + t * 0.54 + 3.6, 7.2) - 3.6;
+      p.y += sin(p.x * 2.3 + p.z * 1.8 + t * 1.6) * 0.1;
     } else if (f > 1.5 && f < 2.5) {
-      p.y = mod(p.y + t * 0.35 + aRand * 4.6 + 2.7, 4.6) - 2.7;
-      p.x += sin(p.y * 2.0 + t) * 0.05;
-    } else if (f > 2.5) {
-      p.y += mod(t * 0.25 + aRand * 3.0, 3.0) * 0.35;
+      p.y = mod(p.y + t * 0.21 + aRand * 2.76 + 2.37, 2.76) - 2.37;
+      p.x += sin(p.y * 3.3 + t) * 0.03;
+    } else if (f > 2.5 && f < 3.5) {
+      p.y += mod(t * 0.25 + aRand * 3.0, 3.0) * 0.21;
     }
     return p;
   }
@@ -162,8 +309,10 @@ const fragment = /* glsl */`
     col = mix(col, uC, smoothstep(0.74, 0.86, vRand));
     col = mix(col, uD, smoothstep(0.95, 1.0, vRand));
     if (vFlow > 0.5 && vFlow < 2.5) col = mix(uC, mix(vec3(0.75, 0.9, 1.0), uC, uLight), 0.45);
-    if (vFlow > 2.5) col = mix(mix(uA, vec3(1.0), 0.5), uA, uLight);
-    float fa = vFlow > 2.5 ? mix(0.8, 0.5, uLight) : 1.0;
+    if (vFlow > 2.5 && vFlow < 3.5) col = mix(mix(uA, vec3(1.0), 0.5), uA, uLight);
+    // اسم النبي: ذهبي دافئ موحّد حتى يُقرأ الخط بوضوح، مع لمعة خفيفة
+    if (vFlow > 3.5) col = mix(mix(uA, uB, 0.35 + vRand * 0.5), uD, step(0.93, vRand) * 0.6);
+    float fa = vFlow > 2.5 && vFlow < 3.5 ? mix(0.8, 0.5, uLight) : 1.0;
     gl_FragColor = vec4(col, clamp(glow, 0.0, 1.0) * fa * uOpacity * (1.0 - vDepth * 0.4));
   }
 `;
@@ -247,14 +396,26 @@ export function createWorld(canvas, opts = {}) {
   camera.position.set(0, 0, 10);
 
   const N = tier.n;
+  // المحطات: { id, label, sub, symbol, layout }. تُبنى عند الحاجة ثم في أوقات الفراغ وتُحفظ
+  const stations = opts.stations || [{ id: 'crescent', label: '', symbol: 'crescent', layout: 'stack' }];
+  const font = opts.font || 'serif';
   const shapes = {};
-  SHAPES.forEach((s, i) => { shapes[s] = buildShape(s, N, rand(77 + i * 31)); });
+  const shapeOf = (id) => {
+    if (!shapes[id]) {
+      const i = stations.findIndex((s) => s.id === id);
+      if (i < 0) return null;
+      shapes[id] = buildStation(stations[i], N, rand(77 + i * 31), font);
+    }
+    return shapes[id];
+  };
+  let current = opts.initial && shapeOf(opts.initial) ? opts.initial : stations[0].id;
+  const first = shapeOf(current);
 
   const from = new Float32Array(N * 3);
   const r0 = rand(5);
   for (let i = 0; i < from.length; i++) from[i] = (r0() - 0.5) * 20;
-  const to = new Float32Array(shapes.crescent.pos);
-  const flow = new Float32Array(shapes.crescent.flow);
+  const to = new Float32Array(first.pos);
+  const flow = new Float32Array(first.flow);
   const rnd = new Float32Array(N);
   const rr = rand(42);
   for (let i = 0; i < N; i++) rnd[i] = rr();
@@ -322,11 +483,16 @@ export function createWorld(canvas, opts = {}) {
   const onPointer = (e) => { pointer.tx = (e.clientX / innerWidth - 0.5) * 2; pointer.ty = (e.clientY / innerHeight - 0.5) * 2; };
   window.addEventListener('pointermove', onPointer, { passive: true });
 
-  let current = 'crescent';
+  // بناء باقي المحطات في أوقات فراغ المتصفح حتى لا يحدث تقطيع أثناء السكرول
+  const idle = window.requestIdleCallback || ((f) => setTimeout(() => f({ timeRemaining: () => 8 }), 60));
+  let idleId = 0, alive = true;
+  const prebuild = () => { const next = stations.find((s) => !shapes[s.id]); if (!next || !alive) return; idleId = idle(() => { if (!alive) return; shapeOf(next.id); prebuild(); }); };
+  prebuild();
+
   function cpuFlowed(j, f, t) {
     let x = to[j], y = to[j + 1], z = to[j + 2];
-    if (f > 0.5 && f < 1.5) { x = (((x + t * 0.9 + 6) % 12) + 12) % 12 - 6; y += Math.sin(x * 1.4 + z * 1.1 + t * 1.6) * 0.16; }
-    else if (f > 1.5 && f < 2.5) { const i = j / 3; y = (((y + t * 0.35 + rnd[i] * 4.6 + 2.7) % 4.6) + 4.6) % 4.6 - 2.7; }
+    if (f > 0.5 && f < 1.5) { x = (((x + t * 0.54 + 3.6) % 7.2) + 7.2) % 7.2 - 3.6; y += Math.sin(x * 2.3 + z * 1.8 + t * 1.6) * 0.1; }
+    else if (f > 1.5 && f < 2.5) { const i = j / 3; y = (((y + t * 0.21 + rnd[i] * 2.76 + 2.37) % 2.76) + 2.76) % 2.76 - 2.37; }
     return [x, y, z];
   }
   function retarget(next) {
@@ -397,9 +563,10 @@ export function createWorld(canvas, opts = {}) {
     spin += dt * (0.25 + Math.min(3, Math.abs(velocity)) * 1.6);
     sUniforms.uSpin.value = spin;
 
-    state.rotY += wrap(goal.yaw + scrollLocalS * 1.1 + Math.sin(t * 0.3) * 0.1 - state.rotY) * 0.06;
-    group.rotation.y = state.rotY + pointer.x * 0.35;
-    group.rotation.x = 0.08 + pointer.y * 0.18 + (scrollLocalS - 0.5) * 0.15;
+    // دوران هادئ حول الوضع المواجه حتى يبقى الاسم مقروءًا
+    state.rotY += wrap(goal.yaw + (scrollLocalS - 0.5) * 0.5 + Math.sin(t * 0.3) * 0.08 - state.rotY) * 0.06;
+    group.rotation.y = state.rotY + pointer.x * 0.22;
+    group.rotation.x = 0.05 + pointer.y * 0.12 + (scrollLocalS - 0.5) * 0.1;
     starPoints.rotation.y = pointer.x * 0.05;
     draw();
     requestAnimationFrame(frame);
@@ -417,7 +584,8 @@ export function createWorld(canvas, opts = {}) {
   document.addEventListener('visibilitychange', onVis);
 
   function dispose() {
-    running = false; lost = true;
+    running = false; lost = true; alive = false;
+    if (window.cancelIdleCallback) window.cancelIdleCallback(idleId); else clearTimeout(idleId);
     window.removeEventListener('resize', resize);
     window.removeEventListener('pointermove', onPointer);
     document.removeEventListener('visibilitychange', onVis);
@@ -427,10 +595,10 @@ export function createWorld(canvas, opts = {}) {
   return {
     dispose,
     tier: tierName,
-    morph(name, o = {}) {
-      if (shapes[name] && name !== current) { retarget(shapes[name]); current = name; }
+    morph(id, o = {}) {
+      if (id !== current) { const s = shapeOf(id); if (s) { retarget(s); current = id; } }
       Object.assign(goal, { x: 0, y: 0, scale: 1, yaw: 0 }, o);
-      if (reduced) { Object.assign(state, { x: goal.x, y: goal.y, scale: goal.scale }); group.rotation.set(0.08, goal.yaw + 0.4, 0); draw(); }
+      if (reduced) { Object.assign(state, { x: goal.x, y: goal.y, scale: goal.scale }); group.rotation.set(0.05, goal.yaw, 0); draw(); }
     },
     scroll(local, vel) { scrollLocal = local; velocity = vel; },
     setTheme(name) { applyTheme(name); if (reduced) draw(); },

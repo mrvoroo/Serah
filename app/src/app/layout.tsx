@@ -5,6 +5,8 @@ import { Providers } from "@/components/providers";
 
 const cairo = localFont({ src: "../fonts/cairo.woff2", variable: "--font-cairo", weight: "200 1000", display: "swap" });
 const baloo = localFont({ src: "../fonts/baloo.woff2", variable: "--font-baloo", weight: "400 800", display: "swap" });
+// خط الرقعة لأسماء الأنبياء في مجسم الرحلة (Aref Ruqaa، رخصة OFL)
+const ruqaa = localFont({ src: "../fonts/ruqaa.woff2", variable: "--font-ruqaa", weight: "700", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   title: "رحلة مع الأنبياء",
@@ -24,7 +26,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ar" dir="rtl" suppressHydrationWarning className={`${cairo.variable} ${baloo.variable} h-full antialiased`}>
+    <html lang="ar" dir="rtl" suppressHydrationWarning className={`${cairo.variable} ${baloo.variable} ${ruqaa.variable} h-full antialiased`}>
       <body className="min-h-full">
         <Providers>{children}</Providers>
       </body>
