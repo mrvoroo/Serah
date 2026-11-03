@@ -320,7 +320,7 @@ function onTelegram_(upd) {
   say_(chat, 'ابعتي تسجيل المحاضرة الصوتي لأبدأ 🎙');
 }
 
-/** شغّلها مرة واحدة بعد نشر الويب أب (وضع SITE_ORIGIN و BOT_TOKEN أولاً) */
+/** (غير مستخدمة — البوت يعمل بالاستعلام الدوري، انظر installPolling) */
 function setWebhook() {
   const url = ScriptApp.getService().getUrl() + '?k=' + prop_('WEBHOOK_KEY');
   Logger.log(JSON.stringify(tg_('setWebhook', { url, allowed_updates: ['message'], drop_pending_updates: true })));
@@ -334,4 +334,28 @@ function seedFirstClass() {
   const c = append_('Classes', { class_id: id_('C'), name: 'الفصل الأول', teacher_id: t.user_id, join_code: code, created_at: now_() });
   update_('Users', 'user_id', t.user_id, { class_id: c.class_id });
   Logger.log('كود الفصل: ' + code + ' | رمز المعلمة المؤقت: ' + teacherPin);
+}
+
+/* ============ 6) استلام رسائل البوت بالاستعلام الدوري ============
+ * ويب هوك تيليجرام لا يتوافق مع Apps Script (يردّ بتحويل 302 فيعيد تيليجرام الإرسال بلا توقف)،
+ * لذلك نسأل تيليجرام كل دقيقة عن الرسائل الجديدة. */
+function pollTelegram() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return;
+  try {
+    const offset = Number(prop_('TG_OFFSET') || 0);
+    const r = tg_('getUpdates', { offset: offset, timeout: 0, limit: 20, allowed_updates: ['message'] });
+    if (!r.ok) return;
+    r.result.forEach(upd => {
+      props_().setProperty('TG_OFFSET', String(upd.update_id + 1)); // نسجّل قبل المعالجة لمنع التكرار
+      try { onTelegram_(upd); } catch (e) { console.error(e); }
+    });
+  } finally { lock.releaseLock(); }
+}
+
+/** شغّلها مرة واحدة: تلغي الويب هوك وتنشئ مشغّلًا يعمل كل دقيقة */
+function installPolling() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'pollTelegram').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('pollTelegram').timeBased().everyMinutes(1).create();
+  Logger.log(JSON.stringify(tg_('deleteWebhook', { drop_pending_updates: true })));
 }

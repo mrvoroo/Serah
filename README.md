@@ -19,7 +19,7 @@
    - `SITE_ORIGIN` = عنوان الموقع بدون شرطة في الآخر، مثال: `https://mrvoroo.github.io/Serah` ← ⚠️ يُكتب هنا فقط، وليس في الكود
 6. عدّل رمز المعلمة داخل `seedFirstClass` ثم شغّلها مرة واحدة. ستجد كود الفصل في السجل (Logs).
 7. Deploy ← New deployment ← Web app. Execute as: Me — Who has access: Anyone. انسخ الرابط (ينتهي بـ `/exec`).
-8. شغّل الدالة `setWebhook` لربط البوت.
+8. شغّل الدالة `installPolling` (تنشئ مشغّلًا يسأل تيليجرام كل دقيقة؛ ويب هوك تيليجرام لا يعمل مع Apps Script)، ووافق على الصلاحيات.
 
 ### 2) الموقع
 1. ضع رابط `/exec` في `web/config.js`.
