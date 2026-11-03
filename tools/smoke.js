@@ -29,7 +29,7 @@ const out = []; const log = (...a) => { const s = a.join(' '); out.push(s); cons
     // تبديل الثيم
     await p.goto(B + '/teacher/login/', { waitUntil: 'networkidle' });
     const before = await p.evaluate(() => document.documentElement.className);
-    await p.locator('button[aria-label*="الوضع"], button[aria-label*="ثيم"], button[aria-label*="theme"]').first().click().catch(() => {});
+    await p.locator('button[aria-label^="التحويل"]').first().click().catch(() => {});
     await p.waitForTimeout(600);
     log(tag, 'theme before/after:', before.includes('dark') ? 'dark' : 'light', '→', (await p.evaluate(() => document.documentElement.className)).includes('dark') ? 'dark' : 'light');
     await p.screenshot({ path: `smoke-${tag}-teacher-login.png` });
