@@ -1,0 +1,19 @@
+name: Live smoke test
+on:
+  push:
+    branches: [ci/smoke]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm i playwright@1 && npx playwright install --with-deps chromium
+      - run: node tools/smoke.js
+      - if: always()
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh release create "smoke-${{ github.run_id }}" smoke*.png smoke.txt --prerelease --title "smoke ${{ github.run_id }}" --notes "live smoke test" --target ${{ github.sha }}
