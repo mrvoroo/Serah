@@ -84,6 +84,12 @@ function update_(name, keyCol, keyVal, patch) {
 }
 function id_(p) { return p + Utilities.getUuid().slice(0, 8); }
 function now_() { return new Date().toISOString(); }
+function day_(v) {
+  const s = String(v || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = v instanceof Date ? v : new Date(s);
+  return isNaN(d) ? s.slice(0, 10) : Utilities.formatDate(d, 'Asia/Riyadh', 'yyyy-MM-dd');
+}
 
 /* ============ 3) المصادقة (رمز موقّع بدون تخزين) ============ */
 // يحوّل الأرقام العربية/الفارسية إلى إنجليزية ويحذف المسافات (لوحة المفاتيح العربية)
@@ -214,6 +220,62 @@ const ACTIONS = {
     const all = kids.map(k => ({ user_id: k.user_id, name: k.name, avatar: k.avatar, points: pts[k.user_id] || 0 }))
       .sort((a, b) => b.points - a.points);
     return { top: all.slice(0, 10), me: all.findIndex(x => x.user_id === me.user_id) + 1 };
+  },
+
+  // ملخص الطفل: نقاطه ومحاضراته المسموعة وترتيبه
+  me: (p, me) => {
+    const pts = {};
+    rows_('Points').forEach(r => pts[r.user_id] = (pts[r.user_id] || 0) + Number(r.points));
+    const kids = rows_('Users').filter(u => u.class_id === me.class_id && u.role === 'student' && u.active !== false)
+      .map(u => ({ id: u.user_id, p: pts[u.user_id] || 0 })).sort((a, b) => b.p - a.p);
+    const attended = rows_('Attendance').filter(a => a.user_id === me.user_id).map(a => a.lecture_id);
+    return { points: pts[me.user_id] || 0, attended, rank: kids.findIndex(k => k.id === me.user_id) + 1, total: kids.length };
+  },
+
+  // لوحة المعلمة: إحصائيات وتحليلات الفصل
+  dashboard: (p, me) => {
+    needTeacher_(me);
+    const kids = rows_('Users').filter(u => u.class_id === me.class_id && u.role === 'student' && u.active !== false);
+    const kidIds = {}; kids.forEach(k => kidIds[k.user_id] = k);
+    const lectures = rows_('Lectures').filter(l => l.class_id === me.class_id)
+      .sort((a, b) => day_(a.date).localeCompare(day_(b.date)));
+    const att = rows_('Attendance').filter(a => kidIds[a.user_id]);
+    const pts = {};
+    rows_('Points').forEach(r => { if (kidIds[r.user_id]) pts[r.user_id] = (pts[r.user_id] || 0) + Number(r.points); });
+    const perLecture = lectures.filter(l => l.status === 'published').slice(-8).map(l => ({
+      title: String(l.title).slice(0, 24), date: day_(l.date),
+      count: att.filter(a => a.lecture_id === l.lecture_id).length
+    }));
+    const published = lectures.filter(l => l.status === 'published');
+    const possible = published.length * kids.length;
+    const attPublished = att.filter(a => published.some(l => l.lecture_id === a.lecture_id)).length;
+    // نشاط آخر 14 يومًا
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 864e5);
+      const key = Utilities.formatDate(d, 'Asia/Riyadh', 'yyyy-MM-dd');
+      days.push({ day: key.slice(5), count: att.filter(a => day_(a.at) === key).length });
+    }
+    const top = kids.map(k => ({ user_id: k.user_id, name: k.name, avatar: k.avatar, points: pts[k.user_id] || 0 }))
+      .sort((a, b) => b.points - a.points).slice(0, 5);
+    const recent = att.slice(-6).reverse().map(a => {
+      const l = lectures.find(x => x.lecture_id === a.lecture_id);
+      return { name: kidIds[a.user_id].name, avatar: kidIds[a.user_id].avatar, lecture: l ? l.title : '', at: a.at };
+    });
+    const sugg = rows_('Suggestions').filter(s => s.status === 'جديد').length;
+    return {
+      kids: kids.length, lectures: lectures.length, published: published.length, drafts: lectures.length - published.length,
+      attendanceRate: possible ? Math.round(attPublished / possible * 100) : 0,
+      totalPoints: Object.keys(pts).reduce((s, k) => s + pts[k], 0),
+      perLecture, days, top, recent, newSuggestions: sugg
+    };
+  },
+
+  suggestions: (p, me) => {
+    needTeacher_(me);
+    const users = {}; rows_('Users').forEach(u => users[u.user_id] = u);
+    return rows_('Suggestions').slice(-50).reverse().map(s => ({ id: s.id, text: s.text, status: s.status, at: s.at,
+      name: users[s.from_user] ? users[s.from_user].name : '' }));
   },
 
   // صندوق الاقتراحات: يراه المشرف فقط
