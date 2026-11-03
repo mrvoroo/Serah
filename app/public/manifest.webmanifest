@@ -1,0 +1,12 @@
+{
+  "name": "رحلة مع الأنبياء",
+  "short_name": "رحلة الأنبياء",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/Serah/",
+  "scope": "/Serah/",
+  "display": "standalone",
+  "background_color": "#120A30",
+  "theme_color": "#120A30",
+  "icons": [{ "src": "/Serah/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

@@ -1,0 +1,441 @@
+// @ts-nocheck
+// خلفية الرحلة ثلاثية الأبعاد: آلاف النقاط المضيئة تتجمّع في مجسم لكل محطة
+// (هلال ونجوم، سفينة نوح، عصا موسى والبحر المنشق، ذو الفقار، المصحف)
+// مع نجوم تدور حول المجسم وتتسارع مع سرعة السكرول.
+import * as THREE from 'three';
+
+export const SHAPES = ['crescent', 'ark', 'staff', 'sword', 'book'];
+const TAU = Math.PI * 2;
+const MORPH_SECONDS = 1.6;
+
+function rand(seed) {
+  let s = seed >>> 0;
+  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+}
+
+// ---------- الأشكال ----------
+// كل شكل = أجزاء موزونة؛ معظم النقاط على الحواف والخطوط (مثل الرسم بالضوء) لا على الكتل.
+// flow: 0 ثابت، 1 موج يتحرك أفقيًا، 2 ماء يصعد، 3 نور يصعد ببطء
+function buildShape(name, n, r) {
+  const pos = new Float32Array(n * 3);
+  const flow = new Float32Array(n);
+  const g = () => (r() + r() + r() - 1.5) / 1.5;
+  const J = (j) => g() * j;
+  const lerp = (a, b, u) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+  const seg = (a, b, j = 0.018) => () => { const p = lerp(a, b, r()); return [p[0] + J(j), p[1] + J(j), p[2] + J(j)]; };
+  const curve = (f, j = 0.018) => () => { const p = f(r()); return [p[0] + J(j), p[1] + J(j), p[2] + J(j)]; };
+  const many = (list) => () => list[Math.floor(r() * list.length)]();
+  const boxEdges = (x0, x1, y0, y1, z0, z1, j) => {
+    const c = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
+    const e = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+    return many(e.map(([i, k]) => seg(c[i], c[k], j)));
+  };
+  const ground = (y, R) => () => { const th = r() * TAU, rad = Math.sqrt(r()) * R; return [Math.cos(th) * rad, y + J(0.02), Math.sin(th) * rad * 0.55]; };
+  const dust = (R) => () => { const th = r() * TAU, ph = Math.acos(2 * r() - 1), rad = R * (0.55 + r() * 0.45); return [Math.sin(ph) * Math.cos(th) * rad, Math.cos(ph) * rad * 0.7, Math.sin(ph) * Math.sin(th) * rad * 0.6]; };
+  const starOutline = (cx, cy, R) => () => {
+    const k = Math.floor(r() * 10), a0 = -Math.PI / 2 + k * Math.PI / 5, a1 = a0 + Math.PI / 5;
+    const r0 = k % 2 ? R * 0.42 : R, r1 = k % 2 ? R : R * 0.42, u = r();
+    const x0 = Math.cos(a0) * r0, y0 = -Math.sin(a0) * r0, x1 = Math.cos(a1) * r1, y1 = -Math.sin(a1) * r1;
+    return [cx + x0 + (x1 - x0) * u + J(0.012), cy + y0 + (y1 - y0) * u + J(0.012), J(0.03)];
+  };
+  let parts = [];
+
+  if (name === 'crescent') {
+    // هلال رقيق: حافتان بقوسين + نجمة خماسية بالخطوط
+    // دائرة خارجية (0,0) نصف قطر 2 وداخلية (0.85,0) نصف قطر 1.75 تتقاطعان عند زاويتي الطرفين
+    const outer = curve((u) => { const a = 0.338 * Math.PI + u * 1.324 * Math.PI; return [Math.cos(a) * 2.0, Math.sin(a) * 2.0, 0]; }, 0.02);
+    const inner = curve((u) => { const a = 0.477 * Math.PI + u * 1.046 * Math.PI; return [0.85 + Math.cos(a) * 1.75, Math.sin(a) * 1.75, 0]; }, 0.02);
+    const fill = () => { let x, y, t = 0; do { const th = r() * TAU, rad = 2.0 * Math.sqrt(r()); x = Math.cos(th) * rad; y = Math.sin(th) * rad; t++; } while (((x - 0.85) ** 2 + y * y) < 1.75 ** 2 && t < 40); return [x, y, J(0.1)]; };
+    parts = [[0.30, outer], [0.16, inner], [0.16, fill], [0.12, starOutline(1.45, 0.35, 0.5)], [0.04, starOutline(2.25, -0.75, 0.24)], [0.22, dust(4.5)]];
+  } else if (name === 'ark') {
+    // السفينة: خطوط البدن (السطح، القاع، أضلاع) + بيت بالحواف + سقف + نوافذ، وموج خطي
+    const L = 2.6;
+    const deckY = (u) => -0.3 + Math.pow(Math.abs(u), 2.4) * 0.55;
+    const deck = (side) => curve((t) => { const u = t * 2 - 1; return [u * L, deckY(u), side * 0.92 * Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(u), 3)))]; }, 0.016);
+    const keel = curve((t) => { const u = t * 2 - 1; return [u * L * 0.92, -1.05 + Math.pow(Math.abs(u), 2.2) * 0.75, 0]; }, 0.016);
+    const ribs = () => { const u = Math.round((r() * 2 - 1) * 6) / 6, side = r() < 0.5 ? -1 : 1, v = r(); const half = 0.92 * Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(u), 3)));
+      const top = deckY(u), bot = -1.05 + Math.pow(Math.abs(u), 2.2) * 0.75; return [u * L, top + (bot - top) * v, side * half * Math.cos(v * Math.PI / 2) + J(0.01)]; };
+    const house = boxEdges(-1.25, 1.25, -0.3, 0.45, -0.55, 0.55, 0.012);
+    const roof = many([seg([-1.38, 0.45, -0.62], [-1.38, 0.95, 0]), seg([-1.38, 0.95, 0], [-1.38, 0.45, 0.62]), seg([1.38, 0.45, -0.62], [1.38, 0.95, 0]), seg([1.38, 0.95, 0], [1.38, 0.45, 0.62]), seg([-1.38, 0.95, 0], [1.38, 0.95, 0], 0.012)]);
+    const windows = () => { const wx = [-0.85, -0.3, 0.3, 0.85][Math.floor(r() * 4)]; const a = r() * TAU; return [wx + Math.cos(a) * 0.1, 0.08 + Math.sin(a) * 0.1, 0.56]; };
+    parts = [[0.12, deck(1)], [0.12, deck(-1)], [0.09, keel], [0.12, ribs], [0.12, house], [0.07, roof], [0.04, windows], [0.06, dust(4.2)]];
+    parts.waves = [0.26, () => { const row = Math.floor(r() * 5), z = -1.8 + row * 0.9 + J(0.05); return [(r() - 0.5) * 12, -1.25 + J(0.02), z]; }];
+  } else if (name === 'staff') {
+    // العصا ورأسها المنحني + ستائر ماء على الجانبين (خطوط رأسية متموجة) + طريق
+    const staff = curve((u) => [u * 0.18 - 0.05, -2.5 + u * 4.3, 0], 0.012);
+    const crook = curve((u) => { const a = Math.PI + u * Math.PI * 1.25; return [0.49 + Math.cos(a) * 0.36, 1.8 - Math.sin(a) * 0.36, 0]; }, 0.012);
+    const halo = () => { const th = r() * TAU, rad = 0.25 + r() * 0.35; return [Math.cos(th) * rad, -0.6 + r() * 2.6, Math.sin(th) * rad]; };
+    const path = ground(-2.55, 1.0);
+    parts = [[0.16, staff], [0.08, crook], [0.05, halo], [0.08, path], [0.08, dust(4.6)]];
+    parts.water = [0.55, () => { const side = r() < 0.5 ? -1 : 1, col = Math.floor(r() * 6), x = side * (1.25 + col * 0.36); return [x, -2.5 + r() * 4.3, -1.4 + r() * 2.8]; }];
+  } else if (name === 'sword') {
+    // ذو الفقار: حافتا النصل + خط المنتصف + طرفان متفرعان + واقٍ مقوّس + مقبض بحلقات + كرة
+    const w = (y) => 0.2 - (y + 0.55) * 0.012;
+    const edge = (side) => curve((u) => { const y = -0.55 + u * 2.95; return [side * w(y), y, 0]; }, 0.01);
+    const fuller = curve((u) => [0, -0.4 + u * 2.6, 0.02], 0.008);
+    const prong = (side) => many([
+      curve((u) => [side * (0.02 + u * 0.24), 2.4 + u * 0.95, 0], 0.01),
+      curve((u) => [side * (0.17 + u * 0.12), 2.4 + u * 0.95, 0], 0.01)
+    ]);
+    const guard = curve((u) => { const x = (u * 2 - 1) * 0.85; return [x, -0.6 + Math.pow(Math.abs(x), 2) * 0.22, 0]; }, 0.014);
+    const grip = () => { const ring = Math.floor(r() * 8), y = -0.72 - ring * 0.15, th = r() * TAU; return [Math.cos(th) * 0.1, y + J(0.01), Math.sin(th) * 0.1]; };
+    const pommel = () => { const th = r() * TAU, ph = Math.acos(2 * r() - 1); return [Math.sin(ph) * Math.cos(th) * 0.16, -2.0 + Math.cos(ph) * 0.16, Math.sin(ph) * Math.sin(th) * 0.16]; };
+    parts = [[0.17, edge(1)], [0.17, edge(-1)], [0.07, fuller], [0.09, prong(1)], [0.09, prong(-1)], [0.12, guard], [0.12, grip], [0.05, pommel], [0.12, dust(4.0)]];
+  } else if (name === 'book') {
+    // مصحف مفتوح: حواف الصفحتين المنحنية + سطور + رحل بخطوط X + نور خفيف
+    const pageY = (u) => 0.1 + u * 0.32 + Math.sin(u * Math.PI) * 0.16;
+    const pageEdge = (side) => many([
+      curve((u) => [side * u * 1.9, pageY(u), -0.85]), curve((u) => [side * u * 1.9, pageY(u), 0.85]),
+      curve((u) => [side * 1.9, pageY(1), -0.85 + u * 1.7])
+    ]);
+    const lines = (side) => () => { const row = Math.floor(r() * 9), z = -0.68 + row * 0.17, u = 0.12 + r() * 0.8; return [side * u * 1.9, pageY(u) + 0.01, z + J(0.008)]; };
+    const spine = seg([0, 0.1, -0.88], [0, 0.1, 0.88], 0.01);
+    const rehal = many([seg([-0.95, 0.05, -0.5], [0.95, -1.7, -0.5], 0.012), seg([0.95, 0.05, -0.5], [-0.95, -1.7, -0.5], 0.012), seg([-0.95, 0.05, 0.5], [0.95, -1.7, 0.5], 0.012), seg([0.95, 0.05, 0.5], [-0.95, -1.7, 0.5], 0.012)]);
+    parts = [[0.12, pageEdge(1)], [0.12, pageEdge(-1)], [0.15, lines(1)], [0.15, lines(-1)], [0.05, spine], [0.17, rehal], [0.12, dust(4.4)]];
+    parts.light = [0.12, () => { const v = r(), th = r() * TAU, rad = Math.sqrt(r()) * (0.3 + v * 0.8); return [Math.cos(th) * rad, 0.45 + v * 2.0, Math.sin(th) * rad * 0.6]; }];
+  }
+
+  // التوزيع حسب الأوزان
+  const extra = parts.waves ? [1, parts.waves] : parts.water ? [2, parts.water] : parts.light ? [3, parts.light] : null;
+  const list = parts.slice();
+  if (extra) list.push([extra[1][0], extra[1][1], extra[0]]);
+  const total = list.reduce((a, p) => a + p[0], 0);
+  for (let i = 0; i < n; i++) {
+    let k = r() * total, j = 0;
+    while (k > list[j][0] && j < list.length - 1) k -= list[j++][0];
+    const p = list[j][1]();
+    pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = p[2];
+    flow[i] = list[j][2] || 0;
+  }
+  if (name === 'book') for (let i = 0; i < n; i++) { const y = pos[i * 3 + 1], z = pos[i * 3 + 2], c = Math.cos(0.75), s2 = Math.sin(0.75); pos[i * 3 + 1] = y * c - z * s2; pos[i * 3 + 2] = y * s2 + z * c; }
+  if (name === 'crescent') for (let i = 0; i < n; i++) pos[i * 3] -= 0.35;
+  if (name === 'sword') for (let i = 0; i < n; i++) { const x = pos[i * 3], y = pos[i * 3 + 1], c = Math.cos(-0.3), s2 = Math.sin(-0.3); pos[i * 3] = x * c - y * s2; pos[i * 3 + 1] = x * s2 + y * c; }
+  return { pos, flow };
+}
+
+const vertex = /* glsl */`
+  attribute vec3 aTo;
+  attribute float aRand;
+  attribute float aFlow;
+  uniform float uTime;
+  uniform float uProgress;
+  uniform float uSize;
+  uniform float uPixel;
+  varying float vRand;
+  varying float vFlow;
+  varying float vDepth;
+  vec3 flowed(vec3 p, float f, float t) {
+    if (f > 0.5 && f < 1.5) {
+      p.x = mod(p.x + t * 0.9 + 6.0, 12.0) - 6.0;
+      p.y += sin(p.x * 1.4 + p.z * 1.1 + t * 1.6) * 0.16;
+    } else if (f > 1.5 && f < 2.5) {
+      p.y = mod(p.y + t * 0.35 + aRand * 4.6 + 2.7, 4.6) - 2.7;
+      p.x += sin(p.y * 2.0 + t) * 0.05;
+    } else if (f > 2.5) {
+      p.y += mod(t * 0.25 + aRand * 3.0, 3.0) * 0.35;
+    }
+    return p;
+  }
+  void main() {
+    float k = clamp((uProgress - aRand * 0.35) / 0.65, 0.0, 1.0);
+    k = k * k * (3.0 - 2.0 * k);
+    vec3 p = mix(position, flowed(aTo, aFlow, uTime), k);
+    float t = uTime * 0.6 + aRand * 20.0;
+    p += vec3(sin(t), cos(t * 1.3), sin(t * 0.7)) * 0.018;
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    gl_PointSize = uSize * (0.55 + aRand * 0.9) * uPixel * (10.0 / -mv.z);
+    vRand = aRand; vFlow = aFlow;
+    vDepth = clamp((-mv.z - 4.0) / 8.0, 0.0, 1.0);
+  }
+`;
+const fragment = /* glsl */`
+  uniform vec3 uA; uniform vec3 uB; uniform vec3 uC; uniform vec3 uD;
+  uniform float uOpacity; uniform float uLight;
+  varying float vRand; varying float vFlow; varying float vDepth;
+  void main() {
+    vec2 c = gl_PointCoord - 0.5;
+    float d = length(c);
+    if (d > 0.5) discard;
+    float glow = mix(pow(1.0 - d * 2.0, 1.7), pow(1.0 - d * 2.0, 1.2), uLight);
+    vec3 col = mix(uA, uB, smoothstep(0.0, 0.35, vRand));
+    col = mix(col, uC, smoothstep(0.74, 0.86, vRand));
+    col = mix(col, uD, smoothstep(0.95, 1.0, vRand));
+    if (vFlow > 0.5 && vFlow < 2.5) col = mix(uC, mix(vec3(0.75, 0.9, 1.0), uC, uLight), 0.45);
+    if (vFlow > 2.5) col = mix(mix(uA, vec3(1.0), 0.5), uA, uLight);
+    float fa = vFlow > 2.5 ? mix(0.8, 0.5, uLight) : 1.0;
+    gl_FragColor = vec4(col, clamp(glow, 0.0, 1.0) * fa * uOpacity * (1.0 - vDepth * 0.4));
+  }
+`;
+
+// نجوم الخلفية والنجوم التي تدور حول المجسم
+const starVertex = /* glsl */`
+  attribute float aRand;
+  attribute float aKind;
+  uniform float uTime; uniform float uPixel; uniform float uSpin;
+  varying float vTw; varying float vKind;
+  void main() {
+    vec3 p = position;
+    if (aKind > 0.5) {
+      float a = atan(p.z, p.x) + uSpin * (0.6 + aRand * 0.6);
+      float r = length(p.xz);
+      p.x = cos(a) * r; p.z = sin(a) * r;
+      p.y += sin(uTime * 0.8 + aRand * 6.28) * 0.15;
+    }
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float base = aKind > 0.5 ? 13.0 + aRand * 6.0 : 4.0 + aRand * 6.0;
+    gl_PointSize = base * uPixel * (10.0 / -mv.z);
+    vTw = 0.55 + 0.45 * sin(uTime * (1.2 + aRand * 2.0) + aRand * 40.0);
+    vKind = aKind;
+  }
+`;
+const starFragment = /* glsl */`
+  uniform float uOpacity; uniform float uLight; uniform vec3 uStar; uniform vec3 uDust;
+  varying float vTw; varying float vKind;
+  void main() {
+    vec2 c = gl_PointCoord - 0.5;
+    float d = length(c);
+    float a;
+    if (vKind > 0.5) {
+      // نجمة رباعية لامعة
+      float cross = max(0.0, 1.0 - abs(c.x) * 14.0) * max(0.0, 1.0 - abs(c.y) * 2.2)
+                  + max(0.0, 1.0 - abs(c.y) * 14.0) * max(0.0, 1.0 - abs(c.x) * 2.2);
+      a = clamp(cross + pow(max(0.0, 1.0 - d * 3.2), 2.0), 0.0, 1.0);
+      gl_FragColor = vec4(uStar, a * mix(vTw, 0.55 + vTw * 0.45, uLight) * uOpacity);
+    } else {
+      if (d > 0.5) discard;
+      a = pow(1.0 - d * 2.0, 2.0);
+      gl_FragColor = vec4(uDust, a * vTw * uOpacity * mix(0.85, 0.55, uLight));
+    }
+  }
+`;
+
+export function detectTier() {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const mem = navigator.deviceMemory || 4;
+  const cores = navigator.hardwareConcurrency || 4;
+  const conn = navigator.connection || {};
+  const saveData = !!conn.saveData || /(^|-)2g$/.test(conn.effectiveType || '');
+  const small = window.matchMedia('(max-width: 760px)').matches;
+  if (reduced) return 'static';
+  if (saveData || mem <= 2 || cores <= 2) return 'low';
+  if (small || mem <= 4 || cores <= 4) return 'mid';
+  return 'high';
+}
+
+const TIERS = {
+  high:   { n: 9000, pixelMax: 1.75, stars: 380, orbit: 14 },
+  mid:    { n: 6000,  pixelMax: 1.5,  stars: 240, orbit: 10 },
+  low:    { n: 3500,  pixelMax: 1.0,  stars: 140, orbit: 6 },
+  static: { n: 5000,  pixelMax: 1.25, stars: 200, orbit: 8 }
+};
+
+export function createWorld(canvas, opts = {}) {
+  let tierName = opts.tier || detectTier();
+  const reduced = tierName === 'static';
+  const tier = TIERS[tierName];
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, powerPreference: 'high-performance' });
+  } catch (_) { return null; }
+  let pixel = Math.min(window.devicePixelRatio || 1, tier.pixelMax);
+  renderer.setPixelRatio(pixel);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(0, 0, 10);
+
+  const N = tier.n;
+  const shapes = {};
+  SHAPES.forEach((s, i) => { shapes[s] = buildShape(s, N, rand(77 + i * 31)); });
+
+  const from = new Float32Array(N * 3);
+  const r0 = rand(5);
+  for (let i = 0; i < from.length; i++) from[i] = (r0() - 0.5) * 20;
+  const to = new Float32Array(shapes.crescent.pos);
+  const flow = new Float32Array(shapes.crescent.flow);
+  const rnd = new Float32Array(N);
+  const rr = rand(42);
+  for (let i = 0; i < N; i++) rnd[i] = rr();
+
+  const geo = new THREE.BufferGeometry();
+  const fromAttr = new THREE.BufferAttribute(from, 3), toAttr = new THREE.BufferAttribute(to, 3), flowAttr = new THREE.BufferAttribute(flow, 1);
+  geo.setAttribute('position', fromAttr);
+  geo.setAttribute('aTo', toAttr);
+  geo.setAttribute('aFlow', flowAttr);
+  geo.setAttribute('aRand', new THREE.BufferAttribute(rnd, 1));
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 14);
+
+  const small = window.matchMedia('(max-width: 760px)').matches;
+  const uniforms = {
+    uTime: { value: 0 }, uProgress: { value: reduced ? 1 : 0 }, uSize: { value: small ? 3.2 : 2.8 }, uPixel: { value: pixel }, uOpacity: { value: 1 }, uLight: { value: 0 },
+    uA: { value: new THREE.Color('#FFE7B0') }, uB: { value: new THREE.Color('#F5B942') }, uC: { value: new THREE.Color('#19C3B1') }, uD: { value: new THREE.Color('#9C8BFF') }
+  };
+  const mat = new THREE.ShaderMaterial({ vertexShader: vertex, fragmentShader: fragment, uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const points = new THREE.Points(geo, mat);
+  const group = new THREE.Group();
+  group.add(points);
+  scene.add(group);
+
+  // النجوم
+  const SN = tier.stars + tier.orbit;
+  const sPos = new Float32Array(SN * 3), sRand = new Float32Array(SN), sKind = new Float32Array(SN);
+  const sr = rand(11);
+  for (let i = 0; i < SN; i++) {
+    sRand[i] = sr();
+    if (i < tier.stars) {
+      const th = sr() * TAU, ph = Math.acos(2 * sr() - 1), rad = 14 + sr() * 18;
+      sPos[i * 3] = Math.sin(ph) * Math.cos(th) * rad; sPos[i * 3 + 1] = Math.cos(ph) * rad * 0.7; sPos[i * 3 + 2] = -Math.abs(Math.sin(ph) * Math.sin(th) * rad) - 4;
+    } else {
+      sKind[i] = 1;
+      const a = sr() * TAU, rad = 3.4 + sr() * 0.9;
+      sPos[i * 3] = Math.cos(a) * rad; sPos[i * 3 + 1] = (sr() - 0.5) * 2.6; sPos[i * 3 + 2] = Math.sin(a) * rad;
+    }
+  }
+  const sGeo = new THREE.BufferGeometry();
+  sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+  sGeo.setAttribute('aRand', new THREE.BufferAttribute(sRand, 1));
+  sGeo.setAttribute('aKind', new THREE.BufferAttribute(sKind, 1));
+  sGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 40);
+  const sUniforms = { uTime: { value: 0 }, uPixel: { value: pixel }, uSpin: { value: 0 }, uOpacity: { value: 1 }, uLight: { value: 0 }, uStar: { value: new THREE.Color('#FFDB7A') }, uDust: { value: new THREE.Color('#E6E0FF') } };
+  const sMat = new THREE.ShaderMaterial({ vertexShader: starVertex, fragmentShader: starFragment, uniforms: sUniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const starPoints = new THREE.Points(sGeo, sMat);
+  scene.add(starPoints);
+  // النجوم المدارية تتبع المجسم
+  const orbitGroup = new THREE.Group();
+  scene.add(orbitGroup);
+
+  const state = { x: 0, y: 0, scale: 1, rotY: 0, tilt: 0 };
+  const goal = { x: 0, y: 0, scale: 1, yaw: 0 };
+  const pointer = { x: 0, y: 0, tx: 0, ty: 0 };
+  let scrollLocal = 0, scrollLocalS = 0, velocity = 0, spin = 0;
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    if (reduced) draw();
+  }
+  window.addEventListener('resize', resize);
+  const onPointer = (e) => { pointer.tx = (e.clientX / innerWidth - 0.5) * 2; pointer.ty = (e.clientY / innerHeight - 0.5) * 2; };
+  window.addEventListener('pointermove', onPointer, { passive: true });
+
+  let current = 'crescent';
+  function cpuFlowed(j, f, t) {
+    let x = to[j], y = to[j + 1], z = to[j + 2];
+    if (f > 0.5 && f < 1.5) { x = (((x + t * 0.9 + 6) % 12) + 12) % 12 - 6; y += Math.sin(x * 1.4 + z * 1.1 + t * 1.6) * 0.16; }
+    else if (f > 1.5 && f < 2.5) { const i = j / 3; y = (((y + t * 0.35 + rnd[i] * 4.6 + 2.7) % 4.6) + 4.6) % 4.6 - 2.7; }
+    return [x, y, z];
+  }
+  function retarget(next) {
+    const p = uniforms.uProgress.value, t = uniforms.uTime.value;
+    for (let i = 0, j = 0; i < N; i++, j += 3) {
+      let k = Math.min(1, Math.max(0, (p - rnd[i] * 0.35) / 0.65)); k = k * k * (3 - 2 * k);
+      const tt = cpuFlowed(j, flow[i], t);
+      from[j] += (tt[0] - from[j]) * k; from[j + 1] += (tt[1] - from[j + 1]) * k; from[j + 2] += (tt[2] - from[j + 2]) * k;
+    }
+    to.set(next.pos); flow.set(next.flow);
+    fromAttr.needsUpdate = toAttr.needsUpdate = flowAttr.needsUpdate = true;
+    uniforms.uProgress.value = reduced ? 1 : 0;
+  }
+
+  function draw() {
+    group.position.set(state.x, state.y, 0);
+    group.scale.setScalar(state.scale);
+    renderer.render(scene, camera);
+  }
+
+  // مراقبة الأداء: لو الإطارات بطيئة لمدة ثانيتين نخفف تلقائيًا
+  const perf = { acc: 0, frames: 0, downgraded: 0 };
+  function watchPerf(raw) {
+    perf.acc += raw; perf.frames++;
+    if (perf.acc >= 2) {
+      const avg = perf.acc / perf.frames;
+      perf.acc = 0; perf.frames = 0;
+      if (avg > 0.034 && perf.downgraded < 2) {
+        perf.downgraded++;
+        pixel = Math.max(0.75, pixel * 0.75);
+        renderer.setPixelRatio(pixel); uniforms.uPixel.value = pixel; sUniforms.uPixel.value = pixel;
+        geo.setDrawRange(0, Math.floor(N * (perf.downgraded === 1 ? 0.7 : 0.5)));
+        resize();
+      }
+    }
+  }
+
+  const THEMES = {
+    dark:  { blend: THREE.AdditiveBlending, light: 0, A: '#FFE7B0', B: '#F5B942', C: '#19C3B1', D: '#9C8BFF', star: '#FFE7B0', dust: '#E6E0FF', size: 1, op: 0.95 },
+    light: { blend: THREE.NormalBlending,   light: 1, A: '#7B5CFF', B: '#5B3FE0', C: '#0EA38C', D: '#E39400', star: '#E9A100', dust: '#9C8BFF', size: 0.95, op: 0.8 }
+  };
+  let baseSize = uniforms.uSize.value;
+  function applyTheme(name) {
+    const th = THEMES[name] || THEMES.dark;
+    mat.blending = th.blend; sMat.blending = th.blend; mat.needsUpdate = sMat.needsUpdate = true;
+    uniforms.uLight.value = th.light; sUniforms.uLight.value = th.light;
+    uniforms.uA.value.set(th.A); uniforms.uB.value.set(th.B); uniforms.uC.value.set(th.C); uniforms.uD.value.set(th.D); uniforms.uOpacity.value = th.op;
+    sUniforms.uStar.value.set(th.star); sUniforms.uDust.value.set(th.dust);
+    uniforms.uSize.value = baseSize * th.size;
+  }
+  applyTheme(opts.theme || 'light');
+
+  const clock = new THREE.Clock();
+  let running = !reduced, lost = false;
+  const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  function frame() {
+    if (!running || lost) return;
+    const raw = clock.getDelta(), dt = Math.min(raw, 0.05), t = clock.elapsedTime;
+    watchPerf(raw);
+    uniforms.uTime.value = t; sUniforms.uTime.value = t;
+    const u = uniforms.uProgress;
+    if (u.value < 1) u.value = Math.min(1, u.value + Math.min(raw, 0.25) / MORPH_SECONDS);
+
+    pointer.x += (pointer.tx - pointer.x) * 0.05; pointer.y += (pointer.ty - pointer.y) * 0.05;
+    for (const key of ['x', 'y', 'scale']) state[key] += (goal[key] - state[key]) * 0.07;
+    scrollLocalS += (scrollLocal - scrollLocalS) * 0.12;
+    velocity *= 0.92;
+    spin += dt * (0.25 + Math.min(3, Math.abs(velocity)) * 1.6);
+    sUniforms.uSpin.value = spin;
+
+    state.rotY += wrap(goal.yaw + scrollLocalS * 1.1 + Math.sin(t * 0.3) * 0.1 - state.rotY) * 0.06;
+    group.rotation.y = state.rotY + pointer.x * 0.35;
+    group.rotation.x = 0.08 + pointer.y * 0.18 + (scrollLocalS - 0.5) * 0.15;
+    starPoints.rotation.y = pointer.x * 0.05;
+    draw();
+    requestAnimationFrame(frame);
+  }
+  resize();
+  if (running) requestAnimationFrame(frame); else draw();
+
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; canvas.classList.add('is-lost'); });
+  canvas.addEventListener('webglcontextrestored', () => { lost = false; canvas.classList.remove('is-lost'); if (running) { clock.getDelta(); requestAnimationFrame(frame); } else draw(); });
+  const onVis = () => {
+    if (reduced || lost) return;
+    const was = running; running = !document.hidden;
+    if (running && !was) { clock.getDelta(); requestAnimationFrame(frame); }
+  };
+  document.addEventListener('visibilitychange', onVis);
+
+  function dispose() {
+    running = false; lost = true;
+    window.removeEventListener('resize', resize);
+    window.removeEventListener('pointermove', onPointer);
+    document.removeEventListener('visibilitychange', onVis);
+    geo.dispose(); mat.dispose(); sGeo.dispose(); sMat.dispose(); renderer.dispose();
+  }
+
+  return {
+    dispose,
+    tier: tierName,
+    morph(name, o = {}) {
+      if (shapes[name] && name !== current) { retarget(shapes[name]); current = name; }
+      Object.assign(goal, { x: 0, y: 0, scale: 1, yaw: 0 }, o);
+      if (reduced) { Object.assign(state, { x: goal.x, y: goal.y, scale: goal.scale }); group.rotation.set(0.08, goal.yaw + 0.4, 0); draw(); }
+    },
+    scroll(local, vel) { scrollLocal = local; velocity = vel; },
+    setTheme(name) { applyTheme(name); if (reduced) draw(); },
+    debug() {
+      return { shape: current, tier: tierName, progress: uniforms.uProgress.value, pixel, downgraded: perf.downgraded, drawCount: geo.drawRange.count === Infinity ? N : geo.drawRange.count, state: { ...state }, goal: { ...goal } };
+    }
+  };
+}

@@ -1,0 +1,96 @@
+"use client";
+import { useState } from "react";
+import { toast } from "sonner";
+import { KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
+import { api, type Kid } from "@/lib/api";
+import { invalidate, useApi } from "@/hooks/use-api";
+import { AVATARS, KidAvatar } from "@/components/kid/kid-avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlurFade } from "@/components/ui/blur-fade";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Icon3D } from "@/components/icon3d";
+import { cn } from "@/lib/utils";
+
+const pin4 = (v: string) => v.replace(/[^\d٠-٩]/g, "").slice(0, 4);
+
+export default function StudentsPage() {
+  const { data, loading, reload } = useApi<Kid[]>("students");
+  const [add, setAdd] = useState(false);
+  const [name, setName] = useState("");
+  const [pin, setPin] = useState("");
+  const [avatar, setAvatar] = useState<string>(`3d:${AVATARS[0]}`);
+  const [busy, setBusy] = useState(false);
+  const [pinFor, setPinFor] = useState<Kid | null>(null);
+  const [delFor, setDelFor] = useState<Kid | null>(null);
+
+  const refresh = () => { invalidate("students"); invalidate("dashboard"); reload(); };
+  const run = async (fn: () => Promise<unknown>, ok: string, done: () => void) => {
+    setBusy(true);
+    try { await fn(); toast.success(ok); done(); refresh(); } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3"><Icon3D name="cap" size={48} /><div><h1 className="font-heading text-2xl font-extrabold">الطلاب</h1><p className="text-sm text-muted-foreground">{data?.length ?? 0} طفل في الفصل</p></div></div>
+        <Button variant="hero" size="lg2" onClick={() => { setName(""); setPin(""); setAdd(true); }}><Plus /> إضافة طفل</Button>
+      </div>
+
+      {loading && !data ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 rounded-[24px]" />)}</div> : (
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {data?.map((k, i) => (
+            <BlurFade key={k.user_id} delay={0.03 * Math.min(i, 10)}>
+              <li className="flex items-center gap-3 rounded-[24px] border bg-card p-3 shadow-soft">
+                <KidAvatar value={k.avatar} size={44} />
+                <div className="min-w-0 flex-1"><p className="truncate font-bold">{k.name}</p><p className="text-sm text-muted-foreground">{k.points ?? 0} نجمة</p></div>
+                <Button variant="secondary" size="icon-xl" aria-label={`تغيير رمز ${k.name}`} onClick={() => { setPin(""); setPinFor(k); }}><KeyRound /></Button>
+                <Button variant="ghost" size="icon-xl" aria-label={`حذف ${k.name}`} className="text-destructive" onClick={() => setDelFor(k)}><Trash2 /></Button>
+              </li>
+            </BlurFade>
+          ))}
+          {data?.length === 0 && <p className="col-span-full rounded-[24px] border bg-card p-6 text-center text-muted-foreground">لم تُضيفي أي طفل بعد</p>}
+        </ul>
+      )}
+
+      <Dialog open={add} onOpenChange={setAdd}>
+        <DialogContent className="rounded-[28px] sm:max-w-md">
+          <DialogHeader><DialogTitle>إضافة طفل</DialogTitle><DialogDescription>الطفل يدخل بكود الفصل ثم يختار شكله ويكتب رمزه</DialogDescription></DialogHeader>
+          <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); run(() => api("addStudent", { name, pin, avatar }), "تمت إضافة الطفل", () => setAdd(false)); }}>
+            <Label htmlFor="sn">الاسم</Label>
+            <Input id="sn" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required className="h-12 rounded-xl text-base" />
+            <Label htmlFor="sp">الرمز السري (٤ أرقام)</Label>
+            <Input id="sp" value={pin} onChange={(e) => setPin(pin4(e.target.value))} inputMode="numeric" required className="h-12 rounded-xl text-center font-heading text-2xl tracking-[0.5em]" />
+            <Label>الشكل</Label>
+            <div className="grid grid-cols-6 gap-2">
+              {AVATARS.map((a) => (
+                <button key={a} type="button" aria-label={a} aria-pressed={avatar === `3d:${a}`} onClick={() => setAvatar(`3d:${a}`)}
+                  className={cn("grid aspect-square place-items-center rounded-2xl bg-secondary/60 transition", avatar === `3d:${a}` && "bg-primary/20 ring-2 ring-primary")}>
+                  <KidAvatar value={`3d:${a}`} size={34} />
+                </button>
+              ))}
+            </div>
+            <DialogFooter><Button type="submit" variant="hero" size="lg2" disabled={busy || !name.trim() || pin.length < 4}>{busy ? <Loader2 className="animate-spin" /> : "حفظ"}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pinFor} onOpenChange={(o) => !o && setPinFor(null)}>
+        <DialogContent className="rounded-[28px] sm:max-w-sm">
+          <DialogHeader><DialogTitle>رمز جديد لـ {pinFor?.name}</DialogTitle></DialogHeader>
+          <Input aria-label="الرمز الجديد" value={pin} onChange={(e) => setPin(pin4(e.target.value))} inputMode="numeric" className="h-12 rounded-xl text-center font-heading text-2xl tracking-[0.5em]" />
+          <DialogFooter><Button variant="hero" size="lg2" disabled={busy || pin.length < 4} onClick={() => pinFor && run(() => api("setStudentPin", { user_id: pinFor.user_id, pin }), "تم تغيير الرمز", () => setPinFor(null))}>حفظ</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!delFor} onOpenChange={(o) => !o && setDelFor(null)}>
+        <DialogContent className="rounded-[28px] sm:max-w-sm">
+          <DialogHeader><DialogTitle>حذف {delFor?.name}؟</DialogTitle><DialogDescription>لن يظهر الطفل في الفصل بعد الآن، ويمكن إعادته من الشيت</DialogDescription></DialogHeader>
+          <DialogFooter><Button variant="destructive" size="lg2" disabled={busy} onClick={() => delFor && run(() => api("removeStudent", { user_id: delFor.user_id }), "تم الحذف", () => setDelFor(null))}>حذف</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

@@ -1,0 +1,102 @@
+"use client";
+import Link from "next/link";
+import { ArrowLeft, Play } from "lucide-react";
+import { session, fmtDate, type Lecture, type Me } from "@/lib/api";
+import { useApi } from "@/hooks/use-api";
+import { Zaid } from "@/components/zaid";
+import { Icon3D, type Icon3DName } from "@/components/icon3d";
+import { BlurFade } from "@/components/ui/blur-fade";
+import { NumberTicker } from "@/components/ui/number-ticker";
+import { ShineBorder } from "@/components/ui/shine-border";
+import { Skeleton } from "@/components/ui/skeleton";
+import { buttonVariants } from "@/components/ui/button";
+import { SuggestDialog } from "@/components/kid/suggest-dialog";
+import SpotlightCard from "@/components/SpotlightCard";
+import { cn } from "@/lib/utils";
+
+const TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] = [
+  { href: "/kid/journey/", label: "رحلة الأنبياء", icon: "rocket", tone: "from-[#7B5CFF] to-[#4B2FD1]" },
+  { href: "/kid/lectures/", label: "المحاضرات", icon: "headphone", tone: "from-[#2FB5A3] to-[#167A6E]" },
+  { href: "/kid/stars/", label: "لوحة النجوم", icon: "trophy", tone: "from-[#FFB020] to-[#E07A00]" },
+];
+
+export default function KidHome() {
+  const user = session.user();
+  const me = useApi<Me>("me");
+  const lectures = useApi<Lecture[]>("lectures");
+  const latest = lectures.data?.[0];
+  const heard = new Set(me.data?.attended ?? []);
+  const newOnes = (lectures.data ?? []).filter((l) => !heard.has(l.lecture_id)).length;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <BlurFade delay={0.05}>
+        <section className="relative overflow-hidden rounded-[32px] bg-hero p-5 text-white shadow-soft">
+          <div className="flex items-center gap-3">
+            <Zaid mood="happy" size={110} />
+            <div className="flex-1">
+              <p className="text-white/80">السلام عليكم</p>
+              <h1 className="font-heading text-3xl font-extrabold">يا {user?.name ?? "بطل"}!</h1>
+              <p className="mt-1 text-white/85">{newOnes > 0 ? `عندك ${newOnes} محاضرة جديدة تستناك` : "جاهز لمغامرة جديدة؟"}</p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="flex items-center gap-2 rounded-2xl bg-white/15 p-3 backdrop-blur">
+              <Icon3D name="glowing-star" size={40} float />
+              <div><p className="text-xs text-white/80">نجومي</p>
+                {me.loading && !me.data ? <Skeleton className="h-7 w-12 bg-white/30" /> : <NumberTicker value={me.data?.points ?? 0} className="font-heading text-2xl font-extrabold text-white" />}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-2xl bg-white/15 p-3 backdrop-blur">
+              <Icon3D name="medal1" size={40} float delay={0.4} />
+              <div><p className="text-xs text-white/80">ترتيبي</p>
+                {me.loading && !me.data ? <Skeleton className="h-7 w-12 bg-white/30" /> : <p className="font-heading text-2xl font-extrabold">{me.data?.rank || "-"}<span className="text-sm font-bold text-white/70"> من {me.data?.total ?? 0}</span></p>}
+              </div>
+            </div>
+          </div>
+        </section>
+      </BlurFade>
+
+      <BlurFade delay={0.12}>
+        <h2 className="mb-2 font-heading text-xl font-extrabold">آخر محاضرة</h2>
+        {lectures.loading && !lectures.data ? <Skeleton className="h-28 rounded-[28px]" /> : latest ? (
+          <Link href={`/kid/lecture/?id=${latest.lecture_id}`} className="relative flex items-center gap-4 overflow-hidden rounded-[28px] border bg-card p-4 shadow-soft">
+            {!heard.has(latest.lecture_id) && <ShineBorder shineColor={["#FFC24D", "#8B6CFF"]} borderWidth={2} />}
+            <Icon3D name="open-book" size={64} float />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-heading text-lg font-extrabold">{latest.title}</p>
+              <p className="text-sm text-muted-foreground">{fmtDate(latest.date)}</p>
+            </div>
+            <span className="grid size-14 place-items-center rounded-full bg-gold text-[#3A2400] btn-3d"><Play className="size-6 fill-current" /></span>
+          </Link>
+        ) : (
+          <div className="rounded-[28px] border bg-card p-6 text-center text-muted-foreground">لا توجد محاضرات بعد، قريبًا إن شاء الله</div>
+        )}
+      </BlurFade>
+
+      <div className="grid grid-cols-3 gap-3">
+        {TILES.map((t, i) => (
+          <BlurFade key={t.href} delay={0.18 + i * 0.05}>
+            <Link href={t.href} className={cn("flex aspect-square flex-col items-center justify-center gap-2 rounded-[28px] bg-gradient-to-br p-2 text-center font-bold text-white shadow-soft transition-transform active:scale-95", t.tone)}>
+              <Icon3D name={t.icon} size={54} float delay={i * 0.3} />
+              <span className="text-sm leading-tight">{t.label}</span>
+            </Link>
+          </BlurFade>
+        ))}
+      </div>
+
+      <BlurFade delay={0.34}>
+        <SpotlightCard className="!rounded-[28px] !border-border !bg-card !p-4" spotlightColor="rgba(139, 108, 255, 0.25)">
+          <div className="flex items-center gap-3">
+            <Icon3D name="bulb" size={52} float />
+            <div className="flex-1">
+              <p className="font-heading text-lg font-extrabold">عندك فكرة؟</p>
+              <p className="text-sm text-muted-foreground">قول للمعلمة اقتراحك</p>
+            </div>
+            <SuggestDialog trigger={<button type="button" className={buttonVariants({ variant: "secondary", size: "lg2" })}>اقترح <ArrowLeft /></button>} />
+          </div>
+        </SpotlightCard>
+      </BlurFade>
+    </div>
+  );
+}
