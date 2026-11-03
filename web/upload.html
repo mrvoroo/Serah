@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>رفع تسجيل المحاضرة</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>🎙 رفع تسجيل المحاضرة</header>
+<main>
+  <div class="card" id="login">
+    <input id="n" placeholder="الاسم"><input id="p" type="password" inputmode="numeric" placeholder="الرمز السري">
+    <button class="btn" id="in">دخول</button><div class="err" id="err"></div>
+  </div>
+  <div class="card" id="up" hidden>
+    <input id="title" placeholder="اسم المحاضرة">
+    <input id="file" type="file" accept="audio/*,.ogg,.opus,.m4a,.mp3" style="display:none">
+    <button class="btn alt" id="pick">اختاري ملف التسجيل</button>
+    <div id="fname"></div>
+    <button class="btn" id="send">رفع</button>
+    <progress id="pg" value="0" max="100" style="width:100%" hidden></progress>
+    <div id="msg" class="err"></div>
+  </div>
+</main>
+<script src="config.js"></script>
+<script>
+let token = null;
+const $ = id => document.getElementById(id);
+async function api(action, params) {
+  const r = await fetch(SERAH.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, token, ...params }) });
+  const j = await r.json(); if (!j.ok) throw new Error(j.error); return j.data;
+}
+$("in").onclick = async () => {
+  try { token = (await api("login", { name: $("n").value.trim(), pin: $("p").value })).token; $("login").hidden = true; $("up").hidden = false; }
+  catch (e) { $("err").textContent = e.message; }
+};
+$("pick").onclick = () => $("file").click();
+$("file").onchange = () => $("fname").textContent = $("file").files[0] ? $("file").files[0].name : "";
+
+// رفع على دفعات (8 ميجا) إلى جلسة رفع متصلة على درايف — يكمل حتى لو النت ضعيف
+async function putChunks(url, file, onProgress) {
+  const CH = 8 * 1024 * 1024; let start = 0, tries = 0;
+  while (start < file.size) {
+    const end = Math.min(start + CH, file.size);
+    try {
+      const r = await fetch(url, { method: "PUT", headers: { "Content-Range": `bytes ${start}-${end - 1}/${file.size}` }, body: file.slice(start, end) });
+      if (r.status === 308) { const rg = r.headers.get("Range"); start = rg ? Number(rg.split("-")[1]) + 1 : end; }
+      else if (r.ok) return (await r.json()).id;
+      else throw new Error("status " + r.status);
+      tries = 0; onProgress(Math.round(start / file.size * 100));
+    } catch (e) { if (++tries > 6) throw e; await new Promise(res => setTimeout(res, 2000 * tries)); }
+  }
+}
+$("send").onclick = async () => {
+  const f = $("file").files[0], title = $("title").value.trim();
+  if (!f || !title) { $("msg").textContent = "اكتبي اسم المحاضرة واختاري الملف"; return; }
+  $("msg").textContent = ""; $("pg").hidden = false; $("send").disabled = true;
+  try {
+    const { uploadUrl } = await api("startUpload", { name: f.name, mime: f.type || "audio/ogg", kind: "audio" });
+    const id = await putChunks(uploadUrl, f, p => $("pg").value = p);
+    await api("createLecture", { title, audio_file_id: id });
+    $("pg").value = 100; $("msg").style.color = "#2f8f6b"; $("msg").textContent = "تم الرفع بنجاح ✔ المحاضرة الآن مسودة";
+  } catch (e) { $("msg").textContent = "تعذر الرفع: " + e.message; $("send").disabled = false; }
+};
+</script>
+</body>
+</html>
