@@ -86,9 +86,9 @@ async function viewHome() {
       ${teacher ? `<button class="btn alt" id="st">👧 الطلاب</button><a class="btn" href="upload.html" style="text-decoration:none">🎙 رفع محاضرة جديدة</a>` : ""}
       <button class="btn ghost" id="lb">🏆 لوحة النجوم</button>
       <button class="btn ghost" id="sg">💡 عندي فكرة</button>
-      ${teacher ? '<button class="btn ghost" id="pw">🔑 تغيير الرمز السري</button>' : ""}
+      ${teacher ? '<button class="btn ghost" id="cc">🏷 كود الفصل</button><button class="btn ghost" id="pw">🔑 تغيير الرمز السري</button>' : ""}
       <button class="btn ghost" id="out">خروج</button>`;
-    if (teacher) document.getElementById("pw").onclick = viewChangePin;
+    if (teacher) { document.getElementById("pw").onclick = viewChangePin; document.getElementById("cc").onclick = viewClassCode; }
     $app.querySelectorAll("[data-play]").forEach(b => b.onclick = () => viewPlayer(lectures.find(l => l.lecture_id === b.dataset.play)));
     $app.querySelectorAll("[data-pub]").forEach(b => b.onclick = async () => { await api("setLectureStatus", { lecture_id: b.dataset.pub, status: b.dataset.st }); viewHome(); });
     document.getElementById("lb").onclick = viewBoard;
@@ -151,6 +151,18 @@ async function viewStudents(msg) {
     if (!confirm("حذف هذا الطفل من الفصل؟")) return;
     try { await api("removeStudent", { user_id: b.dataset.del }); viewStudents("تم الحذف"); } catch (e) { alert(e.message); }
   });
+}
+
+async function viewClassCode() {
+  const { code } = await api("classCode");
+  $app.innerHTML = `<div class="card"><h2>🏷 كود الفصل</h2><p>الأطفال يكتبون هذا الكود في أول شاشة</p>
+    <div class="dots" style="letter-spacing:4px" dir="ltr">${h(code)}</div><input id="c" dir="ltr" placeholder="كود جديد (حروف إنجليزية أو أرقام)">
+    <div class="err" id="err"></div><button class="btn" id="go">تغيير الكود</button><button class="btn ghost" id="back">رجوع</button></div>`;
+  document.getElementById("back").onclick = viewHome;
+  document.getElementById("go").onclick = async () => {
+    try { await api("setClassCode", { code: document.getElementById("c").value }); viewClassCode(); }
+    catch (e) { document.getElementById("err").textContent = e.message; }
+  };
 }
 
 function viewChangePin() {

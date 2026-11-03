@@ -226,6 +226,22 @@ const ACTIONS = {
     return { uploadUrl: res.getHeaders()['Location'] || res.getHeaders()['location'] };
   },
 
+  // ===== كود الفصل (للمعلمات) =====
+  classCode: (p, me) => {
+    needTeacher_(me);
+    const c = rows_('Classes').find(x => x.class_id === me.class_id);
+    return { code: c ? c.join_code : '' };
+  },
+
+  setClassCode: (p, me) => {
+    needTeacher_(me);
+    const code = normDigits_(p.code).toUpperCase().replace(/\s+/g, '');
+    if (!/^[A-Z0-9]{3,12}$/.test(code)) throw new Error('الكود من 3 إلى 12 حرفًا إنجليزيًا أو أرقام');
+    if (rows_('Classes').some(c => c.join_code === code && c.class_id !== me.class_id)) throw new Error('هذا الكود مستخدم، اختاري غيره');
+    update_('Classes', 'class_id', me.class_id, { join_code: code });
+    return { code };
+  },
+
   // ===== إدارة الطلاب (للمعلمات) =====
   students: (p, me) => {
     needTeacher_(me);
