@@ -5,7 +5,7 @@
  */
 
 // رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
-const VERSION = 7;
+const VERSION = 8;
 
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
@@ -20,7 +20,8 @@ const SCHEMA = {
   Assignments:  ['assignment_id', 'class_id', 'lecture_id', 'title', 'details', 'due', 'created_at'],
   Points:       ['user_id', 'points', 'reason', 'at'],
   Suggestions:  ['id', 'from_user', 'role', 'text', 'audio_file_id', 'status', 'at'],
-  BotState:     ['chat_id', 'state', 'data', 'at']
+  BotState:     ['chat_id', 'state', 'data', 'at'],
+  AuditLog:     ['at', 'user_id', 'role', 'action', 'target_type', 'target_id', 'details_json', 'imp_by']
 };
 const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من تيليجرام (20MB)
 
@@ -39,13 +40,7 @@ function ss_() {
 function setup() {
   const ss = ss_();
   props_().setProperty('SHEET_ID', ss.getId());
-  Object.keys(SCHEMA).forEach(name => {
-    let sh = ss.getSheetByName(name) || ss.insertSheet(name);
-    if (sh.getLastRow() === 0) {
-      sh.getRange(1, 1, 1, SCHEMA[name].length).setValues([SCHEMA[name]]).setFontWeight('bold');
-      sh.setFrozenRows(1);
-    }
-  });
+  Object.keys(SCHEMA).forEach(ensureSheet_);
   const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Sheet 1') || ss.getSheetByName('ورقة1');
   if (def && ss.getSheets().length > 1) ss.deleteSheet(def);
 
@@ -62,16 +57,39 @@ function setup() {
 }
 
 /* ============ 2) أدوات الجداول ============ */
+// تنشئ الورقة لو ناقصة، وتضيف الأعمدة الناقصة في آخرها فقط — لا تمس البيانات الموجودة
+function ensureSheet_(name) {
+  const ss = ss_();
+  let sh = ss.getSheetByName(name);
+  if (!sh) sh = ss.insertSheet(name);
+  if (sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, SCHEMA[name].length).setValues([SCHEMA[name]]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    return sh;
+  }
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const missing = SCHEMA[name].filter(h => head.indexOf(h) < 0);
+  if (missing.length) sh.getRange(1, head.length + 1, 1, missing.length).setValues([missing]).setFontWeight('bold');
+  return sh;
+}
 function rows_(name) {
   const sh = ss_().getSheetByName(name);
   const v = sh.getDataRange().getValues();
   const head = v.shift();
   return v.map(r => { const o = {}; head.forEach((h, i) => o[h] = r[i]); return o; });
 }
+// يكتب الصف حسب أعمدة الورقة الفعلية (لا حسب ترتيب SCHEMA) حتى تبقى الأعمدة المضافة لاحقًا في مكانها الصحيح
 function append_(name, obj) {
-  const sh = ss_().getSheetByName(name);
-  sh.appendRow(SCHEMA[name].map(h => obj[h] === undefined ? '' : obj[h]));
+  const sh = ss_().getSheetByName(name) || ensureSheet_(name);
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  sh.appendRow(head.map(h => obj[h] === undefined ? '' : obj[h]));
   return obj;
+}
+function audit_(me, action, target_type, target_id, details) {
+  try {
+    append_('AuditLog', { at: now_(), user_id: me ? me.user_id : 'system', role: me ? me.role : 'system', action,
+      target_type: target_type || '', target_id: target_id || '', details_json: details ? JSON.stringify(details) : '', imp_by: me && me.imp || '' });
+  } catch (e) { console.error(e); }
 }
 function update_(name, keyCol, keyVal, patch) {
   const sh = ss_().getSheetByName(name);
@@ -124,7 +142,17 @@ function auth_(token) {
   if (Date.now() > Number(exp)) throw new Error('انتهت الجلسة');
   return { user_id, role, class_id };
 }
-function needTeacher_(me) { if (me.role !== 'teacher' && me.role !== 'admin') throw new Error('للمعلمات فقط'); }
+// الرتب: المطوّر (superadmin) فوق المعلمة الأدمن فوق المعلمة فوق الطفل
+const RANK = { student: 0, teacher: 1, admin: 2, superadmin: 3 };
+function need_(me, role) { if (!me || (RANK[me.role] || 0) < RANK[role]) throw new Error('ليس لديك صلاحية'); }
+function needTeacher_(me) { if (!me || (RANK[me.role] || 0) < RANK.teacher) throw new Error('للمعلمات فقط'); }
+// الفصل الذي تعمل عليه العملية: المطوّر غير مربوط بفصل، فيعمل على الفصل المطلوب أو أول فصل
+function cls_(me, p) {
+  if (me.role !== 'superadmin') return me.class_id;
+  if (p && p.class_id) return p.class_id;
+  if (me._cls === undefined) { const c = rows_('Classes')[0]; me._cls = c ? c.class_id : ''; } // مرة واحدة لكل طلب
+  return me._cls;
+}
 
 /* ============ 4) واجهة الـ API ============ */
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
@@ -195,7 +223,7 @@ const ACTIONS = {
   // المحاضرات: الطفل يرى المنشور فقط، والمعلمة ترى الكل
   lectures: (p, me) => {
     const isT = me.role !== 'student';
-    const list = rows_('Lectures').filter(l => l.class_id === me.class_id && (isT || l.status === 'published'));
+    const list = rows_('Lectures').filter(l => l.class_id === cls_(me, p) && (isT || l.status === 'published'));
     const imgs = rows_('LectureImages');
     return list.map(l => Object.assign({}, l, {
       images: imgs.filter(i => i.lecture_id === l.lecture_id).sort((a, b) => a.sort - b.sort).map(i => i.file_id)
@@ -217,7 +245,7 @@ const ACTIONS = {
   },
 
   leaderboard: (p, me) => {
-    const kids = rows_('Users').filter(u => u.class_id === me.class_id && u.role === 'student');
+    const kids = rows_('Users').filter(u => u.class_id === cls_(me, p) && u.role === 'student');
     const pts = {};
     rows_('Points').forEach(r => pts[r.user_id] = (pts[r.user_id] || 0) + Number(r.points));
     const all = kids.map(k => ({ user_id: k.user_id, name: k.name, avatar: k.avatar, points: pts[k.user_id] || 0 }))
@@ -229,7 +257,7 @@ const ACTIONS = {
   me: (p, me) => {
     const pts = {};
     rows_('Points').forEach(r => pts[r.user_id] = (pts[r.user_id] || 0) + Number(r.points));
-    const kids = rows_('Users').filter(u => u.class_id === me.class_id && u.role === 'student' && u.active !== false)
+    const kids = rows_('Users').filter(u => u.class_id === cls_(me, p) && u.role === 'student' && u.active !== false)
       .map(u => ({ id: u.user_id, p: pts[u.user_id] || 0 })).sort((a, b) => b.p - a.p);
     const attended = rows_('Attendance').filter(a => a.user_id === me.user_id).map(a => a.lecture_id);
     return { points: pts[me.user_id] || 0, attended, rank: kids.findIndex(k => k.id === me.user_id) + 1, total: kids.length };
@@ -238,9 +266,9 @@ const ACTIONS = {
   // لوحة المعلمة: إحصائيات وتحليلات الفصل
   dashboard: (p, me) => {
     needTeacher_(me);
-    const kids = rows_('Users').filter(u => u.class_id === me.class_id && u.role === 'student' && u.active !== false);
+    const kids = rows_('Users').filter(u => u.class_id === cls_(me, p) && u.role === 'student' && u.active !== false);
     const kidIds = {}; kids.forEach(k => kidIds[k.user_id] = k);
-    const lectures = rows_('Lectures').filter(l => l.class_id === me.class_id)
+    const lectures = rows_('Lectures').filter(l => l.class_id === cls_(me, p))
       .sort((a, b) => day_(a.date).localeCompare(day_(b.date)));
     const att = rows_('Attendance').filter(a => kidIds[a.user_id]);
     const pts = {};
@@ -306,7 +334,7 @@ const ACTIONS = {
   // ===== كود الفصل (للمعلمات) =====
   classCode: (p, me) => {
     needTeacher_(me);
-    const c = rows_('Classes').find(x => x.class_id === me.class_id);
+    const c = rows_('Classes').find(x => x.class_id === cls_(me, p));
     return { code: c ? String(c.join_code) : '' };
   },
 
@@ -314,8 +342,8 @@ const ACTIONS = {
     needTeacher_(me);
     const code = normDigits_(p.code).toUpperCase().replace(/\s+/g, '');
     if (!/^[A-Z0-9]{3,12}$/.test(code)) throw new Error('الكود من 3 إلى 12 حرفًا إنجليزيًا أو أرقام');
-    if (rows_('Classes').some(c => String(c.join_code).toUpperCase() === code && c.class_id !== me.class_id)) throw new Error('هذا الكود مستخدم، اختاري غيره');
-    update_('Classes', 'class_id', me.class_id, { join_code: code });
+    if (rows_('Classes').some(c => String(c.join_code).toUpperCase() === code && c.class_id !== cls_(me, p))) throw new Error('هذا الكود مستخدم، اختاري غيره');
+    update_('Classes', 'class_id', cls_(me, p), { join_code: code });
     return { code };
   },
 
@@ -324,7 +352,7 @@ const ACTIONS = {
     needTeacher_(me);
     const pts = {};
     rows_('Points').forEach(r => pts[r.user_id] = (pts[r.user_id] || 0) + Number(r.points));
-    return rows_('Users').filter(u => u.class_id === me.class_id && u.role === 'student' && u.active !== false)
+    return rows_('Users').filter(u => u.class_id === cls_(me, p) && u.role === 'student' && u.active !== false)
       .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar, points: pts[u.user_id] || 0 }));
   },
 
@@ -334,7 +362,7 @@ const ACTIONS = {
     const pin = normDigits_(p.pin);
     if (!name) throw new Error('اكتبي اسم الطفل');
     if (!/^\d{4}$/.test(pin)) throw new Error('الرمز السري 4 أرقام');
-    const u = append_('Users', { user_id: id_('U'), role: 'student', name, class_id: me.class_id, avatar: String(p.avatar || '🌟').slice(0, 8),
+    const u = append_('Users', { user_id: id_('U'), role: 'student', name, class_id: cls_(me, p), avatar: String(p.avatar || '🌟').slice(0, 8),
       pin_hash: hashPin_(pin), city: p.city || '', country: p.country || '', active: true, created_at: now_() });
     return { user_id: u.user_id };
   },
@@ -343,7 +371,7 @@ const ACTIONS = {
     needTeacher_(me);
     const pin = normDigits_(p.pin);
     if (!/^\d{4}$/.test(pin)) throw new Error('الرمز السري 4 أرقام');
-    const u = rows_('Users').find(x => x.user_id === p.user_id && x.class_id === me.class_id && x.role === 'student');
+    const u = rows_('Users').find(x => x.user_id === p.user_id && x.class_id === cls_(me, p) && x.role === 'student');
     if (!u) throw new Error('الطالب غير موجود');
     update_('Users', 'user_id', u.user_id, { pin_hash: hashPin_(pin) });
     return true;
@@ -351,7 +379,7 @@ const ACTIONS = {
 
   removeStudent: (p, me) => {
     needTeacher_(me);
-    const u = rows_('Users').find(x => x.user_id === p.user_id && x.class_id === me.class_id && x.role === 'student');
+    const u = rows_('Users').find(x => x.user_id === p.user_id && x.class_id === cls_(me, p) && x.role === 'student');
     if (!u) throw new Error('الطالب غير موجود');
     update_('Users', 'user_id', u.user_id, { active: false });
     return true;
@@ -370,7 +398,7 @@ const ACTIONS = {
   // بعد اكتمال الرفع من المتصفح: نسجل المحاضرة
   createLecture: (p, me) => {
     needTeacher_(me);
-    const l = append_('Lectures', { lecture_id: id_('L'), class_id: me.class_id, title: p.title, date: p.date || now_().slice(0, 10),
+    const l = append_('Lectures', { lecture_id: id_('L'), class_id: cls_(me, p), title: p.title, date: p.date || now_().slice(0, 10),
       audio_file_id: p.audio_file_id, duration_sec: p.duration_sec || '', status: 'draft', created_by: me.user_id, created_at: now_() });
     share_(p.audio_file_id);
     return l;
@@ -484,6 +512,31 @@ function seedFirstClass() {
   const c = append_('Classes', { class_id: id_('C'), name: 'الفصل الأول', teacher_id: t.user_id, join_code: code, created_at: now_() });
   update_('Users', 'user_id', t.user_id, { class_id: c.class_id });
   Logger.log('كود الفصل: ' + code + ' | رمز المعلمة المؤقت: ' + teacherPin);
+}
+
+/**
+ * حساب المطوّر (م.احمد، superadmin). الرمز لا يُكتب في الكود أبدًا:
+ * 1) Project Settings ← Script Properties ← أضف NEW_SUPER_PIN = رمزك (6 أرقام على الأقل)
+ * 2) شغّل هذه الدالة من المحرر. تنشئ الحساب (أو تغيّر رمزه لو موجود) ثم تحذف NEW_SUPER_PIN تلقائيًا.
+ */
+function createSuperAdmin() {
+  const pin = normDigits_(prop_('NEW_SUPER_PIN'));
+  if (!/^\d{6,}$/.test(pin)) throw new Error('ضع NEW_SUPER_PIN في Script Properties (6 أرقام على الأقل) ثم شغّلها مرة أخرى');
+  const NAME = 'م.احمد';
+  ensureSheet_('Users'); ensureSheet_('AuditLog');
+  const existing = rows_('Users').find(u => u.role === 'superadmin');
+  let user_id;
+  if (existing) {
+    user_id = existing.user_id;
+    update_('Users', 'user_id', user_id, { pin_hash: hashPin_(pin), active: true });
+  } else {
+    if (rows_('Users').some(u => u.role !== 'student' && normName_(u.name) === normName_(NAME))) throw new Error('يوجد حساب آخر بنفس الاسم');
+    user_id = id_('U');
+    append_('Users', { user_id, role: 'superadmin', name: NAME, class_id: '', avatar: '', pin_hash: hashPin_(pin), active: true, created_at: now_() });
+  }
+  props_().deleteProperty('NEW_SUPER_PIN');
+  audit_({ user_id, role: 'superadmin' }, existing ? 'superadmin.resetPin' : 'superadmin.create', 'Users', user_id);
+  Logger.log((existing ? 'تم تغيير رمز حساب ' : 'تم إنشاء حساب ') + NAME + ' ✔ — ادخل من صفحة دخول المعلمة بالاسم والرمز');
 }
 
 /* ============ 6) استلام رسائل البوت بالاستعلام الدوري ============

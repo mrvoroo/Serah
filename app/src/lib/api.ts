@@ -3,7 +3,7 @@ export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "https://script.google.com/macros/s/AKfycbz5QzGujgyndr_k1QpuFkPBQTjgA-KkxQoP9WOBV66-6pi5X-o4Q4JWLiJauDR2Xt39/exec";
 
-export type Role = "student" | "teacher" | "admin";
+export type Role = "student" | "teacher" | "admin" | "superadmin";
 export type User = { user_id: string; name: string; role: Role; class_id: string; avatar: string };
 export type Kid = { user_id: string; name: string; avatar: string; points?: number };
 export type Lecture = {

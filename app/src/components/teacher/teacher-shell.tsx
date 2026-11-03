@@ -50,7 +50,7 @@ function NavList({ onNavigate, id }: { onNavigate?: () => void; id: string }) {
 }
 
 export function TeacherShell({ children }: { children: ReactNode }) {
-  const user = useRequireRole(["teacher", "admin"]);
+  const user = useRequireRole(["teacher", "admin", "superadmin"]);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const logout = () => { session.clear(); router.replace("/teacher/login/"); };
