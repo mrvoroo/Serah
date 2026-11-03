@@ -128,7 +128,19 @@ function doPost(e) {
   // طلب من تيليجرام (الويب هوك) — يتحقق بمفتاح في الرابط
   if (e.parameter && e.parameter.k) {
     if (e.parameter.k !== prop_('WEBHOOK_KEY')) return json_({ ok: false });
-    try { onTelegram_(JSON.parse(e.postData.contents)); } catch (err) { console.error(err); }
+    try {
+      const upd = JSON.parse(e.postData.contents);
+      const cache = CacheService.getScriptCache();
+      const dupKey = 'upd' + upd.update_id;
+      if (cache.get(dupKey)) return json_({ ok: true, dup: true }); // تيليجرام قد يعيد الإرسال
+      const lock = LockService.getScriptLock();
+      lock.waitLock(25000);
+      try {
+        if (cache.get(dupKey)) return json_({ ok: true, dup: true });
+        cache.put(dupKey, '1', 6 * 3600);
+        onTelegram_(upd);
+      } finally { lock.releaseLock(); }
+    } catch (err) { console.error(err); return json_({ ok: false, error: String(err) }); }
     return json_({ ok: true });
   }
   // طلب من التطبيق (نرسله بصيغة نص عادي لتجنب مشاكل CORS)
@@ -381,7 +393,7 @@ function onTelegram_(upd) {
     const f = DriveApp.getFolderById(prop_('FOLDER_images')).createFile(blob);
     share_(f.getId());
     const n = (st.data.n || 0) + 1;
-    append_('LectureImages', { image_id: id_('I'), lecture_id: st.data.lecture_id, sort: m.date * 1000 + n, file_id: f.getId() });
+    append_('LectureImages', { image_id: id_('I'), lecture_id: st.data.lecture_id, sort: m.message_id, file_id: f.getId() });
     setState_(chat, 'await_images', { lecture_id: st.data.lecture_id, n });
     return;
   }
@@ -431,4 +443,14 @@ function installPolling() {
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'pollTelegram').forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('pollTelegram').timeBased().everyMinutes(1).create();
   Logger.log(JSON.stringify(tg_('deleteWebhook', { drop_pending_updates: true })));
+}
+
+/** يحذف مشغّل الاستعلام الدوري (يُستخدم بعد التحويل إلى ويب هوك عبر Cloudflare) */
+function removePolling() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'pollTelegram').forEach(t => ScriptApp.deleteTrigger(t));
+}
+
+/** يضبط ويب هوك تيليجرام على عنوان الوسيط (Cloudflare Worker) */
+function setRelayWebhook(relayUrl, secret) {
+  Logger.log(JSON.stringify(tg_('setWebhook', { url: relayUrl, secret_token: secret, allowed_updates: ['message'], drop_pending_updates: true })));
 }
