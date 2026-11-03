@@ -8,7 +8,7 @@ export type Station = {
   title: string;
   tag: string;
   text: string;
-  symbol?: "crescent" | "ark" | "staff" | "kaaba" | "fish" | "dome" | "sword" | "book";
+  symbol?: "crescent" | "ark" | "staff" | "kaaba" | "whale" | "mushaf" | "dome" | "sword" | "book";
   symbolName?: string;
   layout?: "side" | "stack";
 };
@@ -34,11 +34,11 @@ const prophets: [id: string, name: string, text: string, symbol?: Station["symbo
   ["sulayman", "سليمان", "علّمه الله منطق الطير، وسخّر له الريح."],
   ["ilyas", "إلياس", "دعا قومه إلى ترك عبادة الأصنام وعبادة الله أحسن الخالقين."],
   ["alyasa", "اليسع", "ذكره الله في القرآن، وجعله من الأخيار."],
-  ["yunus", "يونس", "دعا ربه في بطن الحوت: لا إله إلا أنت سبحانك، فنجّاه الله.", "fish", "الحوت"],
+  ["yunus", "يونس", "دعا ربه في بطن الحوت: لا إله إلا أنت سبحانك، فنجّاه الله.", "whale", "الحوت"],
   ["zakariya", "زكريا", "دعا ربه دعاءً خفيًّا، فوهبه الله ابنه يحيى."],
   ["yahya", "يحيى", "آتاه الله الحكم صبيًّا، وكان بارًّا بوالديه."],
   ["isa", "عيسى", "كلّم الناس في المهد، وآتاه الله الإنجيل."],
-  ["muhammad", "محمد ﷺ", "خاتم الأنبياء والمرسلين، أرسله الله رحمة للعالمين.", "dome", "المسجد النبوي"],
+  ["muhammad", "محمد ﷺ", "خاتم الأنبياء والمرسلين، أرسله الله رحمة للعالمين.", "mushaf", "المصحف"],
 ];
 
 const num = (n: number) => n.toLocaleString("ar-EG");

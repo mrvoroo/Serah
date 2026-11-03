@@ -1,10 +1,10 @@
 // @ts-nocheck
 // خلفية الرحلة ثلاثية الأبعاد: آلاف النقاط المضيئة تتجمّع لكل محطة في اسم النبي بخط الرقعة
-// وتحته رمزه (هلال ونجمة، سفينة نوح، عصا موسى والبحر المنشق، الكعبة، الحوت، المسجد النبوي، ذو الفقار، المصحف)
+// وتحته رمزه (هلال ونجمة، سفينة نوح، عصا موسى والبحر المنشق، الكعبة، الحوت الأزرق، المصحف المغلق، المسجد النبوي، ذو الفقار، المصحف المفتوح)
 // مع نجوم تدور حول المجسم وتتسارع مع سرعة السكرول.
 import * as THREE from 'three';
 
-export const SHAPES = ['crescent', 'ark', 'staff', 'kaaba', 'fish', 'dome', 'sword', 'book'];
+export const SHAPES = ['crescent', 'ark', 'staff', 'kaaba', 'whale', 'mushaf', 'dome', 'sword', 'book'];
 const TAU = Math.PI * 2;
 const MORPH_SECONDS = 1.6;
 
@@ -15,7 +15,7 @@ function rand(seed) {
 
 // ---------- الأشكال ----------
 // كل شكل = أجزاء موزونة؛ معظم النقاط على الحواف والخطوط (مثل الرسم بالضوء) لا على الكتل.
-// flow: 0 ثابت، 1 موج يتحرك أفقيًا، 2 ماء يصعد، 3 نور يصعد ببطء، 4 حروف الاسم
+// flow: 0 ثابت، 1 موج يتحرك أفقيًا، 2 ماء يصعد، 3 نور يصعد ببطء، 4 حروف الاسم، 5 جسم الحوت الأزرق
 function buildShape(name, n, r) {
   const pos = new Float32Array(n * 3);
   const flow = new Float32Array(n);
@@ -91,20 +91,60 @@ function buildShape(name, n, r) {
     const faces = () => { const p = onFace(Y0 + r() * (Y1 - Y0)); return [p[0], p[1], p[2]]; };
     const rings = () => { const R = [1.8, 2.3, 2.8][Math.floor(r() * 3)], a = r() * TAU; return [Math.cos(a) * R, Y0 - 0.05 + J(0.02), Math.sin(a) * R * 0.8]; };
     parts = [[0.22, cube], [0.12, band], [0.05, door], [0.12, faces], [0.22, rings], [0.07, dust(4.2)]];
-  } else if (name === 'fish') {
-    // الحوت (نبي الله يونس): خط الظهر والبطن + مقاطع عرضية للعمق + ذيل + عين + موج
-    const top = (t) => 0.9 * Math.pow(Math.sin(Math.PI * t), 0.7) * (1 - 0.3 * t);
-    const bot = (t) => -0.62 * Math.pow(Math.sin(Math.PI * t), 0.8);
-    const X0 = -1.9, LEN = 3.4;
-    const back = curve((u) => [X0 + u * LEN, top(u), 0], 0.012);
-    const belly = curve((u) => [X0 + u * LEN, bot(u), 0], 0.012);
-    const ribs = () => { const t = Math.round(r() * 10) / 10, a = r() * TAU, mid = (top(t) + bot(t)) / 2, h = (top(t) - bot(t)) / 2; return [X0 + t * LEN, mid + Math.cos(a) * h, Math.sin(a) * h * 0.6]; };
-    const tail = many([seg([1.45, 0.08, 0], [2.45, 0.8, 0]), seg([2.45, 0.8, 0], [2.15, 0.05, 0]), seg([2.15, 0.05, 0], [2.45, -0.65, 0]), seg([2.45, -0.65, 0], [1.45, -0.08, 0])]);
-    const eye = () => { const a = r() * TAU; return [-1.3 + Math.cos(a) * 0.09, 0.25 + Math.sin(a) * 0.09, 0.32]; };
-    const mouth = seg([-1.88, -0.08, 0.1], [-1.35, -0.18, 0.2], 0.008);
-    const fin = many([seg([-0.2, -0.3, 0.35], [0.35, -0.75, 0.45]), seg([0.35, -0.75, 0.45], [0.3, -0.25, 0.35])]);
-    parts = [[0.15, back], [0.13, belly], [0.18, ribs], [0.1, tail], [0.03, eye], [0.02, mouth], [0.03, fin], [0.06, dust(4.2)]];
-    parts.waves = [0.22, () => { const row = Math.floor(r() * 5), z = -1.8 + row * 0.9 + J(0.05); return [(r() - 0.5) * 12, -1.25 + J(0.02), z]; }];
+  } else if (name === 'whale') {
+    // الحوت الأزرق (نبي الله يونس) بنسب حقيقية: جسم طويل انسيابي برأس عريض مفلطح، أخاديد الحلق تحت الفك،
+    // زعنفة ظهرية صغيرة جدًا قرب الذيل، زعنفتان صدريتان طويلتان، وزعنفة ذيل أفقية ضخمة، ونفثة ماء من فتحة التنفس.
+    // النقاط الزرقاء (flow 5) تُلوَّن بالأزرق في الشيدر.
+    const BLUE = 5, X0 = -2.7, L = 4.6, X1 = X0 + L;
+    const sm = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
+    const rad = (t) => (t < 0.3 ? 0.1 + 0.48 * (0.55 + 0.45 * sm(0, 0.3, t)) : 0.1 + 0.48 * Math.pow(1 - sm(0.3, 1, t), 1.15)) * Math.sqrt(Math.min(1, t / 0.05 + 0.08));
+    // الذيل مرفوع قليلًا كأنه في منتصف ضربة سباحة
+    const cy = (t) => -0.04 * Math.sin(Math.PI * t) + 0.06 * t + 0.32 * sm(0.72, 1, t);
+    const at = (t, a, k = 1) => { const q = rad(t) * k; return [X0 + t * L, cy(t) + Math.sin(a) * q * (0.7 + 0.12 * sm(0, 0.3, t)), Math.cos(a) * q * 0.95]; };
+    const lines = () => at(r(), Math.floor(r() * 14) * TAU / 14);
+    const rings = () => at(Math.floor(r() * 18) / 17, r() * TAU);
+    const skin = () => at(r(), r() * TAU);
+    const grooves = () => { const t = 0.03 + r() * 0.4, k = Math.floor(r() * 11); return at(t, -Math.PI / 2 + (k / 10 - 0.5) * 1.7 * (1 - t * 0.6), 1.015); };
+    const mouth = () => { const t = r() * 0.2, s = r() < 0.5 ? -1 : 1, p = at(t, -0.3 + t * 1.2); return [p[0], p[1], p[2] * s]; };
+    const eye = () => { const s = r() < 0.5 ? -1 : 1, a = r() * TAU, p = at(0.215, 0.05, 1.01); return [p[0] + Math.cos(a) * 0.045, p[1] + Math.sin(a) * 0.045, p[2] * s]; };
+    const blowhole = () => { const t = 0.12 + r() * 0.05, p = at(t, Math.PI / 2, 1.06); return [p[0], p[1], p[2] + J(0.04)]; };
+    const dorsal = () => { const u = r(), v = r(), p0 = at(0.74 + u * 0.08, Math.PI / 2); return [p0[0] + v * 0.08, p0[1] + (1 - u) * v * 0.16, J(0.01)]; };
+    // الزعانف الصدرية: نصل طويل رفيع يتجه للخلف وللأسفل وللخارج
+    const flipper = () => {
+      const s = r() < 0.5 ? -1 : 1, u = r(), base = at(0.27, -0.9);
+      const d = [0.62, -0.42, 0.66 * s], len = 1.15, w = 0.12 * Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.05)), 0.7);
+      const side = r() < 0.75 ? (r() < 0.5 ? -1 : 1) : (r() * 2 - 1);
+      return [base[0] + d[0] * u * len + side * w * 0.55, base[1] + d[1] * u * len + side * w * 0.8, base[2] * s + d[2] * u * len];
+    };
+    // زعنفة الذيل: جناحان أفقيان كبيران بحافة أمامية محدبة وخلفية مقعرة وشق في المنتصف
+    const fluke = () => {
+      const s = r() < 0.5 ? -1 : 1, u = r(), y = cy(1), k = r();
+      const lead = [X1 - 0.05 + 0.85 * Math.pow(u, 1.7), y, s * 1.5 * Math.sin(u * Math.PI / 2)];
+      const trail = [X1 + 0.66 - 0.12 * Math.sin(u * Math.PI) + 0.24 * u, y, s * 1.5 * u];
+      if (k < 0.7) { const e = k < 0.35 ? lead : trail; return [e[0] + J(0.01), e[1] - Math.abs(e[2]) * 0.06 + J(0.01), e[2]]; }
+      const v = r(); return [lead[0] + (trail[0] - lead[0]) * v, y - Math.abs(lead[2]) * 0.06 + J(0.012), lead[2] + (trail[2] - lead[2]) * v];
+    };
+    const peduncle = () => { const t = 0.9 + r() * 0.1, a = r() * TAU; const p = at(t, a); return [p[0], p[1], p[2] * 0.6]; };
+    const spout = () => { const v = r(), p = at(0.14, Math.PI / 2), spread = 0.05 + v * 0.35; const a = r() * TAU; return [p[0] + Math.cos(a) * spread * 0.5 - v * 0.15, p[1] + 0.1 + v * 1.1, Math.sin(a) * spread]; };
+    parts = [[0.18, lines, BLUE], [0.09, rings, BLUE], [0.09, skin, BLUE], [0.09, grooves, BLUE], [0.025, mouth, BLUE], [0.012, eye], [0.01, blowhole, BLUE],
+      [0.02, dorsal, BLUE], [0.1, flipper, BLUE], [0.2, fluke, BLUE], [0.03, peduncle, BLUE], [0.04, dust(4.0)]];
+    parts.light = [0.07, spout];
+  } else if (name === 'mushaf') {
+    // مصحف مغلق واقف (مختلف عن المصحف المفتوح على الرحل): غلاف بإطارين وزخارف أركان،
+    // نجمة ثمانية في دائرة في المنتصف، لسان التجليد على الحافة، أوراق الحافة، أشرطة الكعب، ونور يصعد من خلفه
+    const W = 0.8, H = 1.1, T = 0.21, F = T + 0.006;
+    const cover = boxEdges(-W, W, -H, H, -T, T, 0.01);
+    const rect = (i) => many([seg([-W + i, -H + i, F], [W - i, -H + i, F], 0.006), seg([W - i, -H + i, F], [W - i, H - i, F], 0.006), seg([W - i, H - i, F], [-W + i, H - i, F], 0.006), seg([-W + i, H - i, F], [-W + i, -H + i, F], 0.006)]);
+    const frames = many([rect(0.1), rect(0.17)]);
+    const star8 = (R) => () => { const sq = Math.floor(r() * 2), k = Math.floor(r() * 4), u = r(); const a0 = sq * Math.PI / 4 + k * Math.PI / 2, a1 = a0 + Math.PI / 2; return [Math.cos(a0) * R + (Math.cos(a1) - Math.cos(a0)) * R * u, Math.sin(a0) * R + (Math.sin(a1) - Math.sin(a0)) * R * u, F + J(0.006)]; };
+    const ring = (R) => curve((u) => [Math.cos(u * TAU) * R, Math.sin(u * TAU) * R, F], 0.006);
+    const medallion = many([star8(0.4), star8(0.24), ring(0.5), ring(0.12)]);
+    const corners = () => { const cx = r() < 0.5 ? -1 : 1, cyy = r() < 0.5 ? -1 : 1, a = r() * Math.PI / 2, R = 0.2; const ox = cx * (W - 0.17), oy = cyy * (H - 0.17); return [ox - cx * Math.cos(a) * R, oy - cyy * Math.sin(a) * R, F]; };
+    const flap = many([seg([W, 0.55, F], [W - 0.32, 0, F], 0.006), seg([W - 0.32, 0, F], [W, -0.55, F], 0.006)]);
+    const pages = () => { if (r() < 0.6) { const z = -T + 0.03 + Math.floor(r() * 8) / 7 * (2 * T - 0.06); return [W - 0.02, -H + 0.04 + r() * (2 * H - 0.08), z]; } const z = -T + 0.03 + Math.floor(r() * 8) / 7 * (2 * T - 0.06); return [-W + 0.04 + r() * (2 * W - 0.08), H - 0.02, z]; };
+    const spine = () => { const y = -H + 0.25 + Math.floor(r() * 5) * ((2 * H - 0.5) / 4), a = r() * Math.PI; return [-W - Math.sin(a) * 0.05, y + J(0.01), Math.cos(a) * T]; };
+    parts = [[0.14, cover], [0.13, frames], [0.18, medallion], [0.06, corners], [0.04, flap], [0.12, pages], [0.06, spine], [0.07, dust(4.0)]];
+    parts.light = [0.1, () => { const v = r(), th = r() * TAU, q = Math.sqrt(r()) * (0.4 + v * 0.7); return [Math.cos(th) * q, 0.6 + v * 1.6, -0.5 + Math.sin(th) * q * 0.4]; }];
   } else if (name === 'dome') {
     // المسجد النبوي: مبنى بالحواف + أسطوانة + قبة بخطوط الطول والعرض + هلال صغير + مئذنة
     const base = boxEdges(-1.4, 1.4, -2.0, -0.6, -0.9, 0.9, 0.012);
@@ -158,6 +198,17 @@ function buildShape(name, n, r) {
   if (name === 'crescent') for (let i = 0; i < n; i++) pos[i * 3] -= 0.35;
   if (name === 'sword') for (let i = 0; i < n; i++) { const x = pos[i * 3], y = pos[i * 3 + 1], c = Math.cos(-0.3), s2 = Math.sin(-0.3); pos[i * 3] = x * c - y * s2; pos[i * 3 + 1] = x * s2 + y * c; }
   if (name === 'dome') for (let i = 0; i < n; i++) pos[i * 3] -= 0.3;
+  if (name === 'mushaf') for (let i = 0; i < n * 3; i++) pos[i] *= 1.2;
+  // الحوت: زاوية ثلاثة أرباع من أعلى قليلًا حتى تظهر زعنفة الذيل الأفقية الضخمة والظهر، والرأس متجه نحو المشاهد
+  if (name === 'whale') {
+    const cx = Math.cos(0.45), sx = Math.sin(0.45), cyw = Math.cos(0.35), syw = Math.sin(0.35);
+    for (let i = 0; i < n; i++) {
+      let x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+      const y1 = y * cx - z * sx, z1 = y * sx + z * cx; y = y1; z = z1;
+      const x2 = x * cyw + z * syw, z2 = -x * syw + z * cyw;
+      pos[i * 3] = x2; pos[i * 3 + 1] = y - 0.15; pos[i * 3 + 2] = z2;
+    }
+  }
   return { pos, flow };
 }
 
@@ -311,7 +362,9 @@ const fragment = /* glsl */`
     if (vFlow > 0.5 && vFlow < 2.5) col = mix(uC, mix(vec3(0.75, 0.9, 1.0), uC, uLight), 0.45);
     if (vFlow > 2.5 && vFlow < 3.5) col = mix(mix(uA, vec3(1.0), 0.5), uA, uLight);
     // اسم النبي: ذهبي دافئ موحّد حتى يُقرأ الخط بوضوح، مع لمعة خفيفة
-    if (vFlow > 3.5) col = mix(mix(uA, uB, 0.35 + vRand * 0.5), uD, step(0.93, vRand) * 0.6);
+    if (vFlow > 3.5 && vFlow < 4.5) col = mix(mix(uA, uB, 0.35 + vRand * 0.5), uD, step(0.93, vRand) * 0.6);
+    // الحوت الأزرق: درجات أزرق حقيقية مع لمعة فاتحة، وأغمق في الثيم الفاتح
+    if (vFlow > 4.5) col = mix(mix(vec3(0.24, 0.52, 0.92), vec3(0.62, 0.84, 1.0), vRand), mix(vec3(0.1, 0.3, 0.72), vec3(0.2, 0.48, 0.86), vRand), uLight);
     float fa = vFlow > 2.5 && vFlow < 3.5 ? mix(0.8, 0.5, uLight) : 1.0;
     gl_FragColor = vec4(col, clamp(glow, 0.0, 1.0) * fa * uOpacity * (1.0 - vDepth * 0.4));
   }

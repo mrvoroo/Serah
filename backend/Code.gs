@@ -4,6 +4,9 @@
  * الأسرار (توكن البوت وغيره) تُحفظ في Script Properties فقط ولا تُكتب هنا أبدًا.
  */
 
+// رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
+const VERSION = 7;
+
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
   Classes:      ['class_id', 'name', 'teacher_id', 'join_code', 'created_at'],
@@ -169,7 +172,7 @@ function handle_(action, p, token) {
 }
 
 const ACTIONS = {
-  ping: () => 'pong',
+  ping: () => ({ pong: true, version: VERSION }),
 
   // الطفل: كود الفصل → قائمة الأطفال بالأفاتار
   classInfo: (p) => {
