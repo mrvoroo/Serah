@@ -12,8 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npm i playwright@1 && npx playwright install --with-deps chromium
+      - run: npm i playwright@1 && npx playwright install --with-deps chromium webkit
+      - run: node tools/ios.js
       - run: node tools/smoke.js
       - if: always()
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh release create "smoke-${{ github.run_id }}" smoke*.png smoke.txt --prerelease --title "smoke ${{ github.run_id }}" --notes "live smoke test" --target ${{ github.sha }}
+        run: gh release create "smoke-${{ github.run_id }}" smoke*.png ios-*.png smoke.txt --prerelease --title "smoke ${{ github.run_id }}" --notes "live smoke test" --target ${{ github.sha }}
