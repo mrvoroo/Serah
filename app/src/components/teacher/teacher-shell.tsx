@@ -19,6 +19,7 @@ export const TEACHER_NAV: { href: string; label: string; icon: typeof Users; min
   { href: "/admin/users/", label: "المستخدمون", icon: UserCog, min: "superadmin" },
   { href: "/teacher/", label: "لوحة التحكم", icon: LayoutDashboard },
   { href: "/teacher/students/", label: "الطلاب", icon: Users },
+  { href: "/teacher/team/", label: "المعلمات", icon: UserCog, min: "admin" },
   { href: "/teacher/lectures/", label: "المحاضرات", icon: Headphones },
   { href: "/teacher/upload/", label: "رفع تسجيل", icon: Upload },
   { href: "/teacher/suggestions/", label: "الاقتراحات", icon: MessageSquareHeart },

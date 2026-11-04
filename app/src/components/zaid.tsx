@@ -28,7 +28,8 @@ export function Zaid({ mood = "happy", size = 160, className, float = true }: { 
       aria-label={LABEL[mood]}
       className={cn("shrink-0 select-none", className)}
       initial={animate ? { scale: 0.85, rotate: -4, opacity: 0 } : false}
-      animate={animate ? { scale: 1, rotate: 0, opacity: 1, y: float ? [0, -6, 0] : 0 } : undefined}
+      // بدون حركة: نثبته ظاهرًا (وإلا يبقى شفافًا لو أُلغيت الحركة بعد أول رسم — مثل «تقليل الحركة»)
+      animate={animate ? { scale: 1, rotate: 0, opacity: 1, y: float ? [0, -6, 0] : 0 } : { scale: 1, rotate: 0, opacity: 1, y: 0 }}
       transition={animate ? { scale: { type: "spring", stiffness: 260, damping: 16 }, rotate: { type: "spring", stiffness: 260, damping: 16 }, opacity: { duration: 0.2 }, y: { duration: 3, repeat: Infinity, ease: "easeInOut" } } : undefined}
     >
 

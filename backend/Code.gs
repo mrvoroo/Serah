@@ -5,7 +5,7 @@
  */
 
 // رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
-const VERSION = 11;
+const VERSION = 13;
 
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
@@ -232,7 +232,12 @@ const POLICY = {
   deleteLectureImage: { min: 'teacher', write: 1, audit: 1 },
   reorderLectureImages: { min: 'teacher', write: 1 },
   updateStudent: { min: 'teacher', write: 1, audit: 1 },
-  tgLinkToken: { min: 'teacher', write: 1, audit: 1 }
+  tgLinkToken: { min: 'teacher', write: 1, audit: 1 },
+  staff: { min: 'admin' },
+  addTeacher: { min: 'admin', write: 1, audit: 1 },
+  updateTeacher: { min: 'admin', write: 1, audit: 1 },
+  deleteTeacher: { min: 'admin', write: 1, audit: 1 },
+  repairAudio: { min: 'superadmin', write: 1, audit: 1 }
 };
 const SECRET_PARAMS = { pin: 1, oldPin: 1, newPin: 1, token: 1, action: 1 };
 
@@ -268,6 +273,7 @@ function migrate_() {
   try {
     if (prop_('SCHEMA_VERSION') === String(VERSION)) return;
     Object.keys(SCHEMA).forEach(ensureSheet_);
+    if (!prop_('AUDIO_FIXED')) { try { fixAudioTypes_(); props_().setProperty('AUDIO_FIXED', '1'); } catch (e) { console.error(e); } }
     props_().setProperty('SCHEMA_VERSION', String(VERSION));
   } finally { lock.releaseLock(); }
 }
@@ -408,7 +414,8 @@ const ACTIONS = {
     const meta = { name: String(p.name || 'file').slice(0, 120), parents: [prop_('FOLDER_' + kind)] };
     const res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', {
       method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify(meta),
-      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'X-Upload-Content-Type': p.mime || 'audio/mpeg', Origin: prop_('SITE_ORIGIN') || '*' },
+      // درايف يسمح للمتصفح بالرفع فقط لو Origin هنا = أصل الصفحة بالضبط (بدون مسار مثل /Serah)
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'X-Upload-Content-Type': p.mime || 'audio/mpeg', Origin: uploadOrigin_(p.origin) },
       muteHttpExceptions: true
     });
     if (res.getResponseCode() >= 300) throw new Error('تعذر بدء الرفع');
@@ -567,6 +574,62 @@ const ACTIONS = {
     return { url: 'https://t.me/' + botUsername_() + '?start=' + tok };
   },
 
+  // ===== إدارة المعلمات (الأدمن لفصلها، والمطوّر لكل الفصول) =====
+  staff: (p, me) => {
+    const classes = rows_('Classes');
+    return rows_('Users').filter(u => (u.role === 'teacher' || u.role === 'admin') && (me.role === 'superadmin' || u.class_id === me.class_id))
+      .map(u => Object.assign(publicUser_(u, classes), { telegram: !!u.telegram_id }));
+  },
+
+  addTeacher: (p, me) => {
+    const name = String(p.name || '').trim().slice(0, 40);
+    const pin = normDigits_(p.pin);
+    if (!name) throw new Error('اكتبي اسم المعلمة');
+    if (!/^\d{6,}$/.test(pin)) throw new Error('رمز المعلمة 6 أرقام على الأقل');
+    uniqueStaffName_(name, '');
+    const role = p.role === 'admin' && me.role === 'superadmin' ? 'admin' : 'teacher';
+    const class_id = me.role === 'superadmin' ? String(p.class_id || cls_(me, p)) : me.class_id;
+    if (!rows_('Classes').some(c => c.class_id === class_id)) throw new Error('الفصل غير موجود');
+    const u = append_('Users', { user_id: id_('U'), role, name, class_id, avatar: '', pin_hash: hashPin_(pin), active: true, created_at: now_() });
+    return { user_id: u.user_id };
+  },
+
+  // تعديل الاسم، الرمز، التفعيل، والدور (الدور للمطوّر فقط)
+  updateTeacher: (p, me) => {
+    const u = staffTarget_(me, p.user_id);
+    const patch = {};
+    if (p.name !== undefined) { const n = String(p.name).trim().slice(0, 40); if (!n) throw new Error('اكتبي اسم المعلمة'); uniqueStaffName_(n, u.user_id); patch.name = n; }
+    if (p.pin !== undefined && String(p.pin) !== '') {
+      const pin = normDigits_(p.pin);
+      if (!/^\d{6,}$/.test(pin)) throw new Error('رمز المعلمة 6 أرقام على الأقل');
+      patch.pin_hash = hashPin_(pin);
+      const key = 'login:' + normName_(u.name);
+      clearAttempts_(key, rows_('LoginAttempts').find(r => String(r.key) === key));
+    }
+    if (p.active !== undefined) patch.active = p.active === true || p.active === 'true';
+    if (p.role !== undefined) {
+      if (me.role !== 'superadmin') throw new Error('تغيير الدور للمطوّر فقط');
+      if (['teacher', 'admin'].indexOf(p.role) < 0) throw new Error('الدور: معلمة أو معلمة أدمن');
+      patch.role = p.role;
+    }
+    if (me.role === 'superadmin' && p.class_id !== undefined) {
+      if (!rows_('Classes').some(c => c.class_id === p.class_id)) throw new Error('الفصل غير موجود');
+      patch.class_id = p.class_id;
+    }
+    update_('Users', 'user_id', u.user_id, patch);
+    return true;
+  },
+
+  // الحذف نهائي للحساب فقط؛ محاضراتها تبقى في الفصل
+  deleteTeacher: (p, me) => {
+    const u = staffTarget_(me, p.user_id);
+    remove_('Users', 'user_id', u.user_id);
+    return true;
+  },
+
+  // إصلاح تسجيلات البوت القديمة: نوع الملف كان مجهولًا فلا يعمل في المتصفح
+  repairAudio: () => fixAudioTypes_(),
+
   // ===== كود الفصل (للمعلمات) =====
   classCode: (p, me) => {
     needTeacher_(me);
@@ -706,7 +769,8 @@ const ACTIONS = {
       if (prop_('BOT_TOKEN')) {
         const w = tg_('getWebhookInfo', {}).result || {};
         bot = { webhook: w.url ? w.url.replace(/^(https:\/\/[^/]+).*$/, '$1/…') : '', pending: w.pending_update_count || 0,
-          lastError: w.last_error_message || '', lastErrorAt: w.last_error_date ? new Date(w.last_error_date * 1000).toISOString() : '' };
+          lastError: w.last_error_message || '', lastErrorAt: w.last_error_date ? new Date(w.last_error_date * 1000).toISOString() : '',
+          updates: w.allowed_updates || ['message'], sendError: prop_('TG_LAST_ERROR') || '' };
       }
     } catch (e) { bot = { error: String(e.message || e) }; }
     const locked = rows_('LoginAttempts').filter(a => a.locked_until && new Date(a.locked_until).getTime() > Date.now()).length;
@@ -745,6 +809,18 @@ function publicUser_(u, classes) {
   const c = classes && classes.find(x => x.class_id === u.class_id);
   return { user_id: u.user_id, role: u.role, name: u.name, class_id: u.class_id, class_name: c ? c.name : '', avatar: u.avatar,
     active: u.active !== false, last_login_at: u.last_login_at || '', created_at: u.created_at || '' };
+}
+// معلمة يمكن للمستخدم إدارتها: الأدمن ← معلمات فصلها فقط (لا الأدمن الأخرى)، المطوّر ← كل المعلمات والأدمن
+function staffTarget_(me, user_id) {
+  const u = rows_('Users').find(x => x.user_id === user_id && (x.role === 'teacher' || x.role === 'admin'));
+  if (!u) throw new Error('المعلمة غير موجودة');
+  if (u.user_id === me.user_id) throw new Error('لا يمكن تنفيذ هذا على حسابك');
+  if (me.role !== 'superadmin' && (u.class_id !== me.class_id || u.role !== 'teacher')) throw new Error('ليس لديك صلاحية على هذا الحساب');
+  return u;
+}
+// الدخول بالاسم، فلا يتكرر اسم بين المعلمات
+function uniqueStaffName_(name, exceptId) {
+  if (rows_('Users').some(u => u.role !== 'student' && u.user_id !== exceptId && normName_(u.name) === normName_(name))) throw new Error('يوجد حساب بنفس الاسم، اختاري اسمًا آخر');
 }
 function targetUser_(me, user_id) {
   const u = rows_('Users').find(x => x.user_id === user_id);
@@ -790,7 +866,10 @@ function share_(fileId) { try { DriveApp.getFileById(fileId).setSharing(DriveApp
 function tg_(method, payload) {
   const r = UrlFetchApp.fetch('https://api.telegram.org/bot' + prop_('BOT_TOKEN') + '/' + method, {
     method: 'post', contentType: 'application/json', payload: JSON.stringify(payload || {}), muteHttpExceptions: true });
-  return JSON.parse(r.getContentText());
+  const j = JSON.parse(r.getContentText());
+  // آخر خطأ من تيليجرام يظهر في «صحة النظام» للمطوّر
+  if (!j.ok && method !== 'deleteMessage') { try { props_().setProperty('TG_LAST_ERROR', now_() + ' ' + method + ': ' + (j.description || '')); } catch (e) {} }
+  return j;
 }
 function say_(chat, text, extra) { tg_('sendMessage', Object.assign({ chat_id: chat, text }, extra || {})); }
 
@@ -812,20 +891,31 @@ function teacherByChat_(chat) {
  * (allowed_updates: message) بدون أي تغيير في تيليجرام أو الوسيط. */
 const BTN = {
   NEW: '🎙 محاضرة جديدة', MINE: '📋 محاضراتي', HELP: '❓ مساعدة', JOURNEY: '🕌 محتوى الرحلة', CANCEL: '✖ إلغاء',
-  OTHER: '📝 موضوع آخر', USE: '✔ استخدمي العنوان', EDIT: '✏️ عنوان آخر', DONE_IMG: '✔ خلصت الصور', NO_IMG: 'بدون صور',
+  OTHER: '📝 موضوع آخر', USE: '✔ استخدمي العنوان', EDIT: '✏️ عنوان آخر', DONE_IMG: '✔ انتهيت من الصور', NO_IMG: 'بدون صور',
   SEND: '📤 إرسال للمراجعة', DONE: '✔ تم', DEL: '⌫ مسح', OK: '✔ تأكيد'
 };
 // الأنبياء الافتراضيون لو جدول Prophets فاضي (نفس ترتيب الرحلة)
 const DEFAULT_PROPHETS = 'adam:آدم,idris:إدريس,noah:نوح,hud:هود,salih:صالح,ibrahim:إبراهيم,lut:لوط,ismail:إسماعيل,ishaq:إسحاق,yaqub:يعقوب,yusuf:يوسف,ayyub:أيوب,shuayb:شعيب,musa:موسى,harun:هارون,dhulkifl:ذو الكفل,dawud:داود,sulayman:سليمان,ilyas:إلياس,alyasa:اليسع,yunus:يونس,zakariya:زكريا,yahya:يحيى,isa:عيسى,muhammad:محمد ﷺ'
   .split(',').map(x => { const i = x.indexOf(':'); return { prophet_id: x.slice(0, i), name: x.slice(i + 1) }; });
 const HELP_TEXT = 'طريقة الاستخدام 🌙\n' +
-  '1) اضغطي «' + BTN.NEW + '» وابعتي التسجيل الصوتي.\n' +
-  '2) اختاري النبي من الأزرار — العنوان يتكتب لوحده.\n' +
-  '3) ابعتي الصور (أو «' + BTN.NO_IMG + '»)، ثم «' + BTN.SEND + '».\n' +
-  'المحاضرة تُحفظ مسودة، وتُنشر للأطفال بعد المراجعة.\n' +
-  'في أي خطوة: «' + BTN.CANCEL + '».';
+  '1) اضغطي «' + BTN.NEW + '» ثم أرسلي التسجيل الصوتي.\n' +
+  '2) اختاري النبي من الأزرار، وسيُقترح العنوان تلقائيًا.\n' +
+  '3) أرسلي الصور (أو «' + BTN.NO_IMG + '»)، ثم «' + BTN.SEND + '».\n' +
+  'تُحفظ المحاضرة مسودةً، وتُنشر للأطفال بعد المراجعة.\n' +
+  'ويمكنكِ في أي خطوة الضغط على «' + BTN.CANCEL + '».';
 
-function kb_(rows) { return { reply_markup: { keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true, is_persistent: true } }; }
+function kb_(rows) {
+  return { reply_markup: { keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true, one_time_keyboard: false, input_field_placeholder: 'اختاري من الأزرار 👇' } };
+}
+// زر «القائمة» بجانب خانة الكتابة في تيليجرام: أوامر تُضغط ولا تُكتب، ويعمل حتى لو اختفت الأزرار
+const BOT_COMMANDS = [{ command: 'new', description: '🎙 محاضرة جديدة' }, { command: 'mine', description: '📋 محاضراتي' },
+  { command: 'menu', description: '⌨️ إظهار الأزرار' }, { command: 'help', description: '❓ مساعدة' }, { command: 'cancel', description: '✖ إلغاء' }];
+function ensureBotMenu_() {
+  if (prop_('BOT_MENU_V') === '1') return;
+  tg_('setMyCommands', { commands: BOT_COMMANDS });
+  tg_('setChatMenuButton', { menu_button: { type: 'commands' } });
+  props_().setProperty('BOT_MENU_V', '1');
+}
 function rowsOf_(list, n) { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; }
 function menuKb_(t) {
   const rows = [[BTN.NEW], [BTN.MINE, BTN.HELP]];
@@ -843,7 +933,18 @@ function prophetKb_(list, other) {
   return kb_(rows);
 }
 function suggestTitle_(p) { const n = String(p.name).replace(/\s*ﷺ\s*$/, ''); return p.prophet_id === 'muhammad' ? 'من سيرة سيدنا محمد ﷺ' : 'قصة سيدنا ' + n; }
-function siteUrl_() { return prop_('SITE_URL') || ((prop_('SITE_ORIGIN') || 'https://mrvoroo.github.io') + '/Serah'); }
+// SITE_ORIGIN قد يُكتب بالمسار (https://mrvoroo.github.io/Serah) كما في README: نفصل الأصل عن رابط الموقع
+function siteOrigin_() { const m = String(prop_('SITE_ORIGIN') || '').match(/^https?:\/\/[^/]+/); return m ? m[0] : 'https://mrvoroo.github.io'; }
+function siteUrl_() {
+  if (prop_('SITE_URL')) return prop_('SITE_URL').replace(/\/$/, '');
+  const s = String(prop_('SITE_ORIGIN') || '').replace(/\/$/, '');
+  return /^https?:\/\/[^/]+\/./.test(s) ? s : siteOrigin_() + '/Serah';
+}
+// أصل الصفحة التي ترفع: الموقع نفسه أو التجربة المحلية فقط
+function uploadOrigin_(o) {
+  const v = String(o || '');
+  return v === siteOrigin_() || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(v) ? v : siteOrigin_();
+}
 function botUsername_() {
   let u = prop_('BOT_USERNAME');
   if (!u) { try { const r = tg_('getMe', {}); if (r.ok) { u = r.result.username; props_().setProperty('BOT_USERNAME', u); } } catch (e) {} }
@@ -854,10 +955,34 @@ function tgDownload_(file_id, folder, name) {
   const info = tg_('getFile', { file_id });
   if (!info.ok) return '';
   const blob = UrlFetchApp.fetch('https://api.telegram.org/file/bot' + prop_('BOT_TOKEN') + '/' + info.result.file_path).getBlob();
-  blob.setName(name + '.' + (String(info.result.file_path).split('.').pop() || 'bin'));
+  // تيليجرام يرسل الملف بدون نوع (الرسائل الصوتية .oga)؛ بدون نوع صحيح لا يشغّله المتصفح من درايف
+  const ext = String(info.result.file_path).split('.').pop().toLowerCase();
+  const kind = folder === 'images' ? 'image/' : 'audio/', guess = MIME_BY_EXT[ext] || '';
+  const type = guess.indexOf(kind) === 0 ? guess : (kind === 'image/' ? 'image/jpeg' : 'audio/ogg');
+  blob.setContentType(type);
+  blob.setName(name + '.' + (type === 'audio/ogg' ? 'ogg' : type === 'image/jpeg' ? 'jpg' : ext));
   const f = DriveApp.getFolderById(prop_('FOLDER_' + folder)).createFile(blob);
   share_(f.getId());
   return f.getId();
+}
+const MIME_BY_EXT = { oga: 'audio/ogg', ogg: 'audio/ogg', opus: 'audio/ogg', mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+// نسخة من كل تسجيل محاضرة نوعه مجهول بالنوع الصحيح، وتحديث المحاضرة لتستخدمها (الأصل يبقى كما هو)
+function fixAudioTypes_() {
+  let fixed = 0;
+  rows_('Lectures').forEach(l => {
+    if (!l.audio_file_id) return;
+    try {
+      const f = DriveApp.getFileById(l.audio_file_id);
+      if (/^audio\//.test(f.getMimeType())) return;
+      const blob = f.getBlob().setContentType('audio/ogg');
+      blob.setName(String(f.getName()).replace(/\.(oga|opus|bin)$/i, '') + '.ogg');
+      const copy = DriveApp.getFolderById(prop_('FOLDER_audio')).createFile(blob);
+      share_(copy.getId());
+      update_('Lectures', 'lecture_id', l.lecture_id, { audio_file_id: copy.getId() });
+      fixed++;
+    } catch (e) { console.error(e); }
+  });
+  return fixed;
 }
 function audioOf_(m) { return m.voice || m.audio || (m.document && /audio/.test(m.document.mime_type || '') ? m.document : null); }
 
@@ -865,8 +990,11 @@ function onTelegram_(upd) {
   const m = upd.message; if (!m) return;
   if (m.chat.type && m.chat.type !== 'private') return; // البوت للمحادثات الخاصة فقط
   const chat = m.chat.id;
-  const text = (m.text || '').trim();
+  // أوامر القائمة (/new@اسم_البوت) = نفس الأزرار
+  const raw = (m.text || '').trim().replace(/^(\/\w+)@\w+/, '$1');
+  const text = { '/new': BTN.NEW, '/mine': BTN.MINE, '/help': BTN.HELP, '/cancel': BTN.CANCEL, '/journey': BTN.JOURNEY }[raw] || raw;
   const st = getState_(chat);
+  try { ensureBotMenu_(); } catch (e) { console.error(e); }
 
   // /start <رمز من الموقع> يربط مباشرة؛ غير ذلك نبدأ الربط بالأزرار.
   // (كود الفصل لم يعد يربط الحساب: الأطفال يعرفونه، فكان يسمح لأي أحد بربط نفسه كمعلمة)
@@ -876,20 +1004,21 @@ function onTelegram_(upd) {
     const uid = /^[a-f0-9]{24}$/.test(tok) ? cache.get('tglink:' + tok) : null;
     const u = uid && rows_('Users').find(x => x.user_id === uid && RANK[x.role] >= RANK.teacher && x.active !== false);
     if (u) { cache.remove('tglink:' + tok); return linkChat_(chat, u); }
-    if (teacherByChat_(chat)) { setState_(chat, 'idle', {}); return say_(chat, 'أهلًا بكِ مرة ثانية ✨', menuKb_(teacherByChat_(chat))); }
-    return startLink_(chat, 'أهلًا بكِ في بوت منصة رحلة مع الأنبياء 🌙\nلربط حسابكِ اختاري فصلكِ:');
+    if (teacherByChat_(chat)) { setState_(chat, 'idle', {}); return say_(chat, 'أهلًا وسهلًا بكِ مجددًا 🌷', menuKb_(teacherByChat_(chat))); }
+    return startLink_(chat, 'السلام عليكم ورحمة الله وبركاته 🌙\nأهلًا وسهلًا بكِ في بوت منصة «رحلة مع الأنبياء».\nلربط حسابكِ تفضّلي باختيار فصلكِ:');
   }
 
   const t = teacherByChat_(chat);
   if (!t) return linkFlow_(chat, m, text, st);
 
-  if (text === BTN.CANCEL || text === '/cancel') return cancel_(chat, t, st);
-  if (text === BTN.HELP || text === '/help') return say_(chat, HELP_TEXT, menuKb_(t));
+  if (text === BTN.CANCEL) return cancel_(chat, t, st);
+  if (text === BTN.HELP) return say_(chat, HELP_TEXT, menuKb_(t));
+  if (text === '/menu') return say_(chat, 'تفضّلي، الأزرار بالأسفل 👇', st.state === 'idle' ? menuKb_(t) : kb_([[BTN.CANCEL]]));
   if (text === BTN.MINE) return myLectures_(chat, t);
-  if (text === BTN.NEW) { cleanup_(st); setState_(chat, 'await_audio', {}); return say_(chat, 'ابعتي تسجيل المحاضرة الصوتي 🎙\n(رسالة صوتية أو ملف صوت)', kb_([[BTN.CANCEL]])); }
+  if (text === BTN.NEW) { cleanup_(st); setState_(chat, 'await_audio', {}); return say_(chat, 'تفضّلي بإرسال تسجيل المحاضرة 🎙\n(رسالة صوتية أو ملف صوتي)', kb_([[BTN.CANCEL]])); }
   if (text === BTN.JOURNEY && RANK[t.role] >= RANK.admin) {
     const list = rows_('Prophets').filter(r => truthy_(r.visible)).sort(bySort_);
-    if (!list.length) return say_(chat, 'استوردي أقسام الرحلة من الموقع أولًا (رحلة الأنبياء ← استيراد).', menuKb_(t));
+    if (!list.length) return say_(chat, 'يُرجى استيراد أقسام الرحلة من الموقع أولًا (رحلة الأنبياء ← استيراد).', menuKb_(t));
     cleanup_(st); setState_(chat, 'pc_prophet', {});
     return say_(chat, 'المحتوى عن أي نبي؟', prophetKb_(list.map(r => ({ prophet_id: r.prophet_id, name: String(r.name) })), false));
   }
@@ -900,39 +1029,39 @@ function onTelegram_(upd) {
   const file = audioOf_(m);
   if (file) {
     if (file.file_size && file.file_size > MAX_BOT_DOWNLOAD) {
-      return say_(chat, 'التسجيل كبير (أكبر من 20 ميجا) ولا يستطيع البوت تنزيله 🙏\nارفعيه من صفحة الرفع في الموقع (بدون حد للحجم):\n' + siteUrl_() + '/teacher/login/?next=upload', menuKb_(t));
+      return say_(chat, 'عذرًا، حجم التسجيل أكبر من 20 ميجا فلا يستطيع البوت تنزيله 🙏\nيمكنكِ رفعه من صفحة الرفع في الموقع دون حدٍّ للحجم:\n' + siteUrl_() + '/teacher/login/?next=upload', menuKb_(t));
     }
     cleanup_(st);
     const audio = tgDownload_(file.file_id, 'audio', 'lecture_' + Date.now());
-    if (!audio) return say_(chat, 'تعذر تنزيل الملف، جرّبي مرة ثانية أو ارفعيه من صفحة الرفع.', menuKb_(t));
+    if (!audio) return say_(chat, 'تعذّر تنزيل الملف، تفضّلي بالمحاولة مرة أخرى أو برفعه من صفحة الرفع.', menuKb_(t));
     setState_(chat, 'await_prophet', { lecture_id: id_('L'), audio_file_id: audio, duration: file.duration || '' });
-    return say_(chat, 'تم استلام التسجيل ✔\nالمحاضرة عن أي نبي؟', prophetKb_(prophetList_(), true));
+    return say_(chat, 'وصل التسجيل بحمد الله ✔\nعن أي نبي تتحدث المحاضرة؟', prophetKb_(prophetList_(), true));
   }
 
   const d = st.data || {};
   switch (st.state) {
     case 'await_audio':
-      return say_(chat, 'مستنية التسجيل الصوتي 🎙', kb_([[BTN.CANCEL]]));
+      return say_(chat, 'بانتظار تسجيل المحاضرة 🎙', kb_([[BTN.CANCEL]]));
     case 'await_prophet': {
-      if (text === BTN.OTHER) { setState_(chat, 'await_title_text', d); return say_(chat, 'اكتبي عنوان المحاضرة ✍️', kb_([[BTN.CANCEL]])); }
+      if (text === BTN.OTHER) { setState_(chat, 'await_title_text', d); return say_(chat, 'تفضّلي بكتابة عنوان المحاضرة ✍️', kb_([[BTN.CANCEL]])); }
       const p = prophetList_().find(x => x.name === text);
-      if (!p) return say_(chat, 'اختاري النبي من الأزرار 👇', prophetKb_(prophetList_(), true));
+      if (!p) return say_(chat, 'تفضّلي باختيار النبي من الأزرار 👇', prophetKb_(prophetList_(), true));
       const title = suggestTitle_(p);
       setState_(chat, 'await_title_ok', Object.assign(d, { prophet_id: p.prophet_id, prophet_name: p.name, title }));
       return say_(chat, 'العنوان المقترح:\n«' + title + '»', kb_([[BTN.USE], [BTN.EDIT], [BTN.CANCEL]]));
     }
     case 'await_title_ok':
       if (text === BTN.USE) return askImages_(chat, d);
-      if (text === BTN.EDIT) { setState_(chat, 'await_title_text', d); return say_(chat, 'اكتبي العنوان اللي تحبيه ✍️', kb_([[BTN.CANCEL]])); }
-      return say_(chat, 'اختاري من الأزرار 👇', kb_([[BTN.USE], [BTN.EDIT], [BTN.CANCEL]]));
+      if (text === BTN.EDIT) { setState_(chat, 'await_title_text', d); return say_(chat, 'تفضّلي بكتابة العنوان الذي تريدينه ✍️', kb_([[BTN.CANCEL]])); }
+      return say_(chat, 'تفضّلي بالاختيار من الأزرار 👇', kb_([[BTN.USE], [BTN.EDIT], [BTN.CANCEL]]));
     case 'await_title_text':
-      if (!text) return say_(chat, 'اكتبي العنوان كرسالة نصية ✍️', kb_([[BTN.CANCEL]]));
+      if (!text) return say_(chat, 'تفضّلي بكتابة العنوان في رسالة نصية ✍️', kb_([[BTN.CANCEL]]));
       return askImages_(chat, Object.assign(d, { title: text.slice(0, 120) }));
     case 'await_images':
       if (m.photo) {
         const best = m.photo[m.photo.length - 1];
         const fid = tgDownload_(best.file_id, 'images', 'img_' + d.lecture_id + '_' + Date.now());
-        if (!fid) return say_(chat, 'تعذر تنزيل صورة، أعيدي إرسالها.');
+        if (!fid) return say_(chat, 'تعذّر تنزيل إحدى الصور، تفضّلي بإعادة إرسالها.');
         append_('LectureImages', { image_id: id_('I'), lecture_id: d.lecture_id, sort: m.message_id, file_id: fid });
         setState_(chat, 'await_images', Object.assign(d, { n: (d.n || 0) + 1 }));
         return; // الألبوم يصل صورة صورة؛ لا نرد على كل واحدة
@@ -943,23 +1072,23 @@ function onTelegram_(upd) {
         return say_(chat, '📋 ملخص المحاضرة\nالعنوان: ' + d.title + '\nعن: ' + (d.prophet_name || 'موضوع آخر') + '\nالصور: ' + (d.n || 0) + '\nالمدة: ' + mins,
           kb_([[BTN.SEND], [BTN.CANCEL]]));
       }
-      return say_(chat, 'ابعتي الصور، أو اضغطي «' + BTN.DONE_IMG + '» / «' + BTN.NO_IMG + '» 👇', kb_([[BTN.DONE_IMG], [BTN.NO_IMG], [BTN.CANCEL]]));
+      return say_(chat, 'أرسلي الصور، أو اضغطي «' + BTN.DONE_IMG + '» / «' + BTN.NO_IMG + '» 👇', kb_([[BTN.DONE_IMG], [BTN.NO_IMG], [BTN.CANCEL]]));
     case 'await_confirm':
       if (text === BTN.SEND) return submitLecture_(chat, t, d);
-      return say_(chat, 'اضغطي «' + BTN.SEND + '» أو «' + BTN.CANCEL + '» 👇', kb_([[BTN.SEND], [BTN.CANCEL]]));
+      return say_(chat, 'تفضّلي بالضغط على «' + BTN.SEND + '» أو «' + BTN.CANCEL + '» 👇', kb_([[BTN.SEND], [BTN.CANCEL]]));
     case 'pc_prophet': {
       const r = rows_('Prophets').find(x => String(x.name) === text && truthy_(x.visible));
-      if (!r) return say_(chat, 'اختاري النبي من الأزرار 👇');
+      if (!r) return say_(chat, 'تفضّلي باختيار النبي من الأزرار 👇');
       setState_(chat, 'pc_content', { prophet_id: r.prophet_id, prophet_name: String(r.name), n: 0 });
-      return say_(chat, 'ابعتي المحتوى عن سيدنا ' + r.name + ': صوت، صور، نص، أو رابط يوتيوب.\nكل حاجة تُحفظ «بانتظار الاعتماد». ولما تخلصي اضغطي «' + BTN.DONE + '».', kb_([[BTN.DONE], [BTN.CANCEL]]));
+      return say_(chat, 'تفضّلي بإرسال المحتوى عن سيدنا ' + r.name + ': صوت أو صور أو نص أو رابط يوتيوب.\nيُحفظ كل عنصر «بانتظار الاعتماد»، وعند الانتهاء اضغطي «' + BTN.DONE + '».', kb_([[BTN.DONE], [BTN.CANCEL]]));
     }
   }
-  return say_(chat, 'اختاري من الأزرار تحت 👇', menuKb_(t));
+  return say_(chat, 'تفضّلي بالاختيار من الأزرار بالأسفل 👇', menuKb_(t));
 }
 
 function askImages_(chat, d) {
   setState_(chat, 'await_images', Object.assign(d, { n: d.n || 0 }));
-  return say_(chat, 'تمام ✔ «' + d.title + '»\nابعتي صور المحاضرة (ممكن ألبوم)، وبعدها اضغطي «' + BTN.DONE_IMG + '».\nلو مفيش صور اضغطي «' + BTN.NO_IMG + '».',
+  return say_(chat, 'أحسنتِ ✔ «' + d.title + '»\nأرسلي صور المحاضرة إن وُجدت (يمكن إرسالها ألبومًا)، ثم اضغطي «' + BTN.DONE_IMG + '».\nوإن لم تكن هناك صور فاضغطي «' + BTN.NO_IMG + '».',
     kb_([[BTN.DONE_IMG], [BTN.NO_IMG], [BTN.CANCEL]]));
 }
 
@@ -971,11 +1100,11 @@ function submitLecture_(chat, t, d) {
   // إشعار الأدمن: محاضرة تنتظر المراجعة، مع زر يفتح صفحة المحاضرات
   rows_('Users').filter(u => RANK[u.role] >= RANK.admin && u.active !== false && u.telegram_id && String(u.telegram_id) !== String(chat)).forEach(a => {
     try {
-      say_(a.telegram_id, '🆕 محاضرة جديدة تنتظر المراجعة\n«' + l.title + '»\nمن: ' + t.name,
+      say_(a.telegram_id, '🆕 محاضرة جديدة بانتظار مراجعتكِ الكريمة\n«' + l.title + '»\nمن: ' + t.name,
         { reply_markup: { inline_keyboard: [[{ text: 'فتح للمراجعة', url: siteUrl_() + '/teacher/lectures/' }]] } });
     } catch (e) { console.error(e); }
   });
-  return say_(chat, 'تم الإرسال للمراجعة ✨\n«' + l.title + '» محفوظة كمسودة، وتظهر للأطفال بعد النشر.', menuKb_(t));
+  return say_(chat, 'جزاكِ الله خيرًا ✨\nأُرسلت «' + l.title + '» للمراجعة، وهي محفوظة مسودةً حتى تُنشر للأطفال.', menuKb_(t));
 }
 
 // إلغاء أي خطوة: صور محاضرة لم تُرسل بعد تُحذف من الجدول
@@ -993,7 +1122,7 @@ function cancel_(chat, t, st) {
 function myLectures_(chat, t) {
   const list = rows_('Lectures').filter(l => l.created_by === t.user_id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 5);
   const lines = list.map(l => (l.status === 'published' ? '✅ منشورة' : '📝 مسودة') + ' — ' + l.title);
-  return say_(chat, list.length ? 'آخر محاضراتكِ:\n' + lines.join('\n') : 'لسه مفيش محاضرات. اضغطي «' + BTN.NEW + '» 🎙', menuKb_(t));
+  return say_(chat, list.length ? 'آخر محاضراتكِ:\n' + lines.join('\n') : 'لا توجد محاضرات بعد. اضغطي «' + BTN.NEW + '» لرفع أول محاضرة 🎙', menuKb_(t));
 }
 
 // محتوى صفحة النبي من البوت (للأدمن): كل رسالة عنصر جديد غير معتمد
@@ -1001,12 +1130,12 @@ function prophetContent_(chat, t, m, text, st) {
   const d = st.data || {};
   if (text === BTN.DONE) {
     setState_(chat, 'idle', {});
-    return say_(chat, 'حفظت ' + (d.n || 0) + ' عنصر لسيدنا ' + d.prophet_name + ' ✨\nاعتمديها من الموقع: رحلة الأنبياء ← المحتوى.', menuKb_(t));
+    return say_(chat, 'حُفظ ' + (d.n || 0) + ' عنصر لسيدنا ' + d.prophet_name + ' ✨\nيمكنكِ اعتمادها من الموقع: رحلة الأنبياء ← المحتوى.', menuKb_(t));
   }
   let item = null;
   const audio = audioOf_(m);
   if (audio) {
-    if (audio.file_size && audio.file_size > MAX_BOT_DOWNLOAD) return say_(chat, 'الملف أكبر من 20 ميجا، ارفعيه من صفحة المحتوى في الموقع.');
+    if (audio.file_size && audio.file_size > MAX_BOT_DOWNLOAD) return say_(chat, 'عذرًا، الملف أكبر من 20 ميجا، يمكنكِ رفعه من صفحة المحتوى في الموقع.');
     const fid = tgDownload_(audio.file_id, 'audio', 'prophet_' + d.prophet_id + '_' + Date.now());
     if (fid) item = { kind: 'audio', file_id: fid, body: m.caption || '' };
   } else if (m.photo) {
@@ -1017,11 +1146,11 @@ function prophetContent_(chat, t, m, text, st) {
     const yt = link && youtubeId_(link);
     item = yt ? { kind: 'youtube', url: yt, body: text.replace(link, '').trim() } : { kind: 'text', body: text.slice(0, 5000) };
   }
-  if (!item) return say_(chat, 'ابعتي صوت أو صورة أو نص أو رابط يوتيوب، أو «' + BTN.DONE + '».');
+  if (!item) return say_(chat, 'أرسلي صوتًا أو صورة أو نصًّا أو رابط يوتيوب، أو اضغطي «' + BTN.DONE + '».');
   const sort = rows_('ProphetContent').filter(c => c.prophet_id === d.prophet_id).length;
   append_('ProphetContent', Object.assign({ item_id: id_('c'), prophet_id: d.prophet_id, title: '', body: '', file_id: '', url: '', sort, visible: true, approved: false, created_by: t.user_id, created_at: now_() }, item));
   setState_(chat, 'pc_content', Object.assign(d, { n: (d.n || 0) + 1 }));
-  return say_(chat, '✔ اتحفظ (' + { audio: 'صوت', image: 'صورة', youtube: 'فيديو', text: 'نص' }[item.kind] + ')');
+  return say_(chat, '✔ حُفظ (' + { audio: 'صوت', image: 'صورة', youtube: 'فيديو', text: 'نص' }[item.kind] + ')');
 }
 
 /* ===== ربط حساب المعلمة من داخل البوت: الفصل ← اسمها ← رمزها بلوحة أرقام =====
@@ -1036,23 +1165,23 @@ function linkChat_(chat, u) {
   update_('Users', 'user_id', u.user_id, { telegram_id: chat });
   setState_(chat, 'idle', {});
   audit_(u, 'bot.link', 'Users', u.user_id);
-  return say_(chat, 'أهلًا بكِ ' + u.name + ' ✨\nتم ربط حسابكِ. اضغطي «' + BTN.NEW + '» وابعتي التسجيل.', menuKb_(u));
+  return say_(chat, 'أهلًا وسهلًا بكِ ' + u.name + ' 🌷\nيسعدنا انضمامكِ، وقد رُبط حسابكِ بالبوت بنجاح.\nلرفع محاضرة اضغطي «' + BTN.NEW + '» ثم أرسلي التسجيل.', menuKb_(u));
 }
 const PIN_PAD = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], [BTN.DEL, '0', BTN.OK]];
 function linkFlow_(chat, m, text, st) {
   const d = st.data || {};
   if (st.state === 'link_class') {
     const c = rows_('Classes').find(x => String(x.name) === text);
-    if (!c) return startLink_(chat, 'اختاري فصلكِ من الأزرار 👇');
+    if (!c) return startLink_(chat, 'تفضّلي باختيار فصلكِ من الأزرار 👇');
     const staff = rows_('Users').filter(u => u.class_id === c.class_id && RANK[u.role] >= RANK.teacher && u.active !== false);
     if (!staff.length) return startLink_(chat, 'لا توجد معلمات في هذا الفصل. اختاري فصلًا آخر:');
     setState_(chat, 'link_teacher', { class_id: c.class_id });
-    return say_(chat, 'اختاري اسمكِ:', kb_(rowsOf_(staff.map(u => String(u.name)), 2)));
+    return say_(chat, 'تفضّلي باختيار اسمكِ:', kb_(rowsOf_(staff.map(u => String(u.name)), 2)));
   }
   if (st.state === 'link_teacher') {
     const u = rows_('Users').find(x => x.class_id === d.class_id && String(x.name) === text && RANK[x.role] >= RANK.teacher && x.active !== false);
     if (!u) return startLink_(chat, 'اختاري فصلكِ من الأزرار 👇');
-    const r = tg_('sendMessage', Object.assign({ chat_id: chat, text: 'اكتبي رمزكِ السري من الأزرار:\n' + dots_('') }, kb_(PIN_PAD)));
+    const r = tg_('sendMessage', Object.assign({ chat_id: chat, text: 'تفضّلي بإدخال رمزكِ السري من الأزرار:\n' + dots_('') }, kb_(PIN_PAD)));
     setState_(chat, 'link_pin', { user_id: u.user_id, pin: '', mid: r && r.ok ? r.result.message_id : '' });
     return;
   }
@@ -1065,10 +1194,10 @@ function linkFlow_(chat, m, text, st) {
     else if (text === BTN.OK) return checkLinkPin_(chat, d, pin);
     else return startLink_(chat, 'اختاري فصلكِ من الأزرار 👇');
     setState_(chat, 'link_pin', Object.assign(d, { pin }));
-    if (d.mid) tg_('editMessageText', { chat_id: chat, message_id: d.mid, text: 'اكتبي رمزكِ السري من الأزرار:\n' + dots_(pin) });
+    if (d.mid) tg_('editMessageText', { chat_id: chat, message_id: d.mid, text: 'تفضّلي بإدخال رمزكِ السري من الأزرار:\n' + dots_(pin) });
     return;
   }
-  return startLink_(chat, 'هذا البوت للمعلمات 🌙\nلربط حسابكِ اختاري فصلكِ:');
+  return startLink_(chat, 'هذا البوت مخصص للمعلمات 🌙\nلربط حسابكِ تفضّلي باختيار فصلكِ:');
 }
 function dots_(pin) { return pin ? '●'.repeat(pin.length) : '○○○○○○'; }
 function checkLinkPin_(chat, d, pin) {
@@ -1080,8 +1209,8 @@ function checkLinkPin_(chat, d, pin) {
   if (u.active === false || u.pin_hash !== hashPin_(pin)) {
     const lockMin = failAttempt_(key, a);
     setState_(chat, 'link_pin', Object.assign(d, { pin: '' }));
-    if (d.mid) tg_('editMessageText', { chat_id: chat, message_id: d.mid, text: 'اكتبي رمزكِ السري من الأزرار:\n' + dots_('') });
-    return say_(chat, lockMin ? 'الرمز غير صحيح. محاولات كثيرة، انتظري ' + lockMin + ' دقيقة' : 'الرمز غير صحيح، جربي مرة ثانية');
+    if (d.mid) tg_('editMessageText', { chat_id: chat, message_id: d.mid, text: 'تفضّلي بإدخال رمزكِ السري من الأزرار:\n' + dots_('') });
+    return say_(chat, lockMin ? 'الرمز غير صحيح. محاولات كثيرة، تفضّلي بالانتظار ' + lockMin + ' دقيقة' : 'الرمز غير صحيح، تفضّلي بالمحاولة مرة أخرى');
   }
   clearAttempts_(key, a);
   return linkChat_(chat, u);

@@ -5,7 +5,7 @@ import { Bar, BarChart, Area, AreaChart, CartesianGrid, XAxis, YAxis } from "rec
 import { session, fmtDate, type Dashboard } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { Icon3D, type Icon3DName } from "@/components/icon3d";
-import { Zaid } from "@/components/zaid";
+import { Murshida } from "@/components/murshida";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { MagicCard } from "@/components/ui/magic-card";
@@ -50,12 +50,12 @@ export default function TeacherHome() {
     <div className="flex flex-col gap-4">
       <BlurFade>
         <div className="relative flex items-center gap-3 overflow-hidden rounded-[28px] bg-hero p-5 text-white shadow-soft">
-          {/* بيانات لسه بتتحمل → يرحب، مسودات تنتظر المراجعة → يفكر، كله منشور → يفرح */}
-          <Zaid mood={!data ? "helping" : data.drafts ? "thinking" : "happy"} size={96} />
+          {/* بيانات لسه بتتحمل → ترحّب، مسودات تنتظر المراجعة → تتأمل، كله منشور → مسرورة */}
+          <Murshida mood={!data ? "helping" : data.drafts ? "thinking" : "happy"} size={96} />
           <div className="min-w-0 flex-1">
-            <p className="text-white/80">السلام عليكم</p>
-            <h1 className="font-heading text-2xl font-extrabold lg:text-3xl">أهلًا {user?.name}</h1>
-            <p className="mt-1 text-white/85">{data?.drafts ? `عندك ${data.drafts} محاضرة تحتاج مراجعة قبل النشر` : "كل المحاضرات منشورة، ما شاء الله"}</p>
+            <p className="text-white/80">السلام عليكم ورحمة الله وبركاته</p>
+            <h1 className="font-heading text-2xl font-extrabold lg:text-3xl">مرحبًا بكِ، {user?.name}</h1>
+            <p className="mt-1 text-white/85">{data?.drafts ? `لديكِ ${data.drafts.toLocaleString("ar-EG")} محاضرة بانتظار مراجعتكِ الكريمة قبل النشر` : "جزاكِ الله خيرًا، جميع المحاضرات منشورة"}</p>
           </div>
         </div>
       </BlurFade>

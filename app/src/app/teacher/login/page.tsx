@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, LogIn } from "lucide-react";
 import { api, session, type User } from "@/lib/api";
-import { Zaid, type Mood } from "@/components/zaid";
+import type { Mood } from "@/components/zaid";
+import { Murshida } from "@/components/murshida";
 import { Ambient } from "@/components/ambient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -18,7 +19,7 @@ export default function TeacherLogin() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  // زيد يرحب، يفرح وهي تكتب اسمها، يفكر مع الرمز وأثناء التحقق، يتفاجأ من أي خطأ، ويفرح عند الدخول
+  // المرشدة ترحّب، وتُسرّ وهي تكتب اسمها، وتتأمل مع الرمز وأثناء التحقق، وتندهش بهدوء من أي خطأ، وتُسرّ عند الدخول
   const [mood, setMood] = useState<Mood>("helping");
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(""); setMood("thinking");
@@ -42,8 +43,11 @@ export default function TeacherLogin() {
         <ThemeToggle />
       </div>
       <main className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-4 px-4 pb-10">
-        <BlurFade><Zaid mood={mood} size={140} /></BlurFade>
-        <h1 className="text-center font-heading text-3xl font-extrabold">دخول المعلمة</h1>
+        <BlurFade><Murshida mood={mood} size={140} /></BlurFade>
+        <div className="text-center">
+          <h1 className="font-heading text-3xl font-extrabold">أهلًا وسهلًا بكِ</h1>
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">يسعدنا تشريفكِ منصةَ «رحلة مع الأنبياء»، تفضّلي بتسجيل الدخول</p>
+        </div>
         <form onSubmit={submit} className="flex w-full flex-col gap-3 rounded-[28px] border bg-card/90 p-5 shadow-soft backdrop-blur-md">
           <Label htmlFor="tn">الاسم</Label>
           <Input id="tn" value={name} onChange={(e) => { setName(e.target.value); setMood("happy"); }} onFocus={() => !busy && setMood("happy")} autoComplete="username" className="h-12 rounded-xl text-base" required />

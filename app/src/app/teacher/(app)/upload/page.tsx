@@ -27,12 +27,15 @@ export default function UploadPage() {
   const [err, setErr] = useState("");
   const [drag, setDrag] = useState(false);
   const [prophet, setProphet] = useState("");
+  const [suggested, setSuggested] = useState("");
   const prophets = useProphetOptions();
-  // اختيار النبي يقترح العنوان لو لسه فاضي
+  // اختيار النبي يقترح العنوان، وتغييره يغيّر الاقتراح — ما لم تكن المعلمة كتبت عنوانها بنفسها
   const pickProphet = (v: string) => {
     setProphet(v);
     const name = prophets.find((p) => p.value === v)?.label.replace(/\s*ﷺ\s*$/, "");
-    if (name && !title.trim()) setTitle(v === "muhammad" ? "من سيرة سيدنا محمد ﷺ" : `قصة سيدنا ${name}`);
+    const next = !name ? "" : v === "muhammad" ? "من سيرة سيدنا محمد ﷺ" : `قصة سيدنا ${name}`;
+    if (!title.trim() || title === suggested) setTitle(next);
+    setSuggested(next);
   };
 
   const send = async (e: React.FormEvent) => {
@@ -40,7 +43,8 @@ export default function UploadPage() {
     setState("busy"); setErr(""); setPct(0);
     try {
       const duration_sec = await audioDuration(file);
-      const { uploadUrl } = await api<{ uploadUrl: string }>("startUpload", { name: file.name, mime: file.type || "audio/ogg", kind: "audio" });
+      // origin: درايف يسمح للمتصفح بالرفع فقط من نفس أصل الصفحة
+      const { uploadUrl } = await api<{ uploadUrl: string }>("startUpload", { name: file.name, mime: file.type || "audio/ogg", kind: "audio", origin: window.location.origin });
       const id = await putChunks(uploadUrl, file, setPct);
       const l = await api<{ lecture_id: string }>("createLecture", { title: title.trim(), audio_file_id: id, duration_sec });
       if (prophet) await api("updateLecture", { lecture_id: l.lecture_id, prophet_id: prophet });
@@ -55,7 +59,7 @@ export default function UploadPage() {
       <p className="text-muted-foreground">المحاضرة الآن مسودة، راجعيها ثم انشريها للأطفال</p>
       <div className="flex gap-2">
         <Link href="/teacher/lectures/" className={buttonVariants({ variant: "hero", size: "lg2" })}>مراجعة ونشر</Link>
-        <Button variant="secondary" size="lg2" onClick={() => { setFile(null); setTitle(""); setProphet(""); setPct(-1); setState("idle"); }}>رفع آخر</Button>
+        <Button variant="secondary" size="lg2" onClick={() => { setFile(null); setTitle(""); setProphet(""); setSuggested(""); setPct(-1); setState("idle"); }}>رفع آخر</Button>
       </div>
     </div>
   );

@@ -22,23 +22,40 @@ async function mock(page: Page) {
 }
 const zaid = (page: Page) => page.getByRole("img", { name: /^زيد/ }).first();
 
-test("دخول المعلمة: زيد يرحب، يفكر مع الرمز، يتفاجأ لو غلط، ويفرح عند الدخول", async ({ page }) => {
+test("دخول المعلمة: المرشدة ترحّب، تتأمل مع الرمز، تندهش بهدوء لو غلط، وتُسرّ عند الدخول", async ({ page }) => {
   await mock(page);
   await page.goto("/Serah/teacher/login/?tier=high");
-  await expect(zaid(page)).toHaveAccessibleName("زيد بيسلّم");
+  const guide = () => page.getByRole("img", { name: /^المرشدة/ }).first();
+  await expect(page.getByRole("heading", { name: "أهلًا وسهلًا بكِ" })).toBeVisible();
+  await expect(page.getByText("يسعدنا تشريفكِ")).toBeVisible();
+  await expect(guide()).toHaveAccessibleName("المرشدة ترحّب بكِ");
   await page.getByLabel("الاسم").fill("المعلمة");
-  await expect(zaid(page)).toHaveAccessibleName("زيد فرحان");
+  await expect(guide()).toHaveAccessibleName("المرشدة مسرورة");
   await page.getByLabel("الرمز السري").fill("000000");
-  await expect(zaid(page)).toHaveAccessibleName("زيد بيفكر");
+  await expect(guide()).toHaveAccessibleName("المرشدة تتأمل");
   await page.getByRole("button", { name: /دخول/ }).last().click();
   await expect(page.getByText("الرمز غير صحيح")).toBeVisible();
-  await expect(zaid(page)).toHaveAccessibleName("زيد مستغرب");
+  await expect(guide()).toHaveAccessibleName("المرشدة مندهشة");
   await page.getByLabel("الرمز السري").fill("482615");
-  await expect(zaid(page)).toHaveAccessibleName("زيد بيفكر");
+  await expect(guide()).toHaveAccessibleName("المرشدة تتأمل");
   await page.getByRole("button", { name: /دخول/ }).last().click();
   await expect(page).toHaveURL(/\/Serah\/teacher\/$/);
-  // لوحة المعلمة: زيد في الترحيب، ويفكر لأن فيه مسودة تنتظر المراجعة
-  await expect(zaid(page)).toHaveAccessibleName("زيد بيفكر");
+  // لوحة المعلمة: ترحيب وقور، والمرشدة تتأمل لأن فيه مسودة تنتظر المراجعة
+  await expect(page.getByText("السلام عليكم ورحمة الله وبركاته")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "مرحبًا بكِ، المعلمة" })).toBeVisible();
+  await expect(guide()).toHaveAccessibleName("المرشدة تتأمل");
+  await expect(page.getByRole("img", { name: /^زيد/ })).toHaveCount(0);
+});
+
+test("الشخصيات ظاهرة حتى مع «تقليل الحركة» (كانت تختفي)", async ({ page }) => {
+  await mock(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/Serah/teacher/login/");
+  await page.waitForTimeout(1500);
+  expect(await page.getByRole("img", { name: /^المرشدة/ }).evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+  await page.goto("/Serah/");
+  await page.waitForTimeout(1500);
+  expect(await page.getByRole("img", { name: /^زيد/ }).evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
 });
 
 test("دخول الطفل: نفس المشاعر — كود أو رمز غلط يتفاجأ، والدخول يفرح", async ({ page }) => {

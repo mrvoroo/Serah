@@ -8,7 +8,7 @@ function boot() {
   const props = { PIN_SALT: 'salt', HMAC_KEY: 'hmac', SHEET_ID: 'x', BOT_TOKEN: 'set' };
   const cache = {};
   let slept = 0;
-  const tg = [];
+  const tg = [], saved = [], fetches = [];
   let mid = 1000, drv = 0;
   function mkSheet(name) {
     const data = [];
@@ -47,7 +47,9 @@ function boot() {
     LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
     ScriptApp: { getProjectTriggers: () => [{ getHandlerFunction: () => 'pollTelegram' }], getOAuthToken: () => 't', getService: () => ({ getUrl: () => 'u' }) },
     UrlFetchApp: { fetch: (url, opts) => {
-      if (/api\.telegram\.org\/file\//.test(url)) return { getBlob: () => ({ setName() {} }) };
+      fetches.push({ url, opts });
+      if (/api\.telegram\.org\/file\//.test(url)) { const b = { type: 'application/octet-stream', name: '' }; return { getBlob: () => ({ setName(n) { b.name = n; return this; }, setContentType(t) { b.type = t; return this; }, _b: b }) }; }
+      if (/googleapis\.com\/upload\/drive/.test(url)) return { getResponseCode: () => 200, getHeaders: () => ({ Location: 'https://upload/session' }) };
       const m = String(url).match(/api\.telegram\.org\/bot[^/]*\/(\w+)/);
       if (m) {
         const payload = JSON.parse((opts && opts.payload) || '{}');
@@ -58,10 +60,10 @@ function boot() {
       }
       return { getContentText: () => JSON.stringify({ ok: true, result: { url: 'https://relay.example.workers.dev/hook?x', pending_update_count: 0 } }) };
     } },
-    DriveApp: { getFileById: () => ({ setSharing() {} }), getFolderById: () => ({ createFile: () => ({ getId: () => 'drv' + (++drv) }) }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
+    DriveApp: { getFileById: () => ({ setSharing() {} }), getFolderById: () => ({ createFile: (blob) => { saved.push({ ...(blob && blob._b) }); return { getId: () => 'drv' + (++drv) }; } }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
   const g = new Function(...Object.keys(env), code + '\nreturn { handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN };')(...Object.values(env));
-  return { g, sheets, props, mkSheet, slept: () => slept, tg };
+  return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches };
 }
 
 // بيانات بالشكل القديم (قبل أعمدة last_login_at وجدول LoginAttempts) كما في الشيت الحقيقي
@@ -405,7 +407,7 @@ test('البوت: كود الفصل لم يعد يربط الحساب (ثغرة)
   assert.match(url, /^https:\/\/t\.me\/Serah_2026_bot\?start=[a-f0-9]{24}$/);
   send(77, '/start ' + url.split('=')[1]);
   assert.strictEqual(String(t.g.rows_('Users').find(u => u.user_id === 'T2').telegram_id), '77');
-  assert.match(last(77).text, /أهلًا بكِ معلمة ثانية/);
+  assert.match(last(77).text, /أهلًا وسهلًا بكِ معلمة ثانية/);
   // الرمز لمرة واحدة
   send(78, '/start ' + url.split('=')[1]);
   assert.ok(!t.g.rows_('Users').some(u => String(u.telegram_id) === '78'));
@@ -453,7 +455,7 @@ test('البوت: محاضرة كاملة بالأزرار — صوت، نبي،
   assert.ok(l && l.status === 'draft' && l.prophet_id === 'noah' && l.created_by === 'T2' && l.class_id === 'C1');
   assert.strictEqual(t.g.rows_('LectureImages').filter(i => i.lecture_id === l.lecture_id).length, 2);
   const note = last(1);
-  assert.match(note.text, /محاضرة جديدة تنتظر المراجعة/);
+  assert.match(note.text, /محاضرة جديدة بانتظار مراجعتكِ الكريمة/);
   assert.strictEqual(note.reply_markup.inline_keyboard[0][0].url, 'https://mrvoroo.github.io/Serah/teacher/lectures/');
   assert.ok(buttons(2).includes(B.NEW), 'back to main menu');
   send(2, B.MINE);
@@ -489,7 +491,7 @@ test('البوت: الأدمن ترفع محتوى صفحة النبي (صوت،
   send(1, 'شاهدوا https://youtu.be/dQw4w9WgXcQ');
   send(1, 'قصة جميلة عن الصبر');
   send(1, B.DONE);
-  assert.match(last(1).text, /حفظت 4 عنصر/);
+  assert.match(last(1).text, /حُفظ 4 عنصر/);
   const items = t.call('prophet', { id: 'yusuf', preview: true }, tok.admin).data.items;
   assert.deepStrictEqual(items.map(i => i.kind), ['audio', 'image', 'youtube', 'text']);
   assert.strictEqual(items[2].url, 'dQw4w9WgXcQ');
@@ -499,7 +501,86 @@ test('البوت: الأدمن ترفع محتوى صفحة النبي (صوت،
   send(2, '/start ' + t.call('tgLinkToken', {}, tok.teacher).data.url.split('=')[1]);
   assert.ok(!buttons(2).includes(B.JOURNEY));
   send(2, B.JOURNEY);
-  assert.match(last(2).text, /اختاري من الأزرار/);
+  assert.match(last(2).text, /تفضّلي بالاختيار من الأزرار/);
+});
+
+// ===== إصلاحات بعد تجربة م. أحمد =====
+test('إدارة المعلمات: الأدمن تضيف وتعدّل وتعطّل وتحذف معلمات فصلها فقط', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  const add = t.call('addTeacher', { name: 'د. سارة', pin: '135790', role: 'admin' }, tok.admin);
+  assert.ok(add.ok, JSON.stringify(add));
+  const sara = t.g.rows_('Users').find(u => u.user_id === add.data.user_id);
+  assert.strictEqual(sara.role, 'teacher', 'admin cannot create admins'); assert.strictEqual(sara.class_id, 'C1');
+  assert.ok(t.login({ name: 'د. سارة', pin: '135790' }));
+  assert.strictEqual(t.call('addTeacher', { name: 'د. سارة', pin: '135790' }, tok.admin).error, 'يوجد حساب بنفس الاسم، اختاري اسمًا آخر');
+  assert.strictEqual(t.call('addTeacher', { name: 'أ. منى', pin: '123' }, tok.admin).error, 'رمز المعلمة 6 أرقام على الأقل');
+  const list = t.call('staff', {}, tok.admin).data;
+  assert.ok(list.some(u => u.name === 'د. سارة') && list.every(u => u.class_id === 'C1'));
+  assert.ok(t.call('updateTeacher', { user_id: sara.user_id, name: 'د. سارة علي', pin: '246802' }, tok.admin).ok);
+  assert.ok(t.login({ name: 'د. سارة علي', pin: '246802' }));
+  assert.ok(t.call('updateTeacher', { user_id: sara.user_id, active: false }, tok.admin).ok);
+  assert.ok(!t.call('login', { name: 'د. سارة علي', pin: '246802' }).ok, 'inactive cannot log in');
+  assert.strictEqual(t.call('updateTeacher', { user_id: sara.user_id, role: 'admin' }, tok.admin).error, 'تغيير الدور للمطوّر فقط');
+  assert.strictEqual(t.call('updateTeacher', { user_id: 'T1', name: 'x' }, tok.admin).error, 'لا يمكن تنفيذ هذا على حسابك');
+  assert.ok(!t.call('addTeacher', { name: 'x', pin: '123456' }, tok.teacher).ok, 'teacher cannot add');
+  assert.ok(t.call('deleteTeacher', { user_id: sara.user_id }, tok.admin).ok);
+  assert.ok(!t.g.rows_('Users').some(u => u.user_id === sara.user_id));
+});
+
+test('إدارة المعلمات: المطوّر يدير الأدمن ويغيّر الأدوار، والأدمن لا تلمس أدمن أخرى', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  const id = t.call('addTeacher', { name: 'أ. هدى', pin: '111222', role: 'admin', class_id: 'C1' }, tok.superadmin).data.user_id;
+  assert.strictEqual(t.g.rows_('Users').find(u => u.user_id === id).role, 'admin');
+  assert.strictEqual(t.call('updateTeacher', { user_id: id, active: false }, tok.admin).error, 'ليس لديك صلاحية على هذا الحساب');
+  assert.strictEqual(t.call('deleteTeacher', { user_id: id }, tok.admin).error, 'ليس لديك صلاحية على هذا الحساب');
+  assert.ok(t.call('updateTeacher', { user_id: id, role: 'teacher' }, tok.superadmin).ok);
+  assert.ok(t.call('updateTeacher', { user_id: id, active: false }, tok.admin).ok, 'now a teacher in her class');
+  assert.ok(t.call('staff', {}, tok.superadmin).ok);
+  assert.ok(!t.call('addTeacher', { name: 'y', pin: '123456' }, t.call('viewAs', { user_id: 'T1' }, tok.superadmin).data.token).ok, 'view-as cannot write');
+});
+
+test('الرفع من الموقع: Origin لدرايف هو أصل الصفحة بدون /Serah حتى لا يرفض المتصفح الرفع', () => {
+  const { t, tok } = journeySetup();
+  t.props.SITE_ORIGIN = 'https://mrvoroo.github.io/Serah';
+  const origin = () => t.fetches.filter(f => /upload\/drive/.test(f.url)).pop().opts.headers.Origin;
+  assert.ok(t.call('startUpload', { name: 'a.jpg', mime: 'image/jpeg', kind: 'image', origin: 'https://mrvoroo.github.io' }, tok.admin).ok);
+  assert.strictEqual(origin(), 'https://mrvoroo.github.io');
+  t.call('startUpload', { name: 'a.jpg', kind: 'image', origin: 'http://localhost:3123' }, tok.admin);
+  assert.strictEqual(origin(), 'http://localhost:3123');
+  t.call('startUpload', { name: 'a.jpg', kind: 'image', origin: 'https://evil.example' }, tok.admin);
+  assert.strictEqual(origin(), 'https://mrvoroo.github.io', 'unknown origins fall back to the site');
+  t.call('startUpload', { name: 'a.jpg', kind: 'image' }, tok.admin);
+  assert.strictEqual(origin(), 'https://mrvoroo.github.io');
+});
+
+test('البوت: التسجيل يُحفظ على درايف كـ audio/ogg (كان بدون نوع فلا يشتغل)، والصور image/jpeg', () => {
+  const { t, tok, send, B } = botSetup();
+  send(2, '/start ' + t.call('tgLinkToken', {}, tok.teacher).data.url.split('=')[1]);
+  send(2, { voice: { file_id: 'v1', duration: 30 } });
+  assert.deepStrictEqual(t.saved.at(-1), { type: 'audio/ogg', name: t.saved.at(-1).name });
+  assert.match(t.saved.at(-1).name, /\.ogg$/);
+  send(2, 'نوح'); send(2, B.USE);
+  send(2, { photo: [{ file_id: 'p1' }] });
+  assert.strictEqual(t.saved.at(-1).type, 'image/jpeg');
+});
+
+test('البوت: زر «القائمة» بالأوامر، والأوامر تعمل مثل الأزرار، ورابط المراجعة صحيح مع SITE_ORIGIN بمسار', () => {
+  const { t, tok, send, last, buttons, B } = botSetup();
+  t.props.SITE_ORIGIN = 'https://mrvoroo.github.io/Serah';
+  send(1, '/start ' + t.call('tgLinkToken', {}, tok.admin).data.url.split('=')[1]);
+  assert.ok(t.tg.some(x => x.method === 'setMyCommands' && x.commands.some(c => c.command === 'new')));
+  assert.ok(t.tg.some(x => x.method === 'setChatMenuButton'));
+  send(1, '/menu');
+  assert.ok(buttons(1).includes(B.NEW), 'menu shows the buttons again');
+  send(1, '/new');
+  assert.match(last(1).text, /تفضّلي بإرسال تسجيل المحاضرة/);
+  send(1, '/cancel');
+  assert.match(last(1).text, /تم الإلغاء/);
+  send(2, '/start ' + t.call('tgLinkToken', {}, tok.teacher).data.url.split('=')[1]);
+  send(2, { voice: { file_id: 'v', duration: 60 } }); send(2, 'نوح'); send(2, B.USE); send(2, B.NO_IMG); send(2, B.SEND);
+  assert.strictEqual(last(1).reply_markup.inline_keyboard[0][0].url, 'https://mrvoroo.github.io/Serah/teacher/lectures/');
 });
 
 for (const [name, fn] of tests) {
