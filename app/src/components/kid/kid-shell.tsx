@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Home, Headphones, Map, Trophy, LogOut } from "lucide-react";
 import { session, type User } from "@/lib/api";
+import { stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useMotionAllowed } from "@/lib/tier";
 import { ThemeToggle } from "@/components/theme-toggle";
 import ClickSpark from "@/components/ClickSpark";
@@ -17,12 +18,16 @@ const NAV = [
   { href: "/kid/stars/", label: "النجوم", icon: Trophy },
 ];
 
+export const homeOf = (role: string) => (role === "student" ? "/kid/" : role === "superadmin" ? "/admin/" : "/teacher/");
+
 export function useRequireRole(roles: string[]) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   useEffect(() => {
     const u = session.user();
-    if (!u || !session.token() || !roles.includes(u.role)) { router.replace(roles.includes("student") ? "/" : "/teacher/login/"); return; }
+    if (!u || !session.token()) { router.replace(roles.includes("student") ? "/" : "/teacher/login/"); return; }
+    // داخل بحساب آخر: نرجعه لصفحته بدل صفحة الدخول
+    if (!roles.includes(u.role)) { router.replace(homeOf(u.role)); return; }
     setUser(u);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -34,7 +39,7 @@ export function KidShell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const animate = useMotionAllowed();
-  const logout = () => { session.clear(); router.replace("/"); };
+  const logout = () => { if (viewAsInfo()) return stopViewAs(); session.clear(); router.replace("/"); };
 
   const content = (
     <div className="relative min-h-svh pb-28">

@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TierProvider } from "@/lib/tier";
 import { SmoothScroll } from "@/components/smooth-scroll";
+import { ViewAsBanner } from "@/components/view-as-banner";
 
 export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
@@ -15,6 +16,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange storageKey="serah-theme">
       <TierProvider>
+        <ViewAsBanner />
         <SmoothScroll>{children}</SmoothScroll>
         <Toaster position="top-center" dir="rtl" richColors />
       </TierProvider>

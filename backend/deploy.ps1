@@ -10,6 +10,9 @@ Set-Location $PSScriptRoot
 $DeploymentId = "AKfycbz5QzGujgyndr_k1QpuFkPBQTjgA-KkxQoP9WOBV66-6pi5X-o4Q4JWLiJauDR2Xt39"
 $ExecUrl = "https://script.google.com/macros/s/$DeploymentId/exec"
 
+node "$PSScriptRoot\tests\backend.test.js"
+if ($LASTEXITCODE -ne 0) { throw "اختبارات الخلفية فشلت — لم يتم النشر" }
+
 $code = [System.IO.File]::ReadAllText("$PSScriptRoot\Code.gs")
 $m = [regex]::Match($code, "const VERSION = (\d+);")
 if (-not $m.Success) { throw "const VERSION غير موجود في Code.gs" }

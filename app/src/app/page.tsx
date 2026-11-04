@@ -9,6 +9,7 @@ import { Zaid, type Mood } from "@/components/zaid";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Ambient } from "@/components/ambient";
 import { KidAvatar } from "@/components/kid/kid-avatar";
+import { homeOf } from "@/components/kid/kid-shell";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +32,7 @@ export default function Welcome() {
 
   useEffect(() => {
     const u = session.user();
-    if (u && session.token()) router.replace(u.role === "student" ? "/kid/" : "/teacher/");
+    if (u && session.token()) router.replace(homeOf(u.role));
   }, [router]);
 
   const submitCode = async (e: React.FormEvent) => {

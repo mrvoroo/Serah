@@ -24,7 +24,7 @@ export default function TeacherLogin() {
       if (d.user.role === "student") throw new Error("هذه الصفحة للمعلمات فقط");
       session.save(d);
       const next = new URLSearchParams(window.location.search).get("next");
-      router.replace(next === "upload" ? "/teacher/upload/" : "/teacher/");
+      router.replace(next === "upload" ? "/teacher/upload/" : d.user.role === "superadmin" ? "/admin/" : "/teacher/");
     } catch (e2) { setErr((e2 as Error).message); }
     finally { setBusy(false); }
   };

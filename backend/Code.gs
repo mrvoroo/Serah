@@ -5,12 +5,12 @@
  */
 
 // رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
-const VERSION = 8;
+const VERSION = 9;
 
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
   Classes:      ['class_id', 'name', 'teacher_id', 'join_code', 'created_at'],
-  Users:        ['user_id', 'role', 'name', 'class_id', 'avatar', 'pin_hash', 'city', 'country', 'telegram_id', 'active', 'created_at'],
+  Users:        ['user_id', 'role', 'name', 'class_id', 'avatar', 'pin_hash', 'city', 'country', 'telegram_id', 'active', 'created_at', 'last_login_at'],
   Lectures:     ['lecture_id', 'class_id', 'title', 'date', 'audio_file_id', 'duration_sec', 'status', 'notes', 'created_by', 'created_at'],
   LectureImages:['image_id', 'lecture_id', 'sort', 'file_id'],
   Attendance:   ['lecture_id', 'user_id', 'at'],
@@ -21,7 +21,8 @@ const SCHEMA = {
   Points:       ['user_id', 'points', 'reason', 'at'],
   Suggestions:  ['id', 'from_user', 'role', 'text', 'audio_file_id', 'status', 'at'],
   BotState:     ['chat_id', 'state', 'data', 'at'],
-  AuditLog:     ['at', 'user_id', 'role', 'action', 'target_type', 'target_id', 'details_json', 'imp_by']
+  AuditLog:     ['at', 'user_id', 'role', 'action', 'target_type', 'target_id', 'details_json', 'imp_by'],
+  LoginAttempts:['key', 'fails', 'first_at', 'locked_until']
 };
 const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من تيليجرام (20MB)
 
@@ -129,8 +130,9 @@ function hashPin_(pin) {
 function sign_(s) {
   return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(s, prop_('HMAC_KEY')));
 }
-function makeToken_(user) {
-  const body = [user.user_id, user.role, user.class_id, Date.now() + 30 * 864e5].join('|');
+// التوكن: user_id|role|class_id|exp|imp — imp = معرّف المطوّر في وضع «عرض كـ» (قراءة فقط)
+function makeToken_(user, ttlMs, imp) {
+  const body = [user.user_id, user.role, user.class_id, Date.now() + (ttlMs || 30 * 864e5), imp || ''].join('|');
   return Utilities.base64EncodeWebSafe(body) + '.' + sign_(body);
 }
 function auth_(token) {
@@ -138,9 +140,9 @@ function auth_(token) {
   const [b, sig] = String(token).split('.');
   const body = Utilities.newBlob(Utilities.base64DecodeWebSafe(b)).getDataAsString();
   if (sign_(body) !== sig) throw new Error('رمز غير صالح');
-  const [user_id, role, class_id, exp] = body.split('|');
+  const [user_id, role, class_id, exp, imp] = body.split('|');
   if (Date.now() > Number(exp)) throw new Error('انتهت الجلسة');
-  return { user_id, role, class_id };
+  return { user_id, role, class_id, imp: imp || '' };
 }
 // الرتب: المطوّر (superadmin) فوق المعلمة الأدمن فوق المعلمة فوق الطفل
 const RANK = { student: 0, teacher: 1, admin: 2, superadmin: 3 };
@@ -185,18 +187,64 @@ function doPost(e) {
   return handle_(body.action, body, body.token);
 }
 
-const PUBLIC_ACTIONS = { login: 1, classInfo: 1, ping: 1 };
+/* مصدر واحد للصلاحيات: أقل رتبة لكل إجراء (null = بدون دخول)، و write = يغيّر البيانات
+ * (يُرفض في وضع «عرض كـ»)، و audit = يُسجَّل في AuditLog. أي إجراء غير موجود هنا يُرفض. */
+const POLICY = {
+  ping: { min: null }, classInfo: { min: null }, login: { min: null },
+  lectures: { min: 'student' }, leaderboard: { min: 'student' }, me: { min: 'student' },
+  markAttendance: { min: 'student', write: 1 }, suggest: { min: 'student', write: 1 },
+  dashboard: { min: 'teacher' }, suggestions: { min: 'teacher' }, students: { min: 'teacher' }, classCode: { min: 'teacher' },
+  startUpload: { min: 'teacher', write: 1 },
+  createLecture: { min: 'teacher', write: 1, audit: 1 },
+  setClassCode: { min: 'teacher', write: 1, audit: 1 },
+  addStudent: { min: 'teacher', write: 1, audit: 1 },
+  setStudentPin: { min: 'teacher', write: 1, audit: 1 },
+  removeStudent: { min: 'teacher', write: 1, audit: 1 },
+  changeMyPin: { min: 'teacher', write: 1, audit: 1 },
+  setLectureStatus: { min: 'admin', write: 1, audit: 1 },
+  auditLog: { min: 'admin' },
+  users: { min: 'superadmin' }, classes: { min: 'superadmin' }, systemHealth: { min: 'superadmin' },
+  viewAs: { min: 'superadmin', audit: 1 },
+  setRole: { min: 'superadmin', write: 1, audit: 1 },
+  setUserActive: { min: 'superadmin', write: 1, audit: 1 },
+  setUserPin: { min: 'superadmin', write: 1, audit: 1 }
+};
+const SECRET_PARAMS = { pin: 1, oldPin: 1, newPin: 1, token: 1, action: 1 };
 
 function handle_(action, p, token) {
   try {
+    migrate_();
+    // hasOwnProperty حتى لا تمر أسماء مثل constructor أو toString الموروثة من Object
+    const own = (o) => Object.prototype.hasOwnProperty.call(o, action);
+    if (!own(POLICY) || !own(ACTIONS)) throw new Error('إجراء غير معروف');
+    const pol = POLICY[action], fn = ACTIONS[action];
     let me = null;
-    if (!PUBLIC_ACTIONS[action]) me = auth_(token);
-    const fn = ACTIONS[action];
-    if (!fn) throw new Error('إجراء غير معروف');
-    return json_({ ok: true, data: fn(p, me) });
+    if (pol.min) {
+      me = auth_(token);
+      need_(me, pol.min);
+      if (me.imp && pol.write) throw new Error('وضع المعاينة للعرض فقط — لا يمكن الحفظ');
+    }
+    const data = fn(p, me);
+    if (pol.audit) {
+      const details = {}; Object.keys(p || {}).forEach(k => { if (!SECRET_PARAMS[k]) details[k] = p[k]; });
+      audit_(me, action, '', p.user_id || p.lecture_id || p.class_id || '', details);
+    }
+    return json_({ ok: true, data });
   } catch (err) {
     return json_({ ok: false, error: String(err.message || err) });
   }
+}
+
+// عند أول طلب بعد نشر نسخة جديدة: نضيف الأوراق والأعمدة الناقصة فقط (لا يمس البيانات)
+function migrate_() {
+  if (prop_('SCHEMA_VERSION') === String(VERSION)) return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return;
+  try {
+    if (prop_('SCHEMA_VERSION') === String(VERSION)) return;
+    Object.keys(SCHEMA).forEach(ensureSheet_);
+    props_().setProperty('SCHEMA_VERSION', String(VERSION));
+  } finally { lock.releaseLock(); }
 }
 
 const ACTIONS = {
@@ -205,7 +253,7 @@ const ACTIONS = {
   // الطفل: كود الفصل → قائمة الأطفال بالأفاتار
   classInfo: (p) => {
     const c = rows_('Classes').find(x => String(x.join_code).toUpperCase() === normDigits_(p.code).toUpperCase().replace(/\s+/g, ''));
-    if (!c) throw new Error('كود الفصل غير صحيح');
+    if (!c) { codeFail_(); throw new Error('كود الفصل غير صحيح'); }
     const kids = rows_('Users').filter(u => u.class_id === c.class_id && u.role === 'student' && u.active !== false)
       .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar }));
     return { class_id: c.class_id, name: c.name, kids };
@@ -213,10 +261,17 @@ const ACTIONS = {
 
   // دخول الطفل (user_id + رمز) أو المعلمة (name + رمز)
   login: (p) => {
+    const key = 'login:' + (p.user_id ? String(p.user_id) : normName_(p.name));
+    const a = checkLock_(key);
     const users = rows_('Users');
     let u = p.user_id ? users.find(x => x.user_id === p.user_id)
                       : users.find(x => x.role !== 'student' && normName_(x.name) === normName_(p.name));
-    if (!u || u.active === false || u.pin_hash !== hashPin_(p.pin)) throw new Error('الرمز غير صحيح');
+    if (!u || u.active === false || u.pin_hash !== hashPin_(p.pin)) {
+      const lockMin = failAttempt_(key, a);
+      throw new Error(lockMin ? 'الرمز غير صحيح. محاولات كثيرة، انتظر ' + lockMin + ' دقيقة' : 'الرمز غير صحيح');
+    }
+    clearAttempts_(key, a);
+    update_('Users', 'user_id', u.user_id, { last_login_at: now_() });
     return { token: makeToken_(u), user: { user_id: u.user_id, name: u.name, role: u.role, class_id: u.class_id, avatar: u.avatar } };
   },
 
@@ -402,8 +457,121 @@ const ACTIONS = {
       audio_file_id: p.audio_file_id, duration_sec: p.duration_sec || '', status: 'draft', created_by: me.user_id, created_at: now_() });
     share_(p.audio_file_id);
     return l;
+  },
+
+  // ===== سجل العمليات (المعلمة الأدمن تقرأ، والمطوّر) =====
+  auditLog: (p) => {
+    const users = {}; rows_('Users').forEach(u => users[u.user_id] = u.name);
+    const limit = Math.min(Number(p.limit) || 100, 500);
+    return rows_('AuditLog').slice(-limit).reverse().map(a => Object.assign({}, a, { name: users[a.user_id] || a.user_id, imp_name: a.imp_by ? users[a.imp_by] || a.imp_by : '' }));
+  },
+
+  // ===== المطوّر (superadmin) =====
+  users: (p) => {
+    const classes = rows_('Classes');
+    return rows_('Users').filter(u => (!p.role || u.role === p.role) && (!p.class_id || u.class_id === p.class_id))
+      .map(u => publicUser_(u, classes));
+  },
+
+  classes: () => {
+    const users = rows_('Users'), lectures = rows_('Lectures');
+    return rows_('Classes').map(c => ({ class_id: c.class_id, name: c.name, join_code: String(c.join_code),
+      teacher: (users.find(u => u.user_id === c.teacher_id) || {}).name || '',
+      kids: users.filter(u => u.class_id === c.class_id && u.role === 'student' && u.active !== false).length,
+      lectures: lectures.filter(l => l.class_id === c.class_id).length,
+      published: lectures.filter(l => l.class_id === c.class_id && l.status === 'published').length }));
+  },
+
+  // «عرض كـ»: توكن ساعتين لمستخدم آخر، للعرض فقط (أي حفظ يُرفض)
+  viewAs: (p, me) => {
+    const u = targetUser_(me, p.user_id);
+    if (u.active === false) throw new Error('الحساب معطّل');
+    return { token: makeToken_(u, 2 * 3600e3, me.user_id), user: { user_id: u.user_id, name: u.name, role: u.role, class_id: u.class_id, avatar: u.avatar } };
+  },
+
+  setRole: (p, me) => {
+    const u = targetUser_(me, p.user_id);
+    if (['teacher', 'admin'].indexOf(p.role) < 0) throw new Error('الدور: معلمة أو معلمة أدمن');
+    if (u.role === 'student') throw new Error('لا يمكن تغيير دور طفل');
+    update_('Users', 'user_id', u.user_id, { role: p.role });
+    return true;
+  },
+
+  setUserActive: (p, me) => {
+    const u = targetUser_(me, p.user_id);
+    update_('Users', 'user_id', u.user_id, { active: p.active === true || p.active === 'true' });
+    return true;
+  },
+
+  setUserPin: (p, me) => {
+    const u = targetUser_(me, p.user_id);
+    const pin = normDigits_(p.pin);
+    if (u.role === 'student' ? !/^\d{4}$/.test(pin) : !/^\d{6,}$/.test(pin)) throw new Error(u.role === 'student' ? 'رمز الطفل 4 أرقام' : 'رمز المعلمة 6 أرقام على الأقل');
+    update_('Users', 'user_id', u.user_id, { pin_hash: hashPin_(pin) });
+    const key = 'login:' + (u.role === 'student' ? u.user_id : normName_(u.name));
+    clearAttempts_(key, rows_('LoginAttempts').find(r => String(r.key) === key));
+    return true;
+  },
+
+  // صحة النظام: النسخة، عدد الصفوف، الإعدادات (موجودة أم لا فقط)، المشغّلات، حالة البوت، الحسابات المقفولة
+  systemHealth: () => {
+    const ss = ss_();
+    const tables = Object.keys(SCHEMA).map(n => { const sh = ss.getSheetByName(n); return { name: n, rows: sh ? Math.max(0, sh.getLastRow() - 1) : -1 }; });
+    const keys = ['BOT_TOKEN', 'HMAC_KEY', 'PIN_SALT', 'WEBHOOK_KEY', 'SITE_ORIGIN', 'ROOT_FOLDER'];
+    const settings = keys.map(k => ({ key: k, set: !!prop_(k) }));
+    const triggers = ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction());
+    let bot = null;
+    try {
+      if (prop_('BOT_TOKEN')) {
+        const w = tg_('getWebhookInfo', {}).result || {};
+        bot = { webhook: w.url ? w.url.replace(/^(https:\/\/[^/]+).*$/, '$1/…') : '', pending: w.pending_update_count || 0,
+          lastError: w.last_error_message || '', lastErrorAt: w.last_error_date ? new Date(w.last_error_date * 1000).toISOString() : '' };
+      }
+    } catch (e) { bot = { error: String(e.message || e) }; }
+    const locked = rows_('LoginAttempts').filter(a => a.locked_until && new Date(a.locked_until).getTime() > Date.now()).length;
+    return { version: VERSION, tables, settings, triggers, bot, lockedAccounts: locked, now: now_() };
   }
 };
+
+/* ============ منع التخمين ============
+ * الدخول: 5 أخطاء على نفس الحساب ← قفل 10 دقائق، ومن 10 أخطاء ← 30 دقيقة. الدخول الصحيح يمسح العداد،
+ * والعداد يبدأ من جديد بعد 24 ساعة. كود الفصل: لا قفل (حتى لا يُمنع كل الأطفال)، بل إبطاء بعد أخطاء كثيرة. */
+function checkLock_(key) {
+  const a = rows_('LoginAttempts').find(r => String(r.key) === key);
+  if (a && a.locked_until && new Date(a.locked_until).getTime() > Date.now()) {
+    const m = Math.ceil((new Date(a.locked_until).getTime() - Date.now()) / 60000);
+    throw new Error('محاولات كثيرة خاطئة، حاول بعد ' + m + ' دقيقة');
+  }
+  return a;
+}
+function failAttempt_(key, a) {
+  const fresh = !a || !a.first_at || Date.now() - new Date(a.first_at).getTime() > 864e5;
+  const fails = (fresh ? 0 : Number(a.fails) || 0) + 1;
+  const lockMin = fails >= 10 ? 30 : fails >= 5 ? 10 : 0;
+  const row = { key, fails, first_at: fresh ? now_() : a.first_at, locked_until: lockMin ? new Date(Date.now() + lockMin * 60000).toISOString() : '' };
+  if (a) update_('LoginAttempts', 'key', key, row); else append_('LoginAttempts', row);
+  return lockMin;
+}
+function clearAttempts_(key, a) { if (a && Number(a.fails)) update_('LoginAttempts', 'key', key, { fails: 0, first_at: '', locked_until: '' }); }
+function codeFail_() {
+  const cache = CacheService.getScriptCache();
+  const n = Number(cache.get('codeFails') || 0) + 1;
+  cache.put('codeFails', String(n), 600);
+  if (n > 20) Utilities.sleep(Math.min(5000, (n - 20) * 250));
+}
+
+function publicUser_(u, classes) {
+  const c = classes && classes.find(x => x.class_id === u.class_id);
+  return { user_id: u.user_id, role: u.role, name: u.name, class_id: u.class_id, class_name: c ? c.name : '', avatar: u.avatar,
+    active: u.active !== false, last_login_at: u.last_login_at || '', created_at: u.created_at || '' };
+}
+function targetUser_(me, user_id) {
+  const u = rows_('Users').find(x => x.user_id === user_id);
+  if (!u) throw new Error('المستخدم غير موجود');
+  if (u.user_id === me.user_id) throw new Error('لا يمكن تنفيذ هذا على حسابك');
+  if (u.role === 'superadmin') throw new Error('لا يمكن تعديل حساب مطوّر آخر');
+  return u;
+}
 
 function addPoints_(user_id, points, reason) { append_('Points', { user_id, points, reason, at: now_() }); }
 function share_(fileId) { try { DriveApp.getFileById(fileId).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {} }
