@@ -1,18 +1,54 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { motion } from "motion/react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { motion } from "motion/react";
-import { ArrowLeft, Headphones } from "lucide-react";
+import { ArrowLeft, ChevronsLeft, ChevronsRight, Headphones, ListTree } from "lucide-react";
 import { useTier } from "@/lib/tier";
 import { BlurFade } from "@/components/ui/blur-fade";
 import SplitText from "@/components/SplitText";
 import { buttonVariants } from "@/components/ui/button";
 import { Zaid } from "@/components/zaid";
+import { BranchedMenu, type BranchedMenuItem } from "@/components/branched-menu";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { STATIONS } from "./stations";
 
 export { STATIONS };
+
+// قائمة المحطات: الأنبياء مقسّمون لمجموعات بالترتيب، وكل نبي برقم محطته
+const nameOf = (id: string) => {
+  const s = STATIONS.find((x) => x.id === id)!;
+  return id === "muhammad" ? "محمد ﷺ" : s.label.replace(/^سيدنا /, "");
+};
+const stop = (id: string, n?: number) => ({
+  value: id,
+  label: nameOf(id),
+  icon: n ? <span className="grid size-6 place-items-center rounded-full bg-secondary text-[11px] font-bold text-secondary-foreground">{n.toLocaleString("ar-EG")}</span> : undefined,
+});
+const range = (ids: string[]) => ids.map((id) => stop(id, STATIONS.findIndex((s) => s.id === id)));
+const MENU: BranchedMenuItem[] = [
+  { label: "البداية", value: "start" },
+  { label: "من آدم إلى إبراهيم", children: range(["adam", "idris", "noah", "hud", "salih", "ibrahim"]) },
+  { label: "من لوط إلى يوسف", children: range(["lut", "ismail", "ishaq", "yaqub", "yusuf"]) },
+  { label: "من أيوب إلى سليمان", children: range(["ayyub", "shuayb", "musa", "harun", "dhulkifl", "dawud", "sulayman"]) },
+  { label: "من إلياس إلى محمد ﷺ", children: range(["ilyas", "alyasa", "yunus", "zakariya", "yahya", "isa", "muhammad"]) },
+  { label: "السيرة والقرآن", children: [stop("sira"), stop("quran")] },
+];
+
+// القائمة في الشاشات الكبيرة: مفتوحة أو نقاط. نحفظ اختيار الطفل، والافتراضي نقاط لو الشاشة ليست واسعة
+const MENU_KEY = "serah_journey_menu";
+const menuListeners = new Set<() => void>();
+const subscribeMenu = (fn: () => void) => { menuListeners.add(fn); return () => { menuListeners.delete(fn); }; };
+const menuDots = () => {
+  let v: string | null = null;
+  try { v = localStorage.getItem(MENU_KEY); } catch { /* تخزين غير متاح */ }
+  return v ? v === "dots" : window.innerWidth < 1280;
+};
+const setMenuDots = (dots: boolean) => {
+  try { localStorage.setItem(MENU_KEY, dots ? "dots" : "full"); } catch { /* تخزين غير متاح */ }
+  menuListeners.forEach((fn) => fn());
+};
 
 type World = {
   morph: (id: string, o?: Record<string, number>) => void;
@@ -39,10 +75,11 @@ function layout(i: number, section?: HTMLElement) {
     const scale = Math.min(0.7, (2 * hw * 0.92) / shapeW, (((bottom - top) / H) * 2 * hh * 0.95) / shapeH);
     return { x: -shiftX * scale, y: toY((top + bottom) / 2), scale, yaw: 0 };
   }
-  // الجانب الأوسع الفاضي بجانب البطاقة (مع ترك مكان لشريط المحطات)
-  const rail = 64;
+  // الجانب الأوسع الفاضي بجانب البطاقة، بعيدًا عن قائمة المحطات (نقيس مكانها الفعلي: مفتوحة أو نقاط)
+  const rail = 64, m = document.querySelector("[data-journey-menu]")?.getBoundingClientRect();
+  const menuEdge = m && m.width > 0 ? Math.min(W - rail, m.left - 24) : W - rail;
   const left = card ? [rail, card.left - 16] : [rail, W / 2];
-  const right = card ? [card.right + 16, W - rail] : [W / 2, W - rail];
+  const right = card ? [card.right + 16, menuEdge] : [W / 2, menuEdge];
   const [a, b] = left[1] - left[0] >= right[1] - right[0] ? left : right;
   const freeW = ((b - a) / W) * 2 * hw;
   const scale = Math.min(side ? 0.85 : 0.95, (freeW * 0.92) / shapeW, (2 * hh * 0.78) / shapeH);
@@ -71,12 +108,16 @@ async function ruqaaFont() {
 export function Journey() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scope = useRef<HTMLDivElement>(null);
-  const navRef = useRef<HTMLElement>(null);
+  const navRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<World | null>(null);
   const activeRef = useRef(-1);
   const syncRef = useRef<(force: boolean) => void>(() => {});
   const [active, setActive] = useState(0);
   const [ready, setReady] = useState(false);
+  // المحطة المطلوبة من القائمة: تبقى مختارة أثناء النزول إليها حتى لا تتقلب القائمة مع كل محطة في الطريق
+  const [target, setTarget] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const dots = useSyncExternalStore(subscribeMenu, menuDots, () => false);
   const { resolvedTheme } = useTheme();
   const tier = useTier();
   const themeRef = useRef(resolvedTheme);
@@ -145,41 +186,81 @@ export function Journey() {
     };
   }, []);
 
-  // إبقاء نقطة المحطة الحالية ظاهرة داخل شريط المحطات
-  useEffect(() => {
-    const nav = navRef.current, dot = nav?.children[active] as HTMLElement | undefined;
-    if (!nav || !dot) return;
-    const top = dot.offsetTop - nav.clientHeight / 2 + dot.offsetHeight / 2;
-    nav.scrollTo({ top, behavior: "smooth" });
-  }, [active]);
+  const current = target ?? STATIONS[active].id;
 
+  // إبقاء المحطة الحالية ظاهرة داخل لوحة القائمة (بعد انتهاء طيّ وفتح الأقسام)
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const box = navRef.current, el = box?.querySelector<HTMLElement>("[aria-current]");
+      if (!box || !el) return;
+      const top = el.offsetTop - box.clientHeight / 2 + el.offsetHeight / 2;
+      box.scrollTo({ top, behavior: "smooth" });
+    }, 320);
+    return () => window.clearTimeout(t);
+  }, [current, dots]);
+
+  // فتح/طي القائمة يغيّر المساحة الفاضية: نعيد مكان المجسم حتى لا يقع تحتها
+  useEffect(() => { syncRef.current(true); }, [dots]);
+
+  const targetTimer = useRef(0);
   const go = (i: number) => {
     const el = document.getElementById(`station-${STATIONS[i].id}`);
+    if (!el) return;
     const lenis = (window as unknown as { __lenis?: { scrollTo: (t: Element, o?: object) => void } }).__lenis;
-    if (el) { if (lenis) lenis.scrollTo(el, { offset: 0 }); else el.scrollIntoView({ behavior: "smooth" }); }
+    setTarget(STATIONS[i].id);
+    const done = () => { window.clearTimeout(targetTimer.current); setTarget(null); };
+    window.clearTimeout(targetTimer.current);
+    // احتياط: لو الطفل لمس السكرول أثناء النزول فلا يكتمل، نرجع لمتابعة السكرول بعد قليل
+    targetTimer.current = window.setTimeout(done, 2500);
+    if (lenis) lenis.scrollTo(el, { offset: 0, onComplete: done }); else el.scrollIntoView({ behavior: "smooth" });
   };
+  const pick = (id: string) => { setMenuOpen(false); go(STATIONS.findIndex((s) => s.id === id)); };
+  const menu = (className?: string) => <BranchedMenu label="محطات الرحلة" items={MENU} active={current} onSelect={pick} className={className} />;
 
   return (
     <div ref={scope} className="relative">
       <canvas ref={canvasRef} aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 h-full w-full" />
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(60%_50%_at_25%_45%,var(--glow),transparent_70%)]" />
 
-      <nav ref={navRef} aria-label="محطات الرحلة" className="fixed start-3 top-1/2 z-20 hidden max-h-[78svh] -translate-y-1/2 flex-col overflow-y-auto rounded-full border bg-card/80 p-1 shadow-soft backdrop-blur [scrollbar-width:none] md:flex">
-        {STATIONS.map((s, i) => (
-          <button key={s.id} type="button" onClick={() => go(i)} aria-label={s.title} title={s.title} aria-current={i === active ? "step" : undefined} className="relative grid size-7 shrink-0 place-items-center rounded-full">
-            {i === active && <motion.span layoutId="station-dot" className="absolute inset-0.5 rounded-full bg-gold/25" transition={{ type: "spring", stiffness: 400, damping: 30 }} />}
-            <span className={cn("relative size-2 rounded-full transition-all", i === active ? "scale-125 bg-gold" : s.symbol ? "bg-muted-foreground/60" : "bg-muted-foreground/30")} />
-          </button>
-        ))}
-      </nav>
+      {/* الكمبيوتر: القائمة ثابتة على الجانب */}
+      <div data-journey-menu data-testid="journey-menu" className={cn("fixed start-4 top-1/2 z-20 hidden max-h-[80svh] -translate-y-1/2 flex-col rounded-[24px] border bg-card/85 shadow-soft backdrop-blur lg:flex", dots ? "w-11 items-center p-1" : "w-[210px] p-3")}>
+        <button type="button" onClick={() => setMenuDots(!dots)} aria-expanded={!dots} aria-label={dots ? "إظهار قائمة المحطات" : "إخفاء قائمة المحطات"} title={dots ? "إظهار القائمة" : "إخفاء القائمة"}
+          className={cn("flex shrink-0 items-center gap-1 rounded-full text-sm font-bold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground", dots ? "size-9 justify-center" : "mb-1 h-9 justify-between self-stretch px-2")}>
+          {!dots && <span>المحطات</span>}
+          {dots ? <ChevronsLeft className="size-5" /> : <ChevronsRight className="size-5" />}
+        </button>
+        <div ref={navRef} {...(dots ? { role: "navigation", "aria-label": "محطات الرحلة" } : {})} className={cn("min-h-0 overflow-y-auto [scrollbar-width:none]", dots && "flex flex-col items-center")}>
+          {dots ? STATIONS.map((s, i) => (
+            <button key={s.id} type="button" onClick={() => go(i)} aria-label={s.title} title={s.title} aria-current={s.id === current ? "true" : undefined} className="relative grid size-7 shrink-0 place-items-center rounded-full">
+              {s.id === current && <motion.span layoutId="station-dot" className="absolute inset-0.5 rounded-full bg-gold/25" transition={{ type: "spring", stiffness: 400, damping: 30 }} />}
+              <span className={cn("relative size-2 rounded-full transition-all", s.id === current ? "scale-125 bg-gold" : s.symbol ? "bg-muted-foreground/60" : "bg-muted-foreground/30")} />
+            </button>
+          )) : menu()}
+        </div>
+      </div>
 
-      <div className="relative z-10">
+      {/* الموبايل والتابلت: زر يفتح نفس القائمة */}
+      <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+        <SheetTrigger render={
+          <button type="button" className="fixed bottom-24 end-4 z-30 flex h-12 items-center gap-2 rounded-full border bg-card/90 px-4 font-bold shadow-soft backdrop-blur lg:hidden">
+            <ListTree className="size-5 text-gold" /> المحطات
+          </button>
+        } />
+        <SheetContent side="right" className="w-72 gap-3 overflow-y-auto p-5">
+          <SheetHeader className="p-0"><SheetTitle>محطات الرحلة</SheetTitle></SheetHeader>
+          {menu()}
+        </SheetContent>
+      </Sheet>
+
+      {/* الشاشات الكبيرة: الأقسام بعرض الشاشة كله (خارج عمود الصفحة 768px) حتى تتبدل البطاقة يمين/شمال بوضوح
+          ويبقى للمجسم مكان واسع في الجهة الأخرى، مع ترك مكان لقائمة المحطات */}
+      <div className="relative z-10 lg:mx-[calc(50%-50vw+8px)]">
         {STATIONS.map((s, i) => (
           <section
             key={s.id}
             id={`station-${s.id}`}
             data-station={s.id}
-            className={cn("flex min-h-svh items-end px-4 pb-28 pt-24 md:items-center md:px-[6vw] md:pb-16", i % 2 ? "md:justify-end" : "md:justify-start")}
+            className={cn("flex min-h-svh items-end px-4 pb-28 pt-24 md:items-center md:px-[6vw] md:pb-16 lg:pe-16", dots ? "lg:ps-[84px]" : "lg:ps-[250px]", i % 2 ? "md:justify-end" : "md:justify-start")}
           >
             <BlurFade inView inViewMargin="-20% 0px" className="w-full md:max-w-md">
               <div data-card className="rounded-[28px] border bg-card/90 p-5 shadow-soft backdrop-blur-md md:p-6">

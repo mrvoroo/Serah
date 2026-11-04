@@ -193,6 +193,21 @@
   }
 }
 
+/* شريط السكرول: كبسولة بنفسجي → ذهبي بلون المنصة، رفيعة ومستديرة */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: color-mix(in srgb, var(--primary) 8%, var(--background)); }
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--primary), var(--gold)) padding-box;
+}
+::-webkit-scrollbar-thumb:hover { border-width: 2px; }
+::-webkit-scrollbar-corner { background: transparent; }
+/* فايرفوكس لا يدعم التدرج: لون واحد */
+@supports not selector(::-webkit-scrollbar) {
+  html { scrollbar-width: thin; scrollbar-color: var(--primary) transparent; }
+}
+
 /* أدوات صغيرة مشتركة */
 @layer utilities {
   .bg-hero { background-image: linear-gradient(160deg, var(--hero-from) 0%, var(--hero-to) 100%); }
