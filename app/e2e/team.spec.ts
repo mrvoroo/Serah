@@ -111,3 +111,31 @@ test("صور محتوى النبي ترسل أصل الصفحة عند الرف�
   await expect.poll(() => calls.find((c) => c.action === "startUpload")).toMatchObject({ kind: "image", mime: "image/jpeg", origin: "http://localhost:3123" });
   await expect.poll(() => calls.find((c) => c.action === "saveContent")).toMatchObject({ kind: "image", file_id: "f1", prophet_id: "adam" });
 });
+
+test("المعلمة الموقوفة وهي داخلة: أول عملية تخرجها لصفحة الدخول مع السبب", async ({ page }) => {
+  let suspended = false;
+  await page.route(/script\.google\.com\/macros/, (route) => {
+    const b = JSON.parse(route.request().postData() || "{}");
+    if (suspended && b.action !== "login") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: false, error: "الحساب موقوف — سجّلي الدخول مرة أخرى أو تواصلي مع الإدارة" }) });
+    if (b.action === "login") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: { token: "t2", user: { user_id: "T2", name: "معلمة ثانية", role: "teacher", class_id: "C1", avatar: "" } } }) });
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: b.action === "students" ? [] : [] }) });
+  });
+  await page.addInitScript(() => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); localStorage.setItem("serah_token", "t2"); localStorage.setItem("serah_user", JSON.stringify({ user_id: "T2", name: "معلمة ثانية", role: "teacher", class_id: "C1", avatar: "" })); } });
+  await page.goto("/Serah/teacher/students/");
+  await page.getByRole("button", { name: "إضافة طفل" }).click();
+  suspended = true; // المطوّر أوقف الحساب الآن
+  const d = page.getByRole("dialog");
+  await d.getByLabel("الاسم").fill("عمر");
+  await d.getByLabel("الرمز السري (٤ أرقام)").fill("1234");
+  await d.getByRole("button", { name: "حفظ" }).click();
+  await expect(page).toHaveURL(/\/Serah\/teacher\/login\/$/);
+  await expect(page.getByText("الحساب موقوف")).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("serah_token"))).toBeNull();
+  // بعد إعادة التفعيل: الدخول يعمل والرسالة تختفي
+  suspended = false;
+  await page.getByLabel("الاسم").fill("معلمة ثانية");
+  await page.getByLabel("الرمز السري").fill("222222");
+  await page.getByRole("button", { name: /دخول/ }).last().click();
+  await expect(page).toHaveURL(/\/Serah\/teacher\/$/);
+  expect(await page.evaluate(() => localStorage.getItem("serah_logout_reason"))).toBeNull();
+});

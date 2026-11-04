@@ -31,6 +31,20 @@ export class ApiError extends Error {
   constructor(message: string, auth = false) { super(message); this.auth = auth; }
 }
 
+// الجلسة لم تعد صالحة (انتهت، أو الحساب أُوقف أو حُذف): نخرج فورًا لصفحة الدخول المناسبة مع السبب
+const LOGOUT_REASON = "serah_logout_reason";
+function endSession(reason: string) {
+  if (typeof window === "undefined") return;
+  const staff = session.user()?.role !== "student";
+  session.clear();
+  safeSet(LOGOUT_REASON, reason);
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  window.location.assign(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${staff ? "/teacher/login/" : "/"}`);
+}
+// سبب آخر خروج إجباري: يُعرض في صفحة الدخول ويُمسح عند الدخول التالي
+export const logoutReason = () => safeGet(LOGOUT_REASON) ?? "";
+export const clearLogoutReason = () => safeSet(LOGOUT_REASON, null);
+
 export async function api<T = unknown>(action: string, params: Record<string, unknown> = {}): Promise<T> {
   let res: Response;
   try {
@@ -46,7 +60,9 @@ export async function api<T = unknown>(action: string, params: Record<string, un
   try { j = await res.json(); } catch { throw new ApiError("الخادم لا يستجيب الآن، حاولي بعد قليل"); }
   if (!j.ok) {
     const msg = j.error || "حدث خطأ";
-    throw new ApiError(msg, /جلسة|مسجل|رمز غير صالح/.test(msg));
+    const auth = /جلسة|مسجل|رمز غير صالح|الحساب موقوف/.test(msg);
+    if (auth && session.token()) endSession(msg);
+    throw new ApiError(msg, auth);
   }
   return j.data as T;
 }

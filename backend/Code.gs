@@ -5,7 +5,7 @@
  */
 
 // رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
-const VERSION = 15;
+const VERSION = 16;
 
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
@@ -151,6 +151,10 @@ function auth_(token) {
   if (sign_(body) !== sig) throw new Error('رمز غير صالح');
   const [user_id, role, class_id, exp, imp] = body.split('|');
   if (Date.now() > Number(exp)) throw new Error('انتهت الجلسة');
+  // الحساب الموقوف أو المحذوف يخرج فورًا حتى لو معه توكن صالح، والدور والفصل يُقرآن من الحساب الحالي
+  const u = rows_('Users').find(x => x.user_id === user_id);
+  if (!u || u.active === false || String(u.active).toUpperCase() === 'FALSE') throw new Error('الحساب موقوف — سجّلي الدخول مرة أخرى أو تواصلي مع الإدارة');
+  if (!imp && (u.role !== role || String(u.class_id) !== String(class_id))) return { user_id, role: u.role, class_id: u.class_id, imp: '' };
   return { user_id, role, class_id, imp: imp || '' };
 }
 // الرتب: المطوّر (superadmin) فوق المعلمة الأدمن فوق المعلمة فوق الطفل

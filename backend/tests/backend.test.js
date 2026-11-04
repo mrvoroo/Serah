@@ -674,6 +674,29 @@ test('فحص الصوت للمطوّر فقط', () => {
   assert.ok(r.ok && Array.isArray(r.data), JSON.stringify(r).slice(0, 200));
 });
 
+test('الحساب الموقوف أو المحذوف يخرج فورًا حتى لو معه جلسة مفتوحة، وتغيير الدور يسري فورًا', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  assert.ok(t.call('addStudent', { name: 'علي', pin: '1234' }, tok.teacher).ok, 'works before');
+  t.call('updateTeacher', { user_id: 'T2', active: false }, tok.admin);
+  const r = t.call('addStudent', { name: 'عمر', pin: '1234' }, tok.teacher);
+  assert.match(r.error, /الحساب موقوف/, 'old session rejected at once');
+  assert.ok(!t.call('students', {}, tok.teacher).ok, 'reads rejected too');
+  assert.ok(!t.call('login', { name: 'معلمة ثانية', pin: '222222' }).ok, 'cannot log in again');
+  t.call('updateTeacher', { user_id: 'T2', active: true }, tok.admin);
+  assert.ok(t.call('students', {}, tok.teacher).ok, 'back after re-activation');
+  // تغيير الدور: معلمة صارت أدمن → صلاحيات الأدمن بنفس الجلسة
+  assert.ok(!t.call('auditLog', {}, tok.teacher).ok);
+  t.call('updateTeacher', { user_id: 'T2', role: 'admin' }, tok.superadmin);
+  assert.ok(t.call('auditLog', {}, tok.teacher).ok, 'new role applies immediately');
+  // الحذف
+  t.call('deleteTeacher', { user_id: 'T2' }, tok.superadmin);
+  assert.match(t.call('students', {}, tok.teacher).error, /الحساب موقوف/);
+  // الطفل المحذوف من الفصل يخرج كذلك
+  t.call('removeStudent', { user_id: 'S1' }, tok.admin);
+  assert.match(t.call('lectures', {}, tok.student).error, /الحساب موقوف/);
+});
+
 for (const [name, fn] of tests) {
   try { fn(); console.log('✔', name); } catch (e) { failed++; console.log('✘', name, '\n   ', e.message); }
 }

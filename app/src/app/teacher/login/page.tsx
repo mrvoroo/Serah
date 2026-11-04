@@ -1,9 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, LogIn } from "lucide-react";
-import { api, session, type User } from "@/lib/api";
+import { api, clearLogoutReason, logoutReason, session, type User } from "@/lib/api";
 import type { Mood } from "@/components/zaid";
 import { Murshida } from "@/components/murshida";
 import { Ambient } from "@/components/ambient";
@@ -19,6 +19,8 @@ export default function TeacherLogin() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // لو خرجت بسبب إيقاف الحساب أو انتهاء الجلسة نوضح السبب
+  const reason = useSyncExternalStore(() => () => {}, logoutReason, () => "");
   // المرشدة ترحّب، وتُسرّ وهي تكتب اسمها، وتتأمل مع الرمز وأثناء التحقق، وتندهش بهدوء من أي خطأ، وتُسرّ عند الدخول
   const [mood, setMood] = useState<Mood>("helping");
   const submit = async (e: React.FormEvent) => {
@@ -26,7 +28,7 @@ export default function TeacherLogin() {
     try {
       const d = await api<{ token: string; user: User }>("login", { name: name.trim(), pin });
       if (d.user.role === "student") throw new Error("هذه الصفحة للمعلمات فقط");
-      session.save(d); setMood("happy");
+      session.save(d); clearLogoutReason(); setMood("happy");
       const next = new URLSearchParams(window.location.search).get("next");
       router.replace(next === "upload" ? "/teacher/upload/" : d.user.role === "superadmin" ? "/admin/" : "/teacher/");
     } catch (e2) {
@@ -54,7 +56,7 @@ export default function TeacherLogin() {
           <Label htmlFor="tp">الرمز السري</Label>
           <Input id="tp" type="password" inputMode="numeric" value={pin} onChange={(e) => { setPin(e.target.value); setMood("thinking"); }} onFocus={() => !busy && setMood("thinking")} autoComplete="current-password" className="h-12 rounded-xl text-base" required />
           <Button type="submit" variant="hero" size="xl" disabled={busy}>{busy ? <Loader2 className="animate-spin" /> : <>دخول <LogIn /></>}</Button>
-          <p role="alert" className="min-h-5 text-center text-sm font-bold text-destructive">{err}</p>
+          <p role="alert" className="min-h-5 text-center text-sm font-bold text-destructive">{err || reason}</p>
         </form>
       </main>
     </div>

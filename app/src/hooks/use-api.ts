@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, session } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
 // ذاكرة مؤقتة بسيطة: تعرض آخر بيانات فورًا ثم تحدّثها في الخلفية
 const cache = new Map<string, unknown>();
@@ -22,7 +22,6 @@ export function useApi<T>(action: string, params: Record<string, unknown> = {}, 
       if (alive.current) setData(d);
     } catch (e) {
       const err = e as ApiError;
-      if (err.auth) { session.clear(); if (typeof window !== "undefined") window.location.assign(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`); }
       if (alive.current) setError(err.message);
     } finally {
       if (alive.current) setLoading(false);
