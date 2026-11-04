@@ -945,7 +945,9 @@ function targetUser_(me, user_id) {
 }
 
 // ===== أدوات رحلة الأنبياء =====
-const SYMBOLS = ['crescent', 'ark', 'staff', 'kaaba', 'whale', 'yusuf_dream', 'mushaf', 'dome', 'sword', 'book'];
+// أشكال المجسم المسموحة: القديمة + رموز الأنبياء المراجَعة (app/src/content/prophets-content.json)
+const SYMBOLS = ['crescent', 'ark', 'staff', 'kaaba', 'whale', 'yusuf_dream', 'mushaf', 'dome', 'sword', 'book',
+  'tree', 'star_high', 'wind_swirl', 'camel', 'moon_road', 'ram', 'star_tree', 'shirt', 'planets11_sun_moon', 'spring', 'scale', 'two_candles', 'hourglass', 'armor_rings', 'ant', 'single_light', 'star', 'mihrab', 'book_open', 'maidah'];
 function truthy_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
 function bySort_(a, b) { return Number(a.sort) - Number(b.sort); }
 function slug_(s) { const v = String(s || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30); if (!v) throw new Error('معرّف غير صحيح'); return v; }

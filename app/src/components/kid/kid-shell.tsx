@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Home, Headphones, Map, Trophy, LogOut } from "lucide-react";
+import { Home, Headphones, Map, Trophy, LogOut, BookOpen, LayoutDashboard } from "lucide-react";
 import { session, type User } from "@/lib/api";
 import { stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useMotionAllowed } from "@/lib/tier";
@@ -16,6 +16,12 @@ const NAV = [
   { href: "/kid/journey/", label: "الرحلة", icon: Map },
   { href: "/kid/lectures/", label: "المحاضرات", icon: Headphones },
   { href: "/kid/stars/", label: "النجوم", icon: Trophy },
+];
+// المعلمات والأدمن والمطوّر يفتحن الرحلة وصفحات الأنبياء والقرآن كما يراها الطفل، مع زر رجوع للوحة بدل تنقل الطفل
+const STAFF_PATHS = /^\/kid\/(journey|prophet|quran)(\/|$)/;
+const STAFF_NAV = [
+  { href: "/kid/journey/", label: "الرحلة", icon: Map },
+  { href: "/kid/quran/", label: "القرآن", icon: BookOpen },
 ];
 
 export const homeOf = (role: string) => (role === "student" ? "/kid/" : role === "superadmin" ? "/admin/" : "/teacher/");
@@ -35,17 +41,19 @@ export function useRequireRole(roles: string[]) {
 }
 
 export function KidShell({ children }: { children: ReactNode }) {
-  const user = useRequireRole(["student"]);
   const path = usePathname();
+  const user = useRequireRole(STAFF_PATHS.test(path) ? ["student", "teacher", "admin", "superadmin"] : ["student"]);
+  const staff = !!user && user.role !== "student";
+  const nav = staff ? [...STAFF_NAV, { href: homeOf(user.role), label: "لوحتي", icon: LayoutDashboard }] : NAV;
   const router = useRouter();
   const animate = useMotionAllowed();
-  const logout = () => { if (viewAsInfo()) return stopViewAs(); session.clear(); router.replace("/"); };
+  const logout = () => { if (viewAsInfo()) return stopViewAs(); session.clear(); router.replace(staff ? "/teacher/login/" : "/"); };
 
   const content = (
     <div className="relative min-h-svh pb-28">
       <header className="sticky top-0 z-30 px-3 pt-3">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 rounded-3xl border bg-card/85 px-3 py-2 shadow-soft backdrop-blur-md">
-          <Link href="/kid/" className="flex items-center gap-2 font-heading text-lg font-extrabold">
+          <Link href={staff ? "/kid/journey/" : "/kid/"} className="flex items-center gap-2 font-heading text-lg font-extrabold">
             <span className="grid size-10 place-items-center rounded-2xl bg-hero text-white">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
             </span>
@@ -60,7 +68,7 @@ export function KidShell({ children }: { children: ReactNode }) {
       <main className="mx-auto max-w-3xl px-4 pt-4">{user ? children : null}</main>
       <nav aria-label="التنقل الرئيسي" className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-md pb-safe">
         <div className="flex items-center justify-between rounded-[28px] border bg-card/90 p-2 shadow-soft backdrop-blur-md">
-          {NAV.map((n) => {
+          {nav.map((n) => {
             const on = n.href === "/kid/" ? path === "/kid" || path === "/kid/" : path.startsWith(n.href.replace(/\/$/, ""));
             const Icon = n.icon;
             return (

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 import { ArrowLeft, BookOpen, ChevronsLeft, ChevronsRight, Headphones, ListTree } from "lucide-react";
 import { useTier } from "@/lib/tier";
+import { ruqaaFont } from "@/lib/particles/font";
 import { BlurFade } from "@/components/ui/blur-fade";
 import SplitText from "@/components/SplitText";
 import { buttonVariants } from "@/components/ui/button";
@@ -95,14 +96,6 @@ function stationAtCenter(sections: HTMLElement[]) {
   for (let i = 0; i < sections.length; i++) if (sections[i].getBoundingClientRect().top <= mid) idx = i;
   const r = sections[idx].getBoundingClientRect();
   return { idx, local: Math.min(1, Math.max(0, (mid - r.top) / Math.max(1, r.height))) };
-}
-
-async function ruqaaFont() {
-  const fam = getComputedStyle(document.documentElement).getPropertyValue("--font-ruqaa").trim() || "serif";
-  try {
-    await Promise.race([document.fonts.load(`700 150px ${fam}`, "سيدنا محمد ﷺ"), new Promise((r) => setTimeout(r, 3000))]);
-  } catch { /* نكمل بالخط الاحتياطي */ }
-  return fam;
 }
 
 // stations: من الخلفية (جدول Prophets) أو الاحتياطية — تتغير فقط بإعادة تركيب المكوّن (key)

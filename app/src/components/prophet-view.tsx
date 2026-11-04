@@ -4,9 +4,14 @@ import { Headphones, PlayCircle } from "lucide-react";
 import { driveImage, type Lecture } from "@/lib/api";
 import { AudioPlayer } from "@/components/audio-player";
 import type { ContentItem, ProphetRow } from "@/lib/prophets";
+import { prophetContent, shapeSequence } from "@/content/prophets";
+import { SymbolStage } from "@/components/prophet/symbol-stage";
+import { ProphetBio } from "@/components/prophet/prophet-bio";
+import { ImageGallery } from "@/components/prophet/image-gallery";
 import { cn } from "@/lib/utils";
 
-// صفحة النبي: البطاقة الرئيسية ثم العناصر بالترتيب (نص، صوت، صور، فيديوهات يوتيوب) ثم المحاضرات عنه
+// صفحة النبي: البطاقة الرئيسية، ثم الرمز التفاعلي والنبذة (من المحتوى المراجَع)، ثم العناصر بالترتيب
+// (نص، صوت، فيديوهات يوتيوب، والصور مجمّعة في معرض صغير مكان أول صورة) ثم المحاضرات عنه
 // تُستخدم في صفحة الطفل وفي «معاينة كطفل» عند الأدمن
 
 export function YouTube({ id, title }: { id: string; title?: string }) {
@@ -44,16 +49,24 @@ export function ProphetView({ prophet, items, lectures }: { prophet: ProphetRow;
   // اللقب الواجب بعد الاسم: «ﷺ» لنبينا محمد، و«عليه السلام» لباقي الأنبياء
   const honored = `${name} ${prophet.prophet_id === "muhammad" ? "ﷺ" : "عليه السلام"}`;
   const related = (lectures ?? []).filter((l) => l.prophet_id === prophet.prophet_id || String(l.title).includes(name));
+  const content = prophetContent(prophet.prophet_id);
+  const steps = shapeSequence(prophet.prophet_id);
+  const images = items.filter((it) => it.kind === "image");
+  const firstImage = images[0]?.item_id;
   return (
     <div className="flex flex-col gap-4">
       <header className="relative overflow-hidden rounded-[32px] bg-hero p-6 text-white shadow-soft">
         {prophet.symbol_name && <span className="inline-block rounded-full bg-white/15 px-3 py-1 text-xs font-bold">{prophet.symbol_name}</span>}
-        <h1 className="mt-2 font-heading text-3xl font-extrabold leading-tight md:text-4xl">{prophet.title || `سيدنا ${name}`}</h1>
+        <h1 className="mt-2 font-heading text-3xl font-extrabold leading-tight md:text-4xl">{prophet.title || `سيدنا ${honored}`}</h1>
         <p className="mt-3 text-base leading-8 text-white/85">{prophet.text}</p>
       </header>
 
-      {items.map((it) => <Item key={it.item_id} it={it} />)}
-      {items.length === 0 && (
+      {steps.length > 0 && <SymbolStage steps={steps} name={name} />}
+      {content && <ProphetBio content={content} />}
+
+      {items.map((it) => it.kind !== "image" ? <Item key={it.item_id} it={it} />
+        : it.item_id === firstImage ? <ImageGallery key="gallery" images={images.map((x) => ({ id: x.item_id, file_id: x.file_id, title: x.title, body: x.body }))} /> : null)}
+      {items.length === 0 && !content && (
         <p className="rounded-[28px] border bg-card p-6 text-center text-muted-foreground">قريبًا محتوى جديد عن سيدنا {honored} ✨</p>
       )}
 

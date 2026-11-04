@@ -1,4 +1,5 @@
 import { STATIONS, type Station } from "@/components/journey/stations";
+import { MAIN_SYMBOLS, mainSymbol } from "@/content/prophets";
 
 // بيانات رحلة الأنبياء من جدول Prophets في الخلفية، مع STATIONS كبيانات احتياطية لو الجدول فاضي أو الاتصال فشل
 
@@ -20,7 +21,16 @@ export const SYMBOL_OPTIONS: { value: string; label: string }[] = [
   { value: "dome", label: "المسجد النبوي" },
   { value: "sword", label: "السيف" },
   { value: "crescent", label: "الهلال والنجمة" },
+  // رموز الأنبياء المراجَعة
+  ...MAIN_SYMBOLS.filter((m, i, a) => !["ark", "kaaba", "staff", "whale", "mushaf"].includes(m.value) && a.findIndex((x) => x.value === m.value) === i),
 ];
+
+// رمز النبي في المجسم: ما اختارته الأدمن، أو الرمز المراجَع لو لم تختر (أو بقي رمز يوسف القديم)
+function symbolOf(r: ProphetRow) {
+  const def = mainSymbol(r.prophet_id);
+  if (def && (!r.symbol || (r.prophet_id === "yusuf" && r.symbol === "yusuf_dream"))) return { symbol: def.main, name: r.symbol_name || def.label };
+  return { symbol: r.symbol || undefined, name: r.symbol_name || undefined };
+}
 
 const FIXED = new Set(["start", "sira", "quran"]);
 export const isProphet = (s: Station) => !FIXED.has(s.id);
@@ -38,17 +48,17 @@ export const SEED_PROPHETS: ProphetRow[] = STATIONS.filter(isProphet).map((s) =>
 export function toStations(rows: ProphetRow[] | undefined): Station[] {
   if (!rows?.length) return STATIONS;
   const prophets = rows.map((r, i): Station => {
-    const name = plainName(r.name), muhammad = r.prophet_id === "muhammad";
+    const name = plainName(r.name), muhammad = r.prophet_id === "muhammad", sym = symbolOf(r);
     return {
       id: r.prophet_id,
       label: `سيدنا ${name}`,
       // ﷺ كحرف واحد يتكدس كنقاط، فنكتبها سطرًا صغيرًا تحت الاسم
       sub: muhammad ? "صلى الله عليه وسلم" : undefined,
       title: r.title || (muhammad ? "سيدنا محمد ﷺ" : `سيدنا ${name} عليه السلام`),
-      tag: r.symbol_name ? `المحطة ${num(i + 1)} · ${r.symbol_name}` : `المحطة ${num(i + 1)}`,
+      tag: sym.name ? `المحطة ${num(i + 1)} · ${sym.name}` : `المحطة ${num(i + 1)}`,
       text: r.text,
-      symbol: (r.symbol || undefined) as Station["symbol"],
-      symbolName: r.symbol_name || undefined,
+      symbol: sym.symbol,
+      symbolName: sym.name,
     };
   });
   return [STATIONS[0], ...prophets, ...STATIONS.filter((s) => s.id === "sira" || s.id === "quran")];

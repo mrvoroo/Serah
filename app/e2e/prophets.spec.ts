@@ -115,7 +115,9 @@ test("الأدمن: إضافة فيديو يوتيوب بمعاينة حية، �
   if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/prophet-admin-${test.info().project.name}.png`, fullPage: true });
   // غير المعتمد لا يظهر في معاينة الطفل
   await page.getByRole("tab", { name: "معاينة كطفل" }).click();
-  await expect(page.getByText("قريبًا محتوى جديد")).toBeVisible();
+  // النبذة المراجَعة تظهر، والفيديو غير المعتمد لا يظهر
+  await expect(page.getByRole("heading", { name: /تعرّف على سيدنا نوح/ })).toBeVisible();
+  await expect(page.locator("iframe")).toHaveCount(0);
   await page.getByRole("tab", { name: "المحتوى" }).click();
   await row.getByRole("button", { name: "اعتماد" }).click();
   await expect(row).toContainText("معتمد");

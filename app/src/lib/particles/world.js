@@ -3,6 +3,8 @@
 // وتحته رمزه (هلال ونجمة، سفينة نوح، عصا موسى والبحر المنشق، الكعبة، الحوت الأزرق، المصحف المغلق، المسجد النبوي، ذو الفقار، المصحف المفتوح)
 // مع نجوم تدور حول المجسم وتتسارع مع سرعة السكرول.
 import * as THREE from 'three';
+import { kit } from './kit.js';
+import { EXTRA_SHAPES } from './shapes-extra.js';
 
 export const SHAPES = ['crescent', 'ark', 'staff', 'kaaba', 'whale', 'yusuf_dream', 'mushaf', 'dome', 'sword', 'book'];
 const TAU = Math.PI * 2;
@@ -16,7 +18,8 @@ function rand(seed) {
 // ---------- الأشكال ----------
 // كل شكل = أجزاء موزونة؛ معظم النقاط على الحواف والخطوط (مثل الرسم بالضوء) لا على الكتل.
 // flow: 0 ثابت، 1 موج يتحرك أفقيًا، 2 ماء يصعد، 3 نور يصعد ببطء، 4 حروف الاسم، 5 جسم الحوت الأزرق
-function buildShape(name, n, r) {
+function buildShape(name, n, r, font = 'serif') {
+  if (EXTRA_SHAPES[name]) return buildExtra(name, n, r, font);
   const pos = new Float32Array(n * 3);
   const flow = new Float32Array(n);
   const g = () => (r() + r() + r() - 1.5) / 1.5;
@@ -225,6 +228,21 @@ function buildShape(name, n, r) {
   return { pos, flow };
 }
 
+// الأشكال الإضافية (رموز الأنبياء وأشكال صفحة النبي) من shapes-a/b: أجزاء [وزن، مولّد، flow]
+function buildExtra(name, n, r, font) {
+  const parts = EXTRA_SHAPES[name](kit(r, { text: (str, o) => textSampler(str, font, r, o) }));
+  const pos = new Float32Array(n * 3), flow = new Float32Array(n);
+  const total = parts.reduce((a, p) => a + p[0], 0);
+  for (let i = 0; i < n; i++) {
+    let k = r() * total, j = 0;
+    while (k > parts[j][0] && j < parts.length - 1) k -= parts[j++][0];
+    const p = parts[j][1]();
+    pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = p[2] || 0;
+    flow[i] = parts[j][2] || 0;
+  }
+  return { pos, flow };
+}
+
 // ---------- اسم النبي بخط الرقعة ----------
 // نرسم النص على لوحة مخفية ثم نأخذ بكسلاته كنقاط: نصفها على حواف الحروف (رسم بالضوء) والباقي يملأها
 const textCache = {};
@@ -288,7 +306,7 @@ function buildStation(st, n, r, font) {
   let o = 0;
   const take = (count, gen, f = 0) => { for (let i = 0; i < count && o < n; i++, o++) { const p = gen(); pos[o * 3] = p[0]; pos[o * 3 + 1] = p[1]; pos[o * 3 + 2] = p[2]; flow[o] = f; } };
   const takeShape = (count, name, sc, dx, dy) => {
-    const s = buildShape(name, count, r);
+    const s = buildShape(name, count, r, font);
     for (let i = 0; i < count && o < n; i++, o++) { pos[o * 3] = s.pos[i * 3] * sc + dx; pos[o * 3 + 1] = s.pos[i * 3 + 1] * sc + dy; pos[o * 3 + 2] = s.pos[i * 3 + 2] * sc; flow[o] = s.flow[i]; }
   };
   const g = () => (r() + r() + r() - 1.5) / 1.5;
@@ -296,7 +314,11 @@ function buildStation(st, n, r, font) {
   const label = st.label || '';
   // محور دوران الرمز وحده (x, y, مفعّل): الاسم لا يدور معه حتى يبقى كما هو مقروءًا
   let pivot = [0, SYM_Y, 1];
-  if (st.layout === 'side') {
+  if (st.layout === 'symbol') {
+    // الرمز وحده بحجمه الكامل (لوحة صفحة النبي)
+    pivot = [0, -0.2, 1];
+    takeShape(n, st.symbol || 'star', 1, 0, -0.2);
+  } else if (st.layout === 'side') {
     pivot = [2.35, 0, 1];
     const nt = Math.floor(n * 0.55);
     take(nt, textSampler(label, font, r, { maxW: 3.5, maxH: 1.5, ox: -1.05, oy: 0 }), TEXT);
@@ -552,14 +574,20 @@ export function createWorld(canvas, opts = {}) {
   const pointer = { x: 0, y: 0, tx: 0, ty: 0 };
   let scrollLocal = 0, scrollLocalS = 0, velocity = 0, spin = 0;
 
+  // contained: اللوحة داخل صندوق في الصفحة (مثل رمز صفحة النبي) بدل ملء الشاشة
+  const contained = !!opts.contained;
+  // بلا سكرول في الصندوق: نبدأ من المنتصف حتى يواجه الرمز الطفل ويتمايل بهدوء فقط
+  if (contained) scrollLocal = scrollLocalS = 0.5;
   function resize() {
-    const w = window.innerWidth, h = window.innerHeight;
+    const w = contained ? Math.max(1, canvas.clientWidth) : window.innerWidth, h = contained ? Math.max(1, canvas.clientHeight) : window.innerHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     if (reduced) draw();
   }
   window.addEventListener('resize', resize);
+  const ro = contained && window.ResizeObserver ? new ResizeObserver(resize) : null;
+  if (ro) ro.observe(canvas);
   const onPointer = (e) => { pointer.tx = (e.clientX / innerWidth - 0.5) * 2; pointer.ty = (e.clientY / innerHeight - 0.5) * 2; };
   window.addEventListener('pointermove', onPointer, { passive: true });
 
@@ -674,6 +702,7 @@ export function createWorld(canvas, opts = {}) {
     running = false; lost = true; alive = false;
     if (window.cancelIdleCallback) window.cancelIdleCallback(idleId); else clearTimeout(idleId);
     window.removeEventListener('resize', resize);
+    if (ro) ro.disconnect();
     window.removeEventListener('pointermove', onPointer);
     document.removeEventListener('visibilitychange', onVis);
     geo.dispose(); mat.dispose(); sGeo.dispose(); sMat.dispose(); renderer.dispose();
