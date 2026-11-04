@@ -40,7 +40,7 @@ function Item({ it }: { it: ContentItem }) {
 }
 
 export function ProphetView({ prophet, items, lectures }: { prophet: ProphetRow; items: ContentItem[]; lectures?: Lecture[] }) {
-  const name = prophet.name.replace(/\s*ﷺ\s*$/, "");
+  const name = prophet.name.replace(/\s*(ﷺ|عليه السلام)\s*$/, "");
   // اللقب الواجب بعد الاسم: «ﷺ» لنبينا محمد، و«عليه السلام» لباقي الأنبياء
   const honored = `${name} ${prophet.prophet_id === "muhammad" ? "ﷺ" : "عليه السلام"}`;
   const related = (lectures ?? []).filter((l) => l.prophet_id === prophet.prophet_id || String(l.title).includes(name));

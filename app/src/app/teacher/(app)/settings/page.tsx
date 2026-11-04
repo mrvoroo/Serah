@@ -50,7 +50,7 @@ export default function SettingsPage() {
           <Label htmlFor="op">الرمز الحالي</Label>
           <Input id="op" type="password" inputMode="numeric" value={oldPin} onChange={(e) => setOld(e.target.value)} autoComplete="current-password" className="h-12 rounded-xl" required />
           <Label htmlFor="np">الرمز الجديد (٦ أرقام على الأقل)</Label>
-          <Input id="np" type="password" inputMode="numeric" value={newPin} onChange={(e) => setNew(e.target.value)} autoComplete="new-password" className="h-12 rounded-xl" required minLength={6} />
+          <Input id="np" type="password" inputMode="numeric" value={newPin} onChange={(e) => setNew(e.target.value)} autoComplete="new-password" className="h-12 rounded-xl" required minLength={6} pattern="[0-9٠-٩]{6,}" title="٦ أرقام على الأقل" />
           <Button type="submit" variant="hero" size="lg2" disabled={busy === "pin"}>{busy === "pin" ? <Loader2 className="animate-spin" /> : "تغيير الرمز"}</Button>
         </form>
         <section className="flex flex-col gap-3 rounded-[24px] border bg-card p-5 shadow-soft lg:col-span-2">

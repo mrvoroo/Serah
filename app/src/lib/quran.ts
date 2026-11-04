@@ -2,7 +2,8 @@
 // يُحفظ النص في المتصفح بعد أول فتح حتى لا يُطلب مرة ثانية
 
 export type SurahInfo = { number: number; name: string; ayahs: number };
-export type Ayah = { n: number; text: string };
+// page: رقم الصفحة في مصحف المدينة (٦٠٤ صفحات) لتقسيم السور الطويلة
+export type Ayah = { n: number; text: string; page: number };
 
 // الشيخ: مجلد المصحف المعلّم (الشيخ يقرأ والأطفال يرددون) ومجلد التلاوة المرتّلة (لوضع «دورك تقرأ»)
 export const RECITERS = [
@@ -40,23 +41,25 @@ export function stripBasmala(text: string) {
 }
 
 export async function surahText(n: number): Promise<Ayah[]> {
-  const hit = cached<Ayah[]>(`serah_q_${n}`);
+  // النسخة ٢ من الحفظ فيها رقم الصفحة
+  const hit = cached<Ayah[]>(`serah_q2_${n}`);
   if (hit?.length) return hit;
   const r = await fetch(`${API}/surah/${n}/quran-uthmani`);
   if (!r.ok) throw new Error("تعذّر تحميل السورة، تأكد من الإنترنت");
   const j = await r.json();
   // المصدر يضع أحيانًا علامة مخفية (BOM) في أول النص — نزيلها قبل أي معالجة
-  const ayahs: Ayah[] = j.data.ayahs.map((a: { numberInSurah: number; text: string }) => {
+  const ayahs: Ayah[] = j.data.ayahs.map((a: { numberInSurah: number; text: string; page?: number }) => {
     const text = a.text.replace(/\uFEFF/g, "").trim();
-    return { n: a.numberInSurah, text: a.numberInSurah === 1 && hasBasmala(n) ? stripBasmala(text) : text };
+    return { n: a.numberInSurah, page: a.page ?? 0, text: a.numberInSurah === 1 && hasBasmala(n) ? stripBasmala(text) : text };
   });
-  store(`serah_q_${n}`, ayahs);
+  try { localStorage.removeItem(`serah_q_${n}`); } catch { /* النسخة القديمة بدون صفحات */ }
+  store(`serah_q2_${n}`, ayahs);
   return ayahs;
 }
 
-// آخر موضع وصل له الطفل وإعداداته
-export type QuranPrefs = { surah: number; ayah: number; reciter: ReciterId; mode: QuranMode; repeat: 1 | 2 | 3; pause: 0.8 | 1.2 | 1.6 };
-export const DEFAULT_PREFS: QuranPrefs = { surah: 1, ayah: 1, reciter: "minshawy", mode: "teacher", repeat: 1, pause: 1.2 };
+// آخر موضع وصل له الطفل (السورة والآية والصفحة المفتوحة) وإعداداته
+export type QuranPrefs = { surah: number; ayah: number; page: number; reciter: ReciterId; mode: QuranMode; repeat: 1 | 2 | 3; pause: 0.8 | 1.2 | 1.6 };
+export const DEFAULT_PREFS: QuranPrefs = { surah: 1, ayah: 1, page: 0, reciter: "minshawy", mode: "teacher", repeat: 1, pause: 1.2 };
 export const loadPrefs = (): QuranPrefs => ({ ...DEFAULT_PREFS, ...(cached<Partial<QuranPrefs>>("serah_q_prefs") ?? {}) });
 export const savePrefs = (p: QuranPrefs) => store("serah_q_prefs", p);
 

@@ -8,7 +8,7 @@ const code = fs.readFileSync(path.join(__dirname, "..", "..", "backend", "Code.g
 const oggOpusToWebm = new Function(code.slice(code.indexOf("function oggOpusToWebm_")) + "\nreturn oggOpusToWebm_;")() as (u: Uint8Array) => Uint8Array;
 const AUDIO = Buffer.from(oggOpusToWebm(new Uint8Array(fs.readFileSync(path.join(__dirname, "..", "..", "backend", "tests", "fixtures", "voice.ogg")))));
 
-const LIST = [{ number: 1, name: "سُورَةُ ٱلْفَاتِحَةِ", numberOfAyahs: 7 }, { number: 112, name: "سُورَةُ الإِخۡلَاصِ", numberOfAyahs: 4 }];
+const LIST = [{ number: 1, name: "سُورَةُ ٱلْفَاتِحَةِ", numberOfAyahs: 7 }, { number: 2, name: "سُورَةُ البَقَرَةِ", numberOfAyahs: 5 }, { number: 112, name: "سُورَةُ الإِخۡلَاصِ", numberOfAyahs: 4 }];
 const IKHLAS = [
   "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ قُلْ هُوَ ٱللَّهُ أَحَدٌ", "ٱللَّهُ ٱلصَّمَدُ", "لَمْ يَلِدْ وَلَمْ يُولَدْ", "وَلَمْ يَكُن لَّهُۥ كُفُوًا أَحَدٌۢ",
 ];
@@ -46,6 +46,10 @@ test("المصحف المعلّم (المنشاوي): البسملة ثم الآ
   await page.getByRole("button", { name: "تشغيل" }).click();
   await expect(page.getByRole("button", { name: "آية 2" })).toHaveAttribute("aria-current", "true", { timeout: 15000 });
   await expect(page.getByText(/وصلتَ إلى آخر سورة/)).toBeVisible({ timeout: 20000 });
+  // بعد الختم: المرة القادمة تبدأ من أول السورة بدون «نكمل من…»
+  await page.reload();
+  await expect(page.getByRole("button", { name: "آية 1", exact: true })).toBeVisible();
+  await expect(page.getByText(/نكمل من آية/)).toHaveCount(0);
   expect(uniq(played)).toEqual(["Minshawy_Teacher_128kbps/001001.mp3", "Minshawy_Teacher_128kbps/112001.mp3", "Minshawy_Teacher_128kbps/112002.mp3", "Minshawy_Teacher_128kbps/112003.mp3", "Minshawy_Teacher_128kbps/112004.mp3"]);
 });
 
@@ -85,4 +89,44 @@ test("القرآن ظاهر في رئيسية الطفل، ومحطة القرآ
   await open(page);
   await page.goto("/Serah/kid/");
   await expect(page.getByRole("link", { name: /القرآن الكريم/ })).toHaveAttribute("href", "/Serah/kid/quran/");
+});
+
+test("التظليل ظاهر فعلًا: الآية الحالية بخلفية ذهبية وباقي الآيات أخفت", async ({ page }) => {
+  await open(page);
+  await page.getByRole("button", { name: "آية 2" }).click();
+  const now = page.getByRole("button", { name: "آية 2" });
+  await expect(now).toHaveAttribute("aria-current", "true");
+  expect(await now.evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+  await expect.poll(() => page.getByRole("button", { name: "آية 1", exact: true }).evaluate((e) => Number(getComputedStyle(e).opacity))).toBeLessThan(0.6);
+});
+
+test("السورة الطويلة مقسمة على صفحات المصحف، والصفحة المفتوحة تُحفظ بعد الخروج", async ({ page }) => {
+  const LONG = [["بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ الٓمٓ", 2], ["ذَٰلِكَ ٱلْكِتَٰبُ لَا رَيْبَ فِيهِ", 2], ["ٱلَّذِينَ يُؤْمِنُونَ بِٱلْغَيْبِ", 3], ["وَٱلَّذِينَ يُؤْمِنُونَ بِمَآ أُنزِلَ إِلَيْكَ", 3], ["أُو۟لَٰٓئِكَ عَلَىٰ هُدًى مِّن رَّبِّهِمْ", 4]] as const;
+  await page.route(/api\.alquran\.cloud\/v1\/surah\/2\//, (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ data: { ayahs: LONG.map(([text, pg], i) => ({ numberInSurah: i + 1, text, page: pg })) } }) }));
+  await open(page, { surah: 2 });
+  await expect(page.getByText("صفحة ٢", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "البسملة" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "آية 3" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "الصفحة السابقة" })).toBeDisabled();
+  await page.getByRole("button", { name: "الصفحة التالية" }).click();
+  await expect(page.getByText("صفحة ٣", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "آية 3" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "آية 1", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "البسملة" })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("صفحة ٣", { exact: true })).toBeVisible();
+  // الضغط على آية في صفحة أخرى يقلب الصفحة معها
+  await page.getByRole("button", { name: "الصفحة التالية" }).click();
+  await page.getByRole("button", { name: "آية 5" }).click();
+  await expect(page.getByRole("button", { name: "آية 5" })).toHaveAttribute("aria-current", "true");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("serah_q_prefs")!))).toMatchObject({ ayah: 5, page: 4 });
+});
+
+test("إعدادات التلاوة مطوية افتراضيًا حتى يظهر النص أولًا، وتُفتح بالزر", async ({ page }) => {
+  await open(page);
+  await expect(page.getByRole("group", { name: "الشيخ" })).toHaveCount(0);
+  await page.getByRole("button", { name: /إعدادات التلاوة/ }).click();
+  await page.getByRole("button", { name: "الشيخ الحصري" }).click();
+  await expect(page.getByRole("button", { name: "الشيخ الحصري" })).toHaveAttribute("aria-pressed", "true");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("serah_q_prefs")!).reciter)).toBe("husary");
 });
