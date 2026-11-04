@@ -2,6 +2,8 @@
 // يشغّل Code.gs كما هو داخل Node مع بدائل لـ SpreadsheetApp و PropertiesService وغيرها.
 const fs = require('fs'), path = require('path'), crypto = require('crypto'), assert = require('assert');
 const code = fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8');
+const VOICE = fs.readFileSync(path.join(__dirname, 'fixtures', 'voice.ogg'));
+const signed = (buf) => Array.from(buf, (b) => (b > 127 ? b - 256 : b));
 
 function boot() {
   const sheets = {};
@@ -38,7 +40,7 @@ function boot() {
       computeHmacSha256Signature: (s, k) => [...crypto.createHmac('sha256', k).update(s).digest()],
       base64EncodeWebSafe: (x) => Buffer.from(typeof x === 'string' ? x : Uint8Array.from(x.map(b => b & 255))).toString('base64url'),
       base64DecodeWebSafe: (s) => [...Buffer.from(s, 'base64url')],
-      newBlob: (b) => ({ getDataAsString: () => Buffer.from(b).toString() }),
+      newBlob: (b, type, name) => ({ getDataAsString: () => Buffer.from(b).toString(), getContentType: () => type, getBytes: () => b, _b: { type, name, size: b.length } }),
       formatDate: (d) => d.toISOString().slice(0, 10),
       sleep: (ms) => { slept += ms; }
     },
@@ -48,7 +50,7 @@ function boot() {
     ScriptApp: { getProjectTriggers: () => [{ getHandlerFunction: () => 'pollTelegram' }], getOAuthToken: () => 't', getService: () => ({ getUrl: () => 'u' }) },
     UrlFetchApp: { fetch: (url, opts) => {
       fetches.push({ url, opts });
-      if (/api\.telegram\.org\/file\//.test(url)) { const b = { type: 'application/octet-stream', name: '' }; return { getBlob: () => ({ setName(n) { b.name = n; return this; }, setContentType(t) { b.type = t; return this; }, _b: b }) }; }
+      if (/api\.telegram\.org\/file\//.test(url)) { const b = { type: 'application/octet-stream', name: '' }; return { getBlob: () => ({ setName(n) { b.name = n; return this; }, setContentType(t) { b.type = t; return this; }, getBytes: () => signed(VOICE), getContentType: () => b.type, _b: b }) }; }
       if (/googleapis\.com\/upload\/drive/.test(url)) return { getResponseCode: () => 200, getHeaders: () => ({ Location: 'https://upload/session' }) };
       const m = String(url).match(/api\.telegram\.org\/bot[^/]*\/(\w+)/);
       if (m) {
@@ -62,7 +64,7 @@ function boot() {
     } },
     DriveApp: { getFileById: () => ({ setSharing() {} }), getFolderById: () => ({ createFile: (blob) => { saved.push({ ...(blob && blob._b) }); return { getId: () => 'drv' + (++drv) }; } }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
-  const g = new Function(...Object.keys(env), code + '\nreturn { handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN };')(...Object.values(env));
+  const g = new Function(...Object.keys(env), code + '\nreturn { handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN, oggOpusToWebm_ };')(...Object.values(env));
   return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches };
 }
 
@@ -555,12 +557,13 @@ test('الرفع من الموقع: Origin لدرايف هو أصل الصفحة
   assert.strictEqual(origin(), 'https://mrvoroo.github.io');
 });
 
-test('البوت: التسجيل يُحفظ على درايف كـ audio/ogg (كان بدون نوع فلا يشتغل)، والصور image/jpeg', () => {
+test('البوت: الرسالة الصوتية (Ogg) تُحفظ WebM ليشغّلها آيفون، والصور image/jpeg', () => {
   const { t, tok, send, B } = botSetup();
   send(2, '/start ' + t.call('tgLinkToken', {}, tok.teacher).data.url.split('=')[1]);
   send(2, { voice: { file_id: 'v1', duration: 30 } });
-  assert.deepStrictEqual(t.saved.at(-1), { type: 'audio/ogg', name: t.saved.at(-1).name });
-  assert.match(t.saved.at(-1).name, /\.ogg$/);
+  assert.strictEqual(t.saved.at(-1).type, 'audio/webm');
+  assert.match(t.saved.at(-1).name, /\.webm$/);
+  assert.ok(t.saved.at(-1).size > 30000, 'whole recording kept');
   send(2, 'نوح'); send(2, B.USE);
   send(2, { photo: [{ file_id: 'p1' }] });
   assert.strictEqual(t.saved.at(-1).type, 'image/jpeg');
@@ -581,6 +584,48 @@ test('البوت: زر «القائمة» بالأوامر، والأوامر ت
   send(2, '/start ' + t.call('tgLinkToken', {}, tok.teacher).data.url.split('=')[1]);
   send(2, { voice: { file_id: 'v', duration: 60 } }); send(2, 'نوح'); send(2, B.USE); send(2, B.NO_IMG); send(2, B.SEND);
   assert.strictEqual(last(1).reply_markup.inline_keyboard[0][0].url, 'https://mrvoroo.github.io/Serah/teacher/lectures/');
+});
+
+// يقرأ ملف WebM: يتأكد من الترويسة، الترميز، المدة، وعدد الحزم = حزم Ogg
+function readWebm(u8) {
+  const out = { ids: [], blocks: 0 };
+  const vint = (i) => { let len = 1, m = 0x80; while (!(u8[i] & m)) { m >>= 1; len++; } let v = u8[i] & (m - 1); for (let k = 1; k < len; k++) v = v * 256 + u8[i + k]; return [v, len]; };
+  const id = (i) => { let len = 1, m = 0x80; while (!(u8[i] & m)) { m >>= 1; len++; } let v = 0; for (let k = 0; k < len; k++) v = v * 256 + u8[i + k]; return [v, len]; };
+  const MASTER = new Set([0x18538067, 0x1654AE6B, 0xAE, 0xE1, 0x1C53BB6B, 0xBB, 0xB7, 0x1F43B675, 0x1549A966, 0x1A45DFA3]);
+  const walk = (start, end) => {
+    let i = start;
+    while (i < end) {
+      const [eid, il] = id(i); const [size, sl] = vint(i + il); const body = i + il + sl;
+      out.ids.push(eid);
+      if (eid === 0x86) out.codec = Buffer.from(u8.subarray(body, body + size)).toString();
+      if (eid === 0x4489) out.duration = new DataView(u8.buffer, u8.byteOffset + body, 8).getFloat64(0);
+      if (eid === 0xA3) out.blocks++;
+      if (MASTER.has(eid)) walk(body, body + size);
+      i = body + size;
+    }
+    if (i !== end) throw new Error('bad element sizes');
+  };
+  walk(0, u8.length);
+  return out;
+}
+
+test('تحويل Ogg/Opus إلى WebM/Opus: ملف سليم بنفس الصوت والمدة', () => {
+  const t = boot();
+  const webm = t.g.oggOpusToWebm_(new Uint8Array(VOICE));
+  const w = readWebm(webm);
+  assert.strictEqual(w.ids[0], 0x1A45DFA3, 'EBML header');
+  assert.strictEqual(w.codec, 'A_OPUS');
+  assert.ok(Math.abs(w.duration - 3000) < 60, 'duration ~3s: ' + w.duration);
+  assert.ok(w.ids.includes(0x1C53BB6B), 'has cues for seeking');
+  assert.ok(w.blocks > 100, 'all opus packets: ' + w.blocks);
+  assert.throws(() => t.g.oggOpusToWebm_(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28])), /ليس ملف Ogg/);
+});
+
+test('مفتاح تشغيل الصوت يصل للمستخدم المسجل فقط', () => {
+  const { t, tok } = journeySetup();
+  t.props.DRIVE_API_KEY = 'AIza-test';
+  assert.strictEqual(t.call('config', {}, tok.student).data.driveKey, 'AIza-test');
+  assert.ok(!t.call('config', {}).ok, 'needs login');
 });
 
 for (const [name, fn] of tests) {

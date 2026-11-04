@@ -52,7 +52,20 @@ export async function api<T = unknown>(action: string, params: Record<string, un
 }
 
 // روابط ملفات درايف
-export const driveAudio = (id: string) => `https://drive.usercontent.google.com/download?id=${id}&export=download`;
+// الصوت: رابط Drive API (يدعم التشغيل الجزئي Range فيعمل على آيفون) لو مفتاحه متاح، وإلا رابط التنزيل المباشر
+// (رابط التنزيل المباشر لا يعمل على سفاري آيفون). المفتاح من إعدادات الخلفية DRIVE_API_KEY ومقيّد بعنوان الموقع
+const MEDIA_KEY = "serah_media_key";
+export const mediaKey = () => safeGet(MEDIA_KEY) ?? "";
+export const driveAudio = (id: string, key = mediaKey()) => key
+  ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media&key=${encodeURIComponent(key)}`
+  : `https://drive.usercontent.google.com/download?id=${id}&export=download`;
+export async function loadMediaConfig() {
+  if (!session.token()) return;
+  try {
+    const c = await api<{ driveKey: string }>("config");
+    if ((c.driveKey || "") !== mediaKey()) { safeSet(MEDIA_KEY, c.driveKey || null); window.dispatchEvent(new Event("serah-media")); }
+  } catch { /* نكمل بالرابط المباشر */ }
+}
 export const driveImage = (id: string, w = 1200) => `https://drive.google.com/thumbnail?id=${id}&sz=w${w}`;
 
 export const withBase = (p: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${p}`;

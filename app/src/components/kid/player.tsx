@@ -4,7 +4,8 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import confetti from "canvas-confetti";
 import { ArrowRight, Loader2, Pause, Play, RotateCcw, RotateCw } from "lucide-react";
-import { api, driveAudio, driveImage, fmtDate, type Lecture, type Me } from "@/lib/api";
+import { api, driveImage, fmtDate, type Lecture, type Me } from "@/lib/api";
+import { useAudioUrl } from "@/hooks/use-media-key";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { useMotionAllowed } from "@/lib/tier";
 import { Zaid } from "@/components/zaid";
@@ -21,6 +22,7 @@ export function Player({ id }: { id: string }) {
   const me = useApi<Me>("me");
   const lecture = useMemo(() => data?.find((l) => l.lecture_id === id), [data, id]);
   const audio = useRef<HTMLAudioElement>(null);
+  const audioUrl = useAudioUrl();
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [t, setT] = useState(0);
@@ -104,7 +106,7 @@ export function Player({ id }: { id: string }) {
         <h1 className="text-center font-heading text-2xl font-extrabold leading-snug">{lecture.title}</h1>
         <p className="text-center text-sm text-muted-foreground">{fmtDate(lecture.date)}</p>
 
-        <audio ref={audio} src={driveAudio(lecture.audio_file_id)} preload="metadata"
+        <audio ref={audio} src={audioUrl(lecture.audio_file_id)} preload="metadata"
           onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={onTime}
           onLoadedMetadata={(e) => setDur(e.currentTarget.duration)} onWaiting={() => setBuffering(true)} onPlaying={() => setBuffering(false)}
           onEnded={celebrate} onError={() => setFailed(true)} />

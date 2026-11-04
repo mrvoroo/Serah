@@ -145,6 +145,17 @@
 - ✅ **«المرشدة»:** شخصية شاشات المعلمات (سيدة محجبة بنظارة رقيقة) بتعابير وقورة، وترحيب رسمي في الدخول واللوحة والبوت.
 - ✅ **الشخصيات كانت تختفي مع «تقليل الحركة»** — اتصلحت لزيد والمرشدة.
 
+### تشغيل الصوت على آيفون — ✅ في الكود (الخلفية v14) + 👤 خطوة مفتاح
+- السبب ١: سفاري لا يشغّل Opus داخل Ogg (صيغة رسائل تيليجرام الصوتية). الحل: الخلفية تعيد تغليف الصوت WebM/Opus (بدون إعادة ترميز) عند الاستلام، والتسجيلات القديمة تحولت تلقائيًا.
+- السبب ٢: روابط التنزيل المباشر من درايف لا تعمل في سفاري آيفون حتى لـ MP3. الحل: رابط Drive API (يدعم Range) بمفتاح `DRIVE_API_KEY`.
+- 👤 **إنشاء المفتاح (مرة واحدة، حساب mrvoroo@gmail.com):**
+  1. https://console.cloud.google.com ← مشروع جديد (مثلًا Serah).
+  2. APIs & Services ← Library ← **Google Drive API** ← Enable.
+  3. APIs & Services ← Credentials ← Create credentials ← **API key**.
+  4. Edit API key ← Application restrictions: **Websites** ← أضف `https://mrvoroo.github.io/*` و `http://localhost:3123/*`.
+  5. API restrictions: **Restrict key** ← Google Drive API ← Save.
+  6. Apps Script ← Project Settings ← Script Properties ← `DRIVE_API_KEY` = المفتاح.
+
 ### المراحل 5–10
 | # | المرحلة | أول خطوة |
 |---|---|---|

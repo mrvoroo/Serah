@@ -5,7 +5,7 @@
  */
 
 // رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
-const VERSION = 13;
+const VERSION = 14;
 
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
@@ -237,7 +237,8 @@ const POLICY = {
   addTeacher: { min: 'admin', write: 1, audit: 1 },
   updateTeacher: { min: 'admin', write: 1, audit: 1 },
   deleteTeacher: { min: 'admin', write: 1, audit: 1 },
-  repairAudio: { min: 'superadmin', write: 1, audit: 1 }
+  repairAudio: { min: 'superadmin', write: 1, audit: 1 },
+  config: { min: 'student' }
 };
 const SECRET_PARAMS = { pin: 1, oldPin: 1, newPin: 1, token: 1, action: 1 };
 
@@ -274,6 +275,7 @@ function migrate_() {
     if (prop_('SCHEMA_VERSION') === String(VERSION)) return;
     Object.keys(SCHEMA).forEach(ensureSheet_);
     if (!prop_('AUDIO_FIXED')) { try { fixAudioTypes_(); props_().setProperty('AUDIO_FIXED', '1'); } catch (e) { console.error(e); } }
+    if (!prop_('AUDIO_WEBM')) { try { convertOldAudio_(); props_().setProperty('AUDIO_WEBM', '1'); } catch (e) { console.error(e); } }
     props_().setProperty('SCHEMA_VERSION', String(VERSION));
   } finally { lock.releaseLock(); }
 }
@@ -487,7 +489,7 @@ const ACTIONS = {
     if (['text', 'audio', 'image', 'youtube'].indexOf(kind) < 0) throw new Error('نوع غير صحيح');
     const f = { kind, title: String(p.title || '').slice(0, 200), body: String(p.body || '').slice(0, 5000), file_id: '', url: '' };
     if (kind === 'text' && !f.body.trim()) throw new Error('اكتب النص');
-    if (kind === 'audio' || kind === 'image') { f.file_id = String(p.file_id || ''); if (!f.file_id) throw new Error('ارفع الملف أولًا'); share_(f.file_id); }
+    if (kind === 'audio' || kind === 'image') { f.file_id = String(p.file_id || ''); if (!f.file_id) throw new Error('ارفع الملف أولًا'); if (kind === 'audio') f.file_id = playableAudio_(f.file_id); share_(f.file_id); }
     if (kind === 'youtube') { const v = youtubeId_(p.url); if (!v) throw new Error('رابط يوتيوب غير صحيح'); f.url = v; }
     if (p.item_id) {
       if (!update_('ProphetContent', 'item_id', p.item_id, f)) throw new Error('العنصر غير موجود');
@@ -627,8 +629,11 @@ const ACTIONS = {
     return true;
   },
 
-  // إصلاح تسجيلات البوت القديمة: نوع الملف كان مجهولًا فلا يعمل في المتصفح
-  repairAudio: () => fixAudioTypes_(),
+  // إصلاح التسجيلات القديمة: تحويل Ogg إلى WebM حتى تعمل على آيفون
+  repairAudio: () => convertOldAudio_(),
+
+  // إعدادات العرض: مفتاح Drive API (مقيّد بعنوان الموقع) لتشغيل الصوت بطريقة تدعم آيفون
+  config: () => ({ driveKey: prop_('DRIVE_API_KEY') || '' }),
 
   // ===== كود الفصل (للمعلمات) =====
   classCode: (p, me) => {
@@ -698,8 +703,8 @@ const ACTIONS = {
   createLecture: (p, me) => {
     needTeacher_(me);
     const l = append_('Lectures', { lecture_id: id_('L'), class_id: cls_(me, p), title: p.title, date: p.date || now_().slice(0, 10),
-      audio_file_id: p.audio_file_id, duration_sec: p.duration_sec || '', status: 'draft', created_by: me.user_id, created_at: now_() });
-    share_(p.audio_file_id);
+      audio_file_id: playableAudio_(p.audio_file_id), duration_sec: p.duration_sec || '', status: 'draft', created_by: me.user_id, created_at: now_() });
+    share_(l.audio_file_id);
     return l;
   },
 
@@ -761,7 +766,7 @@ const ACTIONS = {
   systemHealth: () => {
     const ss = ss_();
     const tables = Object.keys(SCHEMA).map(n => { const sh = ss.getSheetByName(n); return { name: n, rows: sh ? Math.max(0, sh.getLastRow() - 1) : -1 }; });
-    const keys = ['BOT_TOKEN', 'HMAC_KEY', 'PIN_SALT', 'WEBHOOK_KEY', 'SITE_ORIGIN', 'ROOT_FOLDER'];
+    const keys = ['BOT_TOKEN', 'HMAC_KEY', 'PIN_SALT', 'WEBHOOK_KEY', 'SITE_ORIGIN', 'ROOT_FOLDER', 'DRIVE_API_KEY'];
     const settings = keys.map(k => ({ key: k, set: !!prop_(k) }));
     const triggers = ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction());
     let bot = null;
@@ -961,11 +966,38 @@ function tgDownload_(file_id, folder, name) {
   const type = guess.indexOf(kind) === 0 ? guess : (kind === 'image/' ? 'image/jpeg' : 'audio/ogg');
   blob.setContentType(type);
   blob.setName(name + '.' + (type === 'audio/ogg' ? 'ogg' : type === 'image/jpeg' ? 'jpg' : ext));
-  const f = DriveApp.getFolderById(prop_('FOLDER_' + folder)).createFile(blob);
+  const f = DriveApp.getFolderById(prop_('FOLDER_' + folder)).createFile(type === 'audio/ogg' ? webmBlob_(blob, name) : blob);
   share_(f.getId());
   return f.getId();
 }
 const MIME_BY_EXT = { oga: 'audio/ogg', ogg: 'audio/ogg', opus: 'audio/ogg', mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+// Ogg/Opus ← WebM/Opus (نفس الصوت). لو فشل التحويل لأي سبب نحتفظ بالملف كما هو
+function webmBlob_(blob, name) {
+  try {
+    const out = oggOpusToWebm_(Uint8Array.from(blob.getBytes()));
+    return Utilities.newBlob(Array.from(out, b => (b > 127 ? b - 256 : b)), 'audio/webm', name + '.webm');
+  } catch (e) { console.error('webm', e); return blob; }
+}
+function isOgg_(f) { return /ogg|opus/.test(f.getMimeType()) || /\.(ogg|oga|opus)$/i.test(f.getName()); }
+// ملف صوت على درايف: لو Ogg نحفظ نسخة WebM ونرجع معرّفها، وإلا نفس المعرّف
+function playableAudio_(id) {
+  try {
+    const f = DriveApp.getFileById(id);
+    if (!isOgg_(f)) return id;
+    const w = webmBlob_(f.getBlob(), String(f.getName()).replace(/\.[^.]+$/, ''));
+    if (w.getContentType() !== 'audio/webm') return id;
+    const copy = DriveApp.getFolderById(prop_('FOLDER_audio')).createFile(w);
+    share_(copy.getId());
+    return copy.getId();
+  } catch (e) { console.error(e); return id; }
+}
+// مرة واحدة: كل تسجيلات المحاضرات وصفحات الأنبياء بصيغة Ogg تتحول WebM (الأصل باقٍ على درايف)
+function convertOldAudio_() {
+  let n = 0;
+  rows_('Lectures').forEach(l => { if (!l.audio_file_id) return; const id = playableAudio_(l.audio_file_id); if (id !== l.audio_file_id) { update_('Lectures', 'lecture_id', l.lecture_id, { audio_file_id: id }); n++; } });
+  rows_('ProphetContent').filter(c => c.kind === 'audio' && c.file_id).forEach(c => { const id = playableAudio_(c.file_id); if (id !== c.file_id) { update_('ProphetContent', 'item_id', c.item_id, { file_id: id }); n++; } });
+  return n;
+}
 // نسخة من كل تسجيل محاضرة نوعه مجهول بالنوع الصحيح، وتحديث المحاضرة لتستخدمها (الأصل يبقى كما هو)
 function fixAudioTypes_() {
   let fixed = 0;
@@ -1290,3 +1322,82 @@ function removePolling() {
 function setRelayWebhook(relayUrl, secret) {
   Logger.log(JSON.stringify(tg_('setWebhook', { url: relayUrl, secret_token: secret, allowed_updates: ['message'], drop_pending_updates: true })));
 }
+
+/* ============ 7) تحويل رسائل تيليجرام الصوتية (Ogg/Opus) إلى WebM/Opus ============
+ * سفاري (آيفون) لا يشغّل Opus داخل Ogg إطلاقًا، لكنه يشغّله داخل WebM. نعيد تغليف نفس الصوت بدون إعادة ترميز:
+ * نقرأ حزم Opus من صفحات Ogg ونكتبها كتلًا في ملف WebM (مع CodecPrivate = OpusHead وجدول Cues للتقديم). */
+function oggOpusToWebm_(src) {
+  // 1) حزم Ogg: كل صفحة = ترويسة 27 بايت + جدول أطوال + بيانات؛ الحزمة تستمر عبر المقاطع 255
+  const packets = [];
+  let cur = [], pos = 0;
+  while (pos + 27 <= src.length) {
+    if (src[pos] !== 0x4F || src[pos + 1] !== 0x67 || src[pos + 2] !== 0x67 || src[pos + 3] !== 0x53) throw new Error('ليس ملف Ogg');
+    const nseg = src[pos + 26];
+    let data = pos + 27 + nseg;
+    for (let i = 0; i < nseg; i++) {
+      const len = src[pos + 27 + i];
+      cur.push(src.subarray(data, data + len));
+      data += len;
+      if (len < 255) { packets.push(concatBytes_(cur)); cur = []; }
+    }
+    pos = data;
+  }
+  if (packets.length < 3) throw new Error('ملف صوتي فارغ');
+  const head = packets[0];
+  if (String.fromCharCode.apply(null, Array.from(head.subarray(0, 8))) !== 'OpusHead') throw new Error('ليس Opus');
+  const channels = head[9], preSkip = head[10] | (head[11] << 8);
+
+  // 2) مدة كل حزمة من بايت TOC (بالـ 48 كيلوهرتز)
+  const FRAME = [480, 960, 1920, 2880, 480, 960, 1920, 2880, 480, 960, 1920, 2880, 480, 960, 480, 960, 120, 240, 480, 960, 120, 240, 480, 960, 120, 240, 480, 960, 120, 240, 480, 960];
+  const samplesOf = (p) => { if (!p.length) return 0; const c = p[0] & 3; return FRAME[p[0] >> 3] * (c === 0 ? 1 : c === 3 ? (p[1] & 0x3F) : 2); };
+
+  // 3) الكتل: عنقود كل ~5 ثوانٍ (التوقيت داخل العنقود 16 بت)
+  const clusters = [];
+  let t = 0, cl = null;
+  for (let i = 2; i < packets.length; i++) {
+    const p = packets[i], ms = Math.round(t / 48);
+    if (!cl || ms - cl.ms > 5000) { cl = { ms, blocks: [] }; clusters.push(cl); }
+    const rel = ms - cl.ms;
+    cl.blocks.push(ebml_(0xA3, concatBytes_([new Uint8Array([0x81, (rel >> 8) & 0xFF, rel & 0xFF, 0x80]), p])));
+    t += samplesOf(p);
+  }
+  const durationMs = Math.max(0, (t - preSkip) / 48);
+  const clusterBytes = clusters.map(c => ebml_(0x1F43B675, concatBytes_([ebmlUint_(0xE7, c.ms)].concat(c.blocks))));
+
+  // 4) الترويسة والمسارات
+  const header = ebml_(0x1A45DFA3, concatBytes_([ebmlUint_(0x4286, 1), ebmlUint_(0x42F7, 1), ebmlUint_(0x42F2, 4), ebmlUint_(0x42F3, 8),
+    ebml_(0x4282, strBytes_('webm')), ebmlUint_(0x4287, 4), ebmlUint_(0x4285, 2)]));
+  const info = ebml_(0x1549A966, concatBytes_([ebmlUint_(0x2AD7B1, 1000000), ebml_(0x4D80, strBytes_('serah')), ebml_(0x5741, strBytes_('serah')), ebmlFloat_(0x4489, durationMs)]));
+  const tracks = ebml_(0x1654AE6B, ebml_(0xAE, concatBytes_([ebmlUint_(0xD7, 1), ebmlUint_(0x73C5, 1), ebmlUint_(0x83, 2), ebml_(0x86, strBytes_('A_OPUS')),
+    ebml_(0x63A2, head), ebmlUint_(0x56AA, Math.round(preSkip * 1e9 / 48000)), ebmlUint_(0x56BB, 80000000),
+    ebml_(0xE1, concatBytes_([ebmlFloat_(0xB5, 48000), ebmlUint_(0x9F, channels)]))])));
+
+  // 5) جدول Cues قبل العناقيد (مواضعها بطول ثابت 8 بايت فيُحسب الحجم مرة واحدة)
+  const cueFor = (c, at) => ebml_(0xBB, concatBytes_([ebmlUint_(0xB3, c.ms, 8), ebml_(0xB7, concatBytes_([ebmlUint_(0xF7, 1), ebmlUint_(0xF1, at, 8)]))]));
+  const cuesSize = ebml_(0x1C53BB6B, concatBytes_(clusters.map(c => cueFor(c, 0)))).length;
+  let at = info.length + tracks.length + cuesSize;
+  const cues = ebml_(0x1C53BB6B, concatBytes_(clusters.map((c, i) => { const cue = cueFor(c, at); at += clusterBytes[i].length; return cue; })));
+  return concatBytes_([header, ebml_(0x18538067, concatBytes_([info, tracks, cues].concat(clusterBytes)))]);
+}
+function concatBytes_(list) {
+  let n = 0; list.forEach(a => n += a.length);
+  const out = new Uint8Array(n); let o = 0;
+  list.forEach(a => { out.set(a, o); o += a.length; });
+  return out;
+}
+function strBytes_(s) { return Uint8Array.from(String(s).split('').map(c => c.charCodeAt(0))); }
+// عنصر EBML: المعرّف + الحجم (8 بايت دائمًا للتبسيط) + البيانات
+function ebml_(id, data) {
+  const idBytes = []; for (let v = id; v > 0; v = Math.floor(v / 256)) idBytes.unshift(v & 0xFF);
+  const size = new Uint8Array(8); let n = data.length;
+  for (let i = 7; i > 0; i--) { size[i] = n & 0xFF; n = Math.floor(n / 256); }
+  size[0] = 0x01;
+  return concatBytes_([Uint8Array.from(idBytes), size, data]);
+}
+function ebmlUint_(id, v, width) {
+  const b = []; let n = Math.round(v);
+  do { b.unshift(n & 0xFF); n = Math.floor(n / 256); } while (n > 0);
+  while (width && b.length < width) b.unshift(0);
+  return ebml_(id, Uint8Array.from(b));
+}
+function ebmlFloat_(id, v) { const b = new Uint8Array(8); new DataView(b.buffer).setFloat64(0, v); return ebml_(id, b); }

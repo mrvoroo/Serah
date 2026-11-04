@@ -3,7 +3,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { api, driveAudio, fmtDate, fmtDur, session, type Lecture } from "@/lib/api";
+import { api, fmtDate, fmtDur, session, type Lecture } from "@/lib/api";
+import { useAudioUrl } from "@/hooks/use-media-key";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,7 @@ import { Icon3D } from "@/components/icon3d";
 
 export default function TeacherLectures() {
   const { data, loading, reload } = useApi<Lecture[]>("lectures");
+  const audioUrl = useAudioUrl();
   const [filter, setFilter] = useState<"all" | "draft" | "published">("all");
   const [pending, setPending] = useState<string | null>(null);
   const list = (data ?? []).filter((l) => filter === "all" || l.status === filter);
@@ -67,7 +69,7 @@ export default function TeacherLectures() {
                   </div>
                   {l.status === "published" ? <Badge className="rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">منشورة</Badge> : <Badge className="rounded-full bg-gold text-[#3A2400]">مسودة</Badge>}
                 </div>
-                <audio controls preload="none" src={driveAudio(l.audio_file_id)} className="w-full" />
+                <audio controls preload="metadata" src={audioUrl(l.audio_file_id)} className="w-full" />
                 <div className="flex gap-2">
                   <Button variant="secondary" size="lg2" className="flex-1" aria-label={`تعديل ${l.title}`} onClick={() => setEditing(l)}><Pencil /> تعديل والصور</Button>
                   {(l.status === "draft" || isAdmin) && <Button variant="ghost" size="icon-xl" className="text-destructive" aria-label={`حذف ${l.title}`} onClick={() => setDelFor(l)}><Trash2 /></Button>}
