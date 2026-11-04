@@ -35,7 +35,7 @@ export default function StudentsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><Icon3D name="cap" size={48} /><div><h1 className="font-heading text-2xl font-extrabold">الطلاب</h1><p className="text-sm text-muted-foreground">{data?.length ?? 0} طفل في الفصل</p></div></div>
+        <div className="flex items-center gap-3"><Icon3D name="cap" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">الطلاب</h1><p className="text-sm text-muted-foreground">{data?.length ?? 0} طفل في الفصل</p></div></div>
         <Button variant="hero" size="lg2" onClick={() => { setName(""); setPin(""); setAdd(true); }}><Plus /> إضافة طفل</Button>
       </div>
 

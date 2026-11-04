@@ -26,7 +26,7 @@ export default function AuditPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3"><Icon3D name="clipboard" size={48} /><div><h1 className="font-heading text-2xl font-extrabold">سجل العمليات</h1><p className="text-sm text-muted-foreground">كل تعديل إداري: من، ماذا، ومتى</p></div></div>
+      <div className="flex items-center gap-3"><Icon3D name="clipboard" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">سجل العمليات</h1><p className="text-sm text-muted-foreground">كل تعديل إداري: من، ماذا، ومتى</p></div></div>
       <div className="relative">
         <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث بالاسم أو العملية" aria-label="بحث في السجل" className="h-11 rounded-2xl ps-9" />

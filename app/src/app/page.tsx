@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
@@ -29,6 +29,7 @@ export default function Welcome() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [mood, setMood] = useState<Mood>("helping");
+  const pinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const u = session.user();
@@ -50,7 +51,9 @@ export default function Welcome() {
     try {
       const d = await api<{ token: string; user: User }>("login", { user_id: kid.user_id, pin: value });
       session.save(d); setMood("happy"); router.replace("/kid/");
-    } catch (e2) { setErr((e2 as Error).message); setPin(""); setMood("cheer"); }
+    } catch (e2) { setErr((e2 as Error).message); setPin(""); setMood("surprised");
+      // الخانة تتعطل أثناء التحقق فتفقد التركيز؛ نرجعه حتى يكتب الطفل مرة ثانية مباشرة
+      setTimeout(() => pinRef.current?.focus(), 50); }
     finally { setBusy(false); }
   };
 
@@ -69,7 +72,7 @@ export default function Welcome() {
             {step === "code" && (
               <motion.form key="code" onSubmit={submitCode} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="flex flex-col gap-3">
                 <Label htmlFor="code" className="justify-center font-heading text-xl font-extrabold">اكتب كود الفصل</Label>
-                <Input id="code" inputMode="numeric" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} placeholder="مثلًا 7391" className={cn("h-16 rounded-2xl text-center font-heading text-3xl placeholder:text-xl placeholder:tracking-normal", code && "tracking-[0.4em]")} />
+                <Input id="code" inputMode="numeric" autoComplete="off" value={code} onChange={(e) => { setCode(e.target.value); setMood("happy"); }} placeholder="مثلًا 7391" className={cn("h-16 rounded-2xl text-center font-heading text-3xl placeholder:text-xl placeholder:tracking-normal", code && "tracking-[0.4em]")} />
                 <Button type="submit" variant="gold" size="xl" disabled={busy || !code.trim()}>
                   {busy ? <Loader2 className="animate-spin" /> : <>يلا نبدأ الرحلة <ArrowLeft /></>}
                 </Button>
@@ -100,7 +103,7 @@ export default function Welcome() {
                 <KidAvatar value={kid.avatar} size={64} />
                 <p className="font-heading text-xl font-extrabold">أهلًا يا {kid.name}! اكتب رمزك</p>
                 <div dir="ltr">
-                  <InputOTP maxLength={4} value={pin} onChange={(v) => { setPin(v); if (v.length === 4) login(v); }} inputMode="numeric" autoFocus disabled={busy}>
+                  <InputOTP ref={pinRef} maxLength={4} value={pin} onChange={(v) => { setPin(v); setMood("thinking"); if (v.length === 4) login(v); }} inputMode="numeric" autoFocus disabled={busy}>
                     <InputOTPGroup className="gap-2">
                       {[0, 1, 2, 3].map((i) => <InputOTPSlot key={i} index={i} className="size-16 rounded-2xl border text-3xl font-heading" />)}
                     </InputOTPGroup>

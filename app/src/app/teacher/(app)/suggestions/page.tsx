@@ -9,7 +9,7 @@ export default function SuggestionsPage() {
   const { data, loading } = useApi<Suggestion[]>("suggestions");
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3"><Icon3D name="speech" size={48} /><div><h1 className="font-heading text-2xl font-extrabold">الاقتراحات</h1><p className="text-sm text-muted-foreground">أفكار الأطفال والمعلمات</p></div></div>
+      <div className="flex items-center gap-3"><Icon3D name="speech" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">الاقتراحات</h1><p className="text-sm text-muted-foreground">أفكار الأطفال والمعلمات</p></div></div>
       {loading && !data ? <Skeleton className="h-24 rounded-[24px]" /> : (
         <ul className="flex flex-col gap-3">
           {data?.map((s, i) => (

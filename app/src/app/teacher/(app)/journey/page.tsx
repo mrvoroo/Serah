@@ -2,7 +2,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, DownloadCloud, GripVertical, Loader2, Map, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, DownloadCloud, GripVertical, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Icon3D } from "@/components/icon3d";
 import { api } from "@/lib/api";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { useRequireRole } from "@/components/kid/kid-shell";
@@ -48,7 +49,7 @@ export default function JourneyAdmin() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="grid size-12 place-items-center rounded-2xl bg-hero text-white"><Map className="size-6" /></span>
+        <Icon3D name="rocket" size={48} float />
         <div className="flex-1"><h1 className="font-heading text-2xl font-extrabold">رحلة الأنبياء</h1><p className="text-sm text-muted-foreground">ترتيب الأقسام وإظهارها ومحتوى صفحة كل نبي</p></div>
         {!!data?.length && <Button variant="hero" size="lg2" onClick={() => setForm({ ...EMPTY })}><Plus /> إضافة نبي</Button>}
       </div>

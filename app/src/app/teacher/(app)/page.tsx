@@ -5,6 +5,7 @@ import { Bar, BarChart, Area, AreaChart, CartesianGrid, XAxis, YAxis } from "rec
 import { session, fmtDate, type Dashboard } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { Icon3D, type Icon3DName } from "@/components/icon3d";
+import { Zaid } from "@/components/zaid";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { MagicCard } from "@/components/ui/magic-card";
@@ -48,10 +49,14 @@ export default function TeacherHome() {
   return (
     <div className="flex flex-col gap-4">
       <BlurFade>
-        <div className="relative overflow-hidden rounded-[28px] bg-hero p-5 text-white shadow-soft">
-          <p className="text-white/80">السلام عليكم</p>
-          <h1 className="font-heading text-2xl font-extrabold lg:text-3xl">أهلًا {user?.name}</h1>
-          <p className="mt-1 text-white/85">{data?.drafts ? `عندك ${data.drafts} محاضرة تحتاج مراجعة قبل النشر` : "كل المحاضرات منشورة، ما شاء الله"}</p>
+        <div className="relative flex items-center gap-3 overflow-hidden rounded-[28px] bg-hero p-5 text-white shadow-soft">
+          {/* بيانات لسه بتتحمل → يرحب، مسودات تنتظر المراجعة → يفكر، كله منشور → يفرح */}
+          <Zaid mood={!data ? "helping" : data.drafts ? "thinking" : "happy"} size={96} />
+          <div className="min-w-0 flex-1">
+            <p className="text-white/80">السلام عليكم</p>
+            <h1 className="font-heading text-2xl font-extrabold lg:text-3xl">أهلًا {user?.name}</h1>
+            <p className="mt-1 text-white/85">{data?.drafts ? `عندك ${data.drafts} محاضرة تحتاج مراجعة قبل النشر` : "كل المحاضرات منشورة، ما شاء الله"}</p>
+          </div>
         </div>
       </BlurFade>
 
@@ -78,7 +83,7 @@ export default function TeacherHome() {
         {stats.map((s, i) => (
           <BlurFade key={s.label} delay={0.2 + i * 0.04}>
             <div className="flex items-center gap-3 rounded-[24px] border bg-card p-4 shadow-soft">
-              <Icon3D name={s.icon} size={42} />
+              <Icon3D name={s.icon} size={42} float delay={0.15 + i * 0.3} />
               <div className="min-w-0">
                 {loading && !data ? <Skeleton className="h-8 w-12" /> : <NumberTicker value={s.value} className="font-heading text-2xl font-extrabold" />}
                 <p className="truncate text-xs text-muted-foreground">{s.label}</p>

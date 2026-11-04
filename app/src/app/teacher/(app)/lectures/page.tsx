@@ -31,7 +31,7 @@ export default function TeacherLectures() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><Icon3D name="headphone" size={48} /><div><h1 className="font-heading text-2xl font-extrabold">المحاضرات</h1><p className="text-sm text-muted-foreground">استمعي للمسودة ثم انشريها بعد المراجعة</p></div></div>
+        <div className="flex items-center gap-3"><Icon3D name="headphone" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">المحاضرات</h1><p className="text-sm text-muted-foreground">استمعي للمسودة ثم انشريها بعد المراجعة</p></div></div>
         <Link href="/teacher/upload/" className={buttonVariants({ variant: "hero", size: "lg2" })}><Plus /> رفع تسجيل</Link>
       </div>
       <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>

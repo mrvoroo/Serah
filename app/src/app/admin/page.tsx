@@ -42,7 +42,7 @@ export default function AdminHome() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><Icon3D name="gear" size={48} /><div><h1 className="font-heading text-2xl font-extrabold">لوحة المطوّر</h1>
+        <div className="flex items-center gap-3"><Icon3D name="gear" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">لوحة المطوّر</h1>
           <p className="text-sm text-muted-foreground">{h ? `الخلفية: النسخة ${h.version}` : "جاري التحميل…"}</p></div></div>
         <Button variant="secondary" size="lg2" onClick={refresh} aria-label="تحديث"><RefreshCw /> تحديث</Button>
       </div>
@@ -66,7 +66,7 @@ export default function AdminHome() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {([["الأطفال", "student", "students"], ["المعلمات", "teacher", "cap"], ["المعلمات الأدمن", "admin", "crown"], ["الحسابات المقفولة", null, "key"]] as [string, Role | null, Icon3DName][]).map(([label, r, icon]) => (
           <div key={label} className={cn(card, "flex items-center gap-3")}>
-            <Icon3D name={icon} size={40} />
+            <Icon3D name={icon} size={40} float delay={0.2} />
             <div><p className="text-sm text-muted-foreground">{label}</p>
               <p className="font-heading text-2xl font-extrabold">{users.loading && !users.data ? "…" : r ? count(r) : h?.lockedAccounts ?? "…"}</p></div>
           </div>

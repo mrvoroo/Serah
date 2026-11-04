@@ -52,7 +52,7 @@ export default function UploadPage() {
 
   return (
     <form onSubmit={send} className="mx-auto flex max-w-xl flex-col gap-4">
-      <div className="flex items-center gap-3"><Icon3D name="mic" size={48} /><div><h1 className="font-heading text-2xl font-extrabold">رفع تسجيل محاضرة</h1><p className="text-sm text-muted-foreground">للملفات الكبيرة (أكبر من ٢٠ ميجا) أو من الكمبيوتر</p></div></div>
+      <div className="flex items-center gap-3"><Icon3D name="mic" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">رفع تسجيل محاضرة</h1><p className="text-sm text-muted-foreground">للملفات الكبيرة (أكبر من ٢٠ ميجا) أو من الكمبيوتر</p></div></div>
       <div className="flex flex-col gap-2 rounded-[24px] border bg-card p-5 shadow-soft">
         <Label htmlFor="lt">اسم المحاضرة</Label>
         <Input id="lt" value={title} onChange={(e) => setTitle(e.target.value)} required className="h-12 rounded-xl text-base" placeholder="مثلًا: قصة سيدنا نوح" />

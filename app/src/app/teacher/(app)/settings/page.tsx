@@ -28,10 +28,10 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3"><Icon3D name="gear" size={48} /><h1 className="font-heading text-2xl font-extrabold">الإعدادات</h1></div>
+      <div className="flex items-center gap-3"><Icon3D name="gear" size={48} float /><h1 className="font-heading text-2xl font-extrabold">الإعدادات</h1></div>
       <div className="grid gap-4 lg:grid-cols-2">
         <form onSubmit={saveCode} className="flex flex-col gap-3 rounded-[24px] border bg-card p-5 shadow-soft">
-          <div className="flex items-center gap-2"><Icon3D name="key" size={32} /><h2 className="font-heading text-lg font-extrabold">كود الفصل</h2></div>
+          <div className="flex items-center gap-2"><Icon3D name="key" size={32} float /><h2 className="font-heading text-lg font-extrabold">كود الفصل</h2></div>
           <p className="text-sm text-muted-foreground">الأطفال يكتبونه أول مرة للدخول</p>
           <div className="flex gap-2">
             <Input aria-label="كود الفصل" value={code} onChange={(e) => setCode(e.target.value)} className="h-12 rounded-xl text-center font-heading text-2xl tracking-[0.3em]" dir="ltr" />
@@ -40,7 +40,7 @@ export default function SettingsPage() {
           <Button type="submit" variant="hero" size="lg2" disabled={busy === "code" || !code.trim()}>{busy === "code" ? <Loader2 className="animate-spin" /> : "حفظ الكود"}</Button>
         </form>
         <form onSubmit={savePin} className="flex flex-col gap-3 rounded-[24px] border bg-card p-5 shadow-soft">
-          <div className="flex items-center gap-2"><Icon3D name="key" size={32} /><h2 className="font-heading text-lg font-extrabold">رمزي السري</h2></div>
+          <div className="flex items-center gap-2"><Icon3D name="key" size={32} float /><h2 className="font-heading text-lg font-extrabold">رمزي السري</h2></div>
           <Label htmlFor="op">الرمز الحالي</Label>
           <Input id="op" type="password" inputMode="numeric" value={oldPin} onChange={(e) => setOld(e.target.value)} autoComplete="current-password" className="h-12 rounded-xl" required />
           <Label htmlFor="np">الرمز الجديد</Label>
