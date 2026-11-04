@@ -12,6 +12,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BlurFade } from "@/components/ui/blur-fade";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 export default function TeacherLogin() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function TeacherLogin() {
   const [err, setErr] = useState("");
   // لو خرجت بسبب إيقاف الحساب أو انتهاء الجلسة نوضح السبب
   const reason = useSyncExternalStore(() => () => {}, logoutReason, () => "");
+  const ready = useHydrated();
   // المرشدة ترحّب، وتُسرّ وهي تكتب اسمها، وتتأمل مع الرمز وأثناء التحقق، وتندهش بهدوء من أي خطأ، وتُسرّ عند الدخول
   const [mood, setMood] = useState<Mood>("helping");
   const submit = async (e: React.FormEvent) => {
@@ -52,9 +54,9 @@ export default function TeacherLogin() {
         </div>
         <form onSubmit={submit} className="flex w-full flex-col gap-3 rounded-[28px] border bg-card/90 p-5 shadow-soft backdrop-blur-md">
           <Label htmlFor="tn">الاسم</Label>
-          <Input id="tn" value={name} onChange={(e) => { setName(e.target.value); setMood("happy"); }} onFocus={() => !busy && setMood("happy")} autoComplete="username" className="h-12 rounded-xl text-base" required />
+          <Input id="tn" disabled={!ready} value={name} onChange={(e) => { setName(e.target.value); setMood("happy"); }} onFocus={() => !busy && setMood("happy")} autoComplete="username" className="h-12 rounded-xl text-base" required />
           <Label htmlFor="tp">الرمز السري</Label>
-          <Input id="tp" type="password" inputMode="numeric" value={pin} onChange={(e) => { setPin(e.target.value); setMood("thinking"); }} onFocus={() => !busy && setMood("thinking")} autoComplete="current-password" className="h-12 rounded-xl text-base" required />
+          <Input id="tp" disabled={!ready} type="password" inputMode="numeric" value={pin} onChange={(e) => { setPin(e.target.value); setMood("thinking"); }} onFocus={() => !busy && setMood("thinking")} autoComplete="current-password" className="h-12 rounded-xl text-base" required />
           <Button type="submit" variant="hero" size="xl" disabled={busy}>{busy ? <Loader2 className="animate-spin" /> : <>دخول <LogIn /></>}</Button>
           <p role="alert" className="min-h-5 text-center text-sm font-bold text-destructive">{err || reason}</p>
         </form>

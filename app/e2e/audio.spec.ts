@@ -37,7 +37,8 @@ async function mock(page: Page, driveKey: string) {
   return hits;
 }
 
-test("مع مفتاح Drive API: المشغّل يستخدم googleapis، والتسجيل المحوّل يشتغل بمدته الصحيحة", async ({ page }) => {
+test("مع مفتاح Drive API: المشغّل يستخدم googleapis، والتسجيل المحوّل يشتغل بمدته الصحيحة", async ({ page, browserName }) => {
+  test.skip(browserName === "webkit", "WebKit على ويندوز لا يشغّل أي صوت");
   const hits = await mock(page, "AIza-test");
   await page.goto("/Serah/teacher/lectures/");
   const audio = page.locator("audio").first();
@@ -81,7 +82,8 @@ const durationOf = (a: HTMLAudioElement) => new Promise<number>((res, rej) => {
   setTimeout(() => rej(new Error("no metadata: " + a.src.slice(0, 40))), 10000);
 });
 
-test("درايف يرفض الرابط: صفحة المحاضرات تجهّز التسجيل من الخلفية وتشغّله", async ({ page }) => {
+test("درايف يرفض الرابط: صفحة المحاضرات تجهّز التسجيل من الخلفية وتشغّله", async ({ page, browserName }) => {
+  test.skip(browserName === "webkit", "WebKit على ويندوز لا يشغّل أي صوت");
   const chunks = await brokenDrive(page);
   await page.addInitScript((u) => { localStorage.setItem("serah_token", "t"); localStorage.setItem("serah_user", JSON.stringify(u)); }, TEACHER);
   await page.goto("/Serah/teacher/lectures/");
@@ -94,7 +96,8 @@ test("درايف يرفض الرابط: صفحة المحاضرات تجهّز �
   expect(d).toBeGreaterThan(2.9); expect(d).toBeLessThan(3.1);
 });
 
-test("درايف يرفض الرابط: مشغّل الطفل يجهّز التسجيل تلقائيًا ويشغّله", async ({ page }) => {
+test("درايف يرفض الرابط: مشغّل الطفل يجهّز التسجيل تلقائيًا ويشغّله", async ({ page, browserName }) => {
+  test.skip(browserName === "webkit", "WebKit على ويندوز لا يشغّل أي صوت");
   await brokenDrive(page);
   await page.addInitScript(() => { localStorage.setItem("serah_token", "t"); localStorage.setItem("serah_user", JSON.stringify({ user_id: "S1", name: "يوسف", role: "student", class_id: "C1", avatar: "🌟" })); });
   await page.goto("/Serah/kid/lecture/?id=L1");

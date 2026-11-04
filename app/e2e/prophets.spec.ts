@@ -68,7 +68,7 @@ test("صفحة النبي للطفل: نص وفيديو يوتيوب ومحاض�
   });
   await as(page, KID);
   await page.goto("/Serah/kid/prophet/?id=noah");
-  await expect(page.getByRole("heading", { name: "سيدنا نوح عليه السلام" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "سيدنا نوح عليه السلام", exact: true })).toBeVisible();
   await expect(page.getByText("بنى السفينة بأمر الله")).toBeVisible();
   const frame = page.locator("iframe[title='فيديو القصة']");
   await expect(frame).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0");

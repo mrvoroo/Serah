@@ -37,7 +37,7 @@ test("الموبايل: الشريط العلوي يعرض «٣ من ٢٥ — س
   await scrollTo(page, "noah");
   await expect(bar).toHaveText("٣ من ٢٥ — سيدنا نوح");
   await scrollTo(page, "muhammad");
-  await expect(bar).toHaveText("٢٥ من ٢٥ — سيدنا محمد");
+  await expect(bar).toHaveText("٢٥ من ٢٥ — سيدنا محمد ﷺ");
   // الشريط لا يغطي البطاقة
   const b = (await bar.boundingBox())!, card = (await page.locator("#station-muhammad [data-card]").boundingBox())!;
   expect(b.y + b.height).toBeLessThan(card.y);

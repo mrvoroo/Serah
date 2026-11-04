@@ -33,7 +33,7 @@ export default function UploadPage() {
   const pickProphet = (v: string) => {
     setProphet(v);
     const name = prophets.find((p) => p.value === v)?.label.replace(/\s*ﷺ\s*$/, "");
-    const next = !name ? "" : v === "muhammad" ? "من سيرة سيدنا محمد ﷺ" : `قصة سيدنا ${name}`;
+    const next = !name ? "" : v === "muhammad" ? "من سيرة سيدنا محمد ﷺ" : `قصة سيدنا ${name} عليه السلام`;
     if (!title.trim() || title === suggested) setTitle(next);
     setSuggested(next);
   };

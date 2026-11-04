@@ -98,9 +98,9 @@ test("الرفع من الموقع: اختيار النبي يقترح العن�
   const calls = await mock(page, TEACHER);
   await page.goto("/Serah/teacher/upload/");
   await page.getByLabel("المحاضرة عن أي نبي؟").selectOption("yusuf");
-  await expect(page.getByLabel("اسم المحاضرة")).toHaveValue("قصة سيدنا يوسف");
+  await expect(page.getByLabel("اسم المحاضرة")).toHaveValue("قصة سيدنا يوسف عليه السلام");
   await page.locator("input[type=file]").setInputFiles({ name: "a.mp3", mimeType: "audio/mpeg", buffer: Buffer.from("ID3") });
   await page.getByRole("button", { name: /رفع|ارفعي|إرسال/ }).last().click();
-  await expect.poll(() => calls.find((c) => c.action === "createLecture")).toMatchObject({ title: "قصة سيدنا يوسف", audio_file_id: "new-file" });
+  await expect.poll(() => calls.find((c) => c.action === "createLecture")).toMatchObject({ title: "قصة سيدنا يوسف عليه السلام", audio_file_id: "new-file" });
   await expect.poll(() => calls.find((c) => c.action === "updateLecture")).toMatchObject({ lecture_id: "L7", prophet_id: "yusuf" });
 });

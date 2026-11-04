@@ -14,7 +14,7 @@ export const SYMBOL_OPTIONS: { value: string; label: string }[] = [
   { value: "kaaba", label: "الكعبة" },
   { value: "staff", label: "العصا والبحر المنشق" },
   { value: "yusuf_dream", label: "الشمس والقمر والكواكب" },
-  { value: "whale", label: "الحوت الأزرق" },
+  { value: "whale", label: "الحوت" },
   { value: "mushaf", label: "المصحف المغلق" },
   { value: "book", label: "المصحف المفتوح" },
   { value: "dome", label: "المسجد النبوي" },

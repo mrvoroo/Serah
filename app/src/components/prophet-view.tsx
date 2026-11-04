@@ -41,6 +41,8 @@ function Item({ it }: { it: ContentItem }) {
 
 export function ProphetView({ prophet, items, lectures }: { prophet: ProphetRow; items: ContentItem[]; lectures?: Lecture[] }) {
   const name = prophet.name.replace(/\s*ﷺ\s*$/, "");
+  // اللقب الواجب بعد الاسم: «ﷺ» لنبينا محمد، و«عليه السلام» لباقي الأنبياء
+  const honored = `${name} ${prophet.prophet_id === "muhammad" ? "ﷺ" : "عليه السلام"}`;
   const related = (lectures ?? []).filter((l) => l.prophet_id === prophet.prophet_id || String(l.title).includes(name));
   return (
     <div className="flex flex-col gap-4">
@@ -52,12 +54,12 @@ export function ProphetView({ prophet, items, lectures }: { prophet: ProphetRow;
 
       {items.map((it) => <Item key={it.item_id} it={it} />)}
       {items.length === 0 && (
-        <p className="rounded-[28px] border bg-card p-6 text-center text-muted-foreground">قريبًا محتوى جديد عن سيدنا {name} ✨</p>
+        <p className="rounded-[28px] border bg-card p-6 text-center text-muted-foreground">قريبًا محتوى جديد عن سيدنا {honored} ✨</p>
       )}
 
       {related.length > 0 && (
         <section className="rounded-[28px] border bg-card p-4 shadow-soft">
-          <h2 className="mb-3 flex items-center gap-2 font-heading text-xl font-extrabold"><Headphones className="size-5 text-gold" /> محاضرات عن سيدنا {name}</h2>
+          <h2 className="mb-3 flex items-center gap-2 font-heading text-xl font-extrabold"><Headphones className="size-5 text-gold" /> محاضرات عن سيدنا {honored}</h2>
           <ul className="grid gap-2">
             {related.map((l) => (
               <li key={l.lecture_id}>

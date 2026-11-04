@@ -192,7 +192,7 @@ export function Journey({ stations }: { stations: Station[] }) {
   const menuItems = useMemo(() => buildMenu(stations), [stations]);
   const ci = stations.findIndex((s) => s.id === current), pi = prophets.findIndex((s) => s.id === current);
   // الأنبياء محطات ١..عددهم، والبداية والسيرة والقرآن بأسمائها فقط
-  const pos = pi >= 0 ? `${(pi + 1).toLocaleString("ar-EG")} من ${prophets.length.toLocaleString("ar-EG")} — ${stations[ci].label}` : stations[ci].label;
+  const pos = pi >= 0 ? `${(pi + 1).toLocaleString("ar-EG")} من ${prophets.length.toLocaleString("ar-EG")} — ${stations[ci].label}${stations[ci].id === "muhammad" ? " ﷺ" : ""}` : stations[ci].label;
 
   // إبقاء المحطة الحالية ظاهرة داخل لوحة القائمة (بعد انتهاء طيّ وفتح الأقسام)
   useEffect(() => {
@@ -298,6 +298,10 @@ export function Journey({ stations }: { stations: Station[] }) {
                   ) : isProphet(s) ? (
                     <Link href={`/kid/prophet/?id=${s.id}`} className={buttonVariants({ variant: "gold", size: "lg2" })}>
                       <BookOpen /> ادخل الصفحة
+                    </Link>
+                  ) : s.id === "quran" ? (
+                    <Link href="/kid/quran/" className={buttonVariants({ variant: "gold", size: "lg2" })}>
+                      <BookOpen /> اسمع واقرأ القرآن
                     </Link>
                   ) : (
                     <Link href="/kid/lectures/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>

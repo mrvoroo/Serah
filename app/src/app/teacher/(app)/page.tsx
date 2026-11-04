@@ -55,7 +55,7 @@ export default function TeacherHome() {
           <div className="min-w-0 flex-1">
             <p className="text-white/80">السلام عليكم ورحمة الله وبركاته</p>
             <h1 className="font-heading text-2xl font-extrabold lg:text-3xl">مرحبًا بكِ، {user?.name}</h1>
-            <p className="mt-1 text-white/85">{data?.drafts ? `لديكِ ${data.drafts.toLocaleString("ar-EG")} محاضرة بانتظار مراجعتكِ الكريمة قبل النشر` : "جزاكِ الله خيرًا، جميع المحاضرات منشورة"}</p>
+            <p className="mt-1 text-white/85">{data?.drafts ? `لديكِ ${data.drafts.toLocaleString("ar-EG")} محاضرة بانتظار مراجعتكِ الكريمة قبل النشر` : "الحمد لله، جميع المحاضرات منشورة"}</p>
           </div>
         </div>
       </BlurFade>

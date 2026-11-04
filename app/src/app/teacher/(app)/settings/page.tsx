@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Copy, ExternalLink, Loader2, Send } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, session, type User } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ export default function SettingsPage() {
   };
   const savePin = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy("pin");
-    try { await api("changeMyPin", { oldPin, newPin }); toast.success("تم تغيير رمزك"); setOld(""); setNew(""); } catch (e2) { toast.error((e2 as Error).message); } finally { setBusy(null); }
+    try { const r = await api<{ token: string; user: User }>("changeMyPin", { oldPin, newPin }); if (r?.token) session.save(r); toast.success("تم تغيير رمزك"); setOld(""); setNew(""); } catch (e2) { toast.error((e2 as Error).message); } finally { setBusy(null); }
   };
 
   return (
@@ -49,8 +49,8 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2"><Icon3D name="key" size={32} float /><h2 className="font-heading text-lg font-extrabold">رمزي السري</h2></div>
           <Label htmlFor="op">الرمز الحالي</Label>
           <Input id="op" type="password" inputMode="numeric" value={oldPin} onChange={(e) => setOld(e.target.value)} autoComplete="current-password" className="h-12 rounded-xl" required />
-          <Label htmlFor="np">الرمز الجديد</Label>
-          <Input id="np" type="password" inputMode="numeric" value={newPin} onChange={(e) => setNew(e.target.value)} autoComplete="new-password" className="h-12 rounded-xl" required minLength={4} />
+          <Label htmlFor="np">الرمز الجديد (٦ أرقام على الأقل)</Label>
+          <Input id="np" type="password" inputMode="numeric" value={newPin} onChange={(e) => setNew(e.target.value)} autoComplete="new-password" className="h-12 rounded-xl" required minLength={6} />
           <Button type="submit" variant="hero" size="lg2" disabled={busy === "pin"}>{busy === "pin" ? <Loader2 className="animate-spin" /> : "تغيير الرمز"}</Button>
         </form>
         <section className="flex flex-col gap-3 rounded-[24px] border bg-card p-5 shadow-soft lg:col-span-2">

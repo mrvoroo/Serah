@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 type ClassInfo = { class_id: string; name: string; kids: Kid[] };
 
@@ -29,6 +30,7 @@ export default function Welcome() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [mood, setMood] = useState<Mood>("helping");
+  const ready = useHydrated();
   const pinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function Welcome() {
             {step === "code" && (
               <motion.form key="code" onSubmit={submitCode} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="flex flex-col gap-3">
                 <Label htmlFor="code" className="justify-center font-heading text-xl font-extrabold">اكتب كود الفصل</Label>
-                <Input id="code" inputMode="numeric" autoComplete="off" value={code} onChange={(e) => { setCode(e.target.value); setMood("happy"); }} placeholder="مثلًا 7391" className={cn("h-16 rounded-2xl text-center font-heading text-3xl placeholder:text-xl placeholder:tracking-normal", code && "tracking-[0.4em]")} />
+                <Input id="code" inputMode="numeric" autoComplete="off" disabled={!ready} value={code} onChange={(e) => { setCode(e.target.value); setMood("happy"); }} placeholder="مثلًا 7391" className={cn("h-16 rounded-2xl text-center font-heading text-3xl placeholder:text-xl placeholder:tracking-normal", code && "tracking-[0.4em]")} />
                 <Button type="submit" variant="gold" size="xl" disabled={busy || !code.trim()}>
                   {busy ? <Loader2 className="animate-spin" /> : <>يلا نبدأ الرحلة <ArrowLeft /></>}
                 </Button>

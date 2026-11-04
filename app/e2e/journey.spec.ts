@@ -52,7 +52,8 @@ test("كل محطة لها مجسم واسم، بالترتيب ذهابًا و�
   expect(errors).toEqual([]);
 });
 
-test("نوح ← طلوع بسيط ← نزول: لا يعلق على الهلال (مع تغيّر مقاس الشاشة)", async ({ page }) => {
+test("نوح ← طلوع بسيط ← نزول: لا يعلق على الهلال (مع تغيّر مقاس الشاشة)", async ({ page, browserName }) => {
+  test.skip(browserName === "webkit", "عجلة الماوس غير مدعومة في WebKit الموبايل (اللمس يُختبر يدويًا)");
   await open(page);
   for (let round = 0; round < 6; round++) {
     await scrollToStation(page, "noah", 0.5);
@@ -74,7 +75,8 @@ test("نوح ← طلوع بسيط ← نزول: لا يعلق على الهلا
   }
 });
 
-test("لعب الطفل: سكرول عشوائي سريع لأعلى ولأسفل ثم التوقف عند أي نقطة", async ({ page }) => {
+test("لعب الطفل: سكرول عشوائي سريع لأعلى ولأسفل ثم التوقف عند أي نقطة", async ({ page, browserName }) => {
+  test.skip(browserName === "webkit", "عجلة الماوس غير مدعومة في WebKit الموبايل (اللمس يُختبر يدويًا)");
   await open(page);
   await page.mouse.move(300, 300);
   let seed = 7;

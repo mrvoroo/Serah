@@ -82,11 +82,14 @@ function rows_(name) {
   const head = v.shift();
   return v.map(r => { const o = {}; head.forEach((h, i) => o[h] = r[i]); return o; });
 }
+// منع حقن الصيغ: نص يبدأ بـ = + - @ يُنفَّذ كصيغة في Sheets (مثل IMPORTXML لتسريب البيانات)،
+// فنسبقه بـ ' ليُخزَّن نصًا. القراءة (getValues) ترجع النص الأصلي بدون '
+function cell_(v) { return typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? "'" + v : v; }
 // يكتب الصف حسب أعمدة الورقة الفعلية (لا حسب ترتيب SCHEMA) حتى تبقى الأعمدة المضافة لاحقًا في مكانها الصحيح
 function append_(name, obj) {
   const sh = ss_().getSheetByName(name) || ensureSheet_(name);
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  sh.appendRow(head.map(h => obj[h] === undefined ? '' : obj[h]));
+  sh.appendRow(head.map(h => obj[h] === undefined ? '' : cell_(obj[h])));
   return obj;
 }
 function audit_(me, action, target_type, target_id, details) {
@@ -101,7 +104,7 @@ function update_(name, keyCol, keyVal, patch) {
   const head = v[0], ki = head.indexOf(keyCol);
   for (let i = 1; i < v.length; i++) {
     if (String(v[i][ki]) === String(keyVal)) {
-      Object.keys(patch).forEach(k => { const ci = head.indexOf(k); if (ci >= 0) sh.getRange(i + 1, ci + 1).setValue(patch[k]); });
+      Object.keys(patch).forEach(k => { const ci = head.indexOf(k); if (ci >= 0) sh.getRange(i + 1, ci + 1).setValue(cell_(patch[k])); });
       return true;
     }
   }
@@ -139,21 +142,30 @@ function hashPin_(pin) {
 function sign_(s) {
   return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(s, prop_('HMAC_KEY')));
 }
-// التوكن: user_id|role|class_id|exp|imp — imp = معرّف المطوّر في وضع «عرض كـ» (قراءة فقط)
+// بصمة الرمز السري داخل التوكن (HMAC لا تكشف شيئًا): تغيير الرمز يُنهي كل الجلسات القديمة (مثل جلسة مسروقة)
+function pinStamp_(u) { return sign_('pv|' + String(u.pin_hash || '')).slice(0, 12); }
+// التوكن: user_id|role|class_id|exp|imp|pv — imp = معرّف المطوّر في وضع «عرض كـ» (قراءة فقط)، pv = بصمة الرمز
 function makeToken_(user, ttlMs, imp) {
-  const body = [user.user_id, user.role, user.class_id, Date.now() + (ttlMs || 30 * 864e5), imp || ''].join('|');
+  const body = [user.user_id, user.role, user.class_id, Date.now() + (ttlMs || 30 * 864e5), imp || '', pinStamp_(user)].join('|');
   return Utilities.base64EncodeWebSafe(body) + '.' + sign_(body);
 }
+function inactive_(u) { return !u || u.active === false || String(u.active).toUpperCase() === 'FALSE'; }
 function auth_(token) {
   if (!token) throw new Error('غير مسجل');
   const [b, sig] = String(token).split('.');
-  const body = Utilities.newBlob(Utilities.base64DecodeWebSafe(b)).getDataAsString();
-  if (sign_(body) !== sig) throw new Error('رمز غير صالح');
-  const [user_id, role, class_id, exp, imp] = body.split('|');
+  let body;
+  try { body = Utilities.newBlob(Utilities.base64DecodeWebSafe(b)).getDataAsString(); } catch (e) { throw new Error('رمز غير صالح'); }
+  if (!sig || sign_(body) !== sig) throw new Error('رمز غير صالح');
+  const [user_id, role, class_id, exp, imp, pv] = body.split('|');
   if (Date.now() > Number(exp)) throw new Error('انتهت الجلسة');
   // الحساب الموقوف أو المحذوف يخرج فورًا حتى لو معه توكن صالح، والدور والفصل يُقرآن من الحساب الحالي
-  const u = rows_('Users').find(x => x.user_id === user_id);
-  if (!u || u.active === false || String(u.active).toUpperCase() === 'FALSE') throw new Error('الحساب موقوف — سجّلي الدخول مرة أخرى أو تواصلي مع الإدارة');
+  const users = rows_('Users');
+  const u = users.find(x => x.user_id === user_id);
+  if (inactive_(u)) throw new Error('الحساب موقوف — سجّلي الدخول مرة أخرى أو تواصلي مع الإدارة');
+  // التوكنات القديمة (قبل إضافة البصمة) تبقى حتى تنتهي مدتها؛ لإنهائها كلها فورًا غيّر HMAC_KEY
+  if (pv && pv !== pinStamp_(u)) throw new Error('انتهت الجلسة — تغيّر الرمز السري، يلزم الدخول مرة أخرى');
+  // «عرض كـ»: يسقط التوكن لو المطوّر الذي أصدره لم يعد مطوّرًا فعّالًا
+  if (imp) { const s = users.find(x => x.user_id === imp); if (inactive_(s) || s.role !== 'superadmin') throw new Error('انتهت جلسة المعاينة'); }
   if (!imp && (u.role !== role || String(u.class_id) !== String(class_id))) return { user_id, role: u.role, class_id: u.class_id, imp: '' };
   return { user_id, role, class_id, imp: imp || '' };
 }
@@ -301,11 +313,14 @@ const ACTIONS = {
   // دخول الطفل (user_id + رمز) أو المعلمة (name + رمز)
   login: (p) => {
     const key = 'login:' + (p.user_id ? String(p.user_id) : normName_(p.name));
-    const a = checkLock_(key);
     const users = rows_('Users');
-    let u = p.user_id ? users.find(x => x.user_id === p.user_id)
+    // الطفل بالمعرّف، والمعلمة بالاسم فقط (حتى لا يكون لها عدادا تخمين منفصلان)
+    let u = p.user_id ? users.find(x => x.user_id === String(p.user_id) && x.role === 'student')
                       : users.find(x => x.role !== 'student' && normName_(x.name) === normName_(p.name));
-    if (!u || u.active === false || u.pin_hash !== hashPin_(p.pin)) {
+    // حساب غير موجود: لا نكتب صفًا في LoginAttempts (يكبر الشيت بلا حد)، بل إبطاء عام
+    if (!u) { codeFail_('loginFails'); throw new Error('الرمز غير صحيح'); }
+    const a = checkLock_(key);
+    if (u.active === false || u.pin_hash !== hashPin_(p.pin)) {
       const lockMin = failAttempt_(key, a);
       throw new Error(lockMin ? 'الرمز غير صحيح. محاولات كثيرة، انتظر ' + lockMin + ' دقيقة' : 'الرمز غير صحيح');
     }
@@ -332,11 +347,17 @@ const ACTIONS = {
   setLectureStatus: (p, me) => {
     needTeacher_(me);
     if (['draft', 'published'].indexOf(p.status) < 0) throw new Error('حالة غير صحيحة');
-    update_('Lectures', 'lecture_id', p.lecture_id, { status: p.status });
+    // الأدمن تنشر محاضرات فصلها فقط؛ المطوّر أي محاضرة
+    const l = me.role === 'superadmin' ? rows_('Lectures').find(x => x.lecture_id === p.lecture_id) : ownLecture_(me, p);
+    if (!l) throw new Error('المحاضرة غير موجودة');
+    update_('Lectures', 'lecture_id', l.lecture_id, { status: p.status });
     return true;
   },
 
   markAttendance: (p, me) => {
+    // محاضرة حقيقية في فصل المستخدم (والطفل المنشورة فقط) — وإلا نقاط لا نهائية بمعرّفات وهمية
+    const isT = RANK[me.role] >= RANK.teacher;
+    if (!rows_('Lectures').some(l => l.lecture_id === p.lecture_id && l.class_id === cls_(me, p) && (isT || l.status === 'published'))) throw new Error('المحاضرة غير موجودة');
     const dup = rows_('Attendance').some(a => a.lecture_id === p.lecture_id && a.user_id === me.user_id);
     if (!dup) { append_('Attendance', { lecture_id: p.lecture_id, user_id: me.user_id, at: now_() }); addPoints_(me.user_id, 10, 'حضور محاضرة'); }
     return true;
@@ -391,7 +412,7 @@ const ACTIONS = {
       const l = lectures.find(x => x.lecture_id === a.lecture_id);
       return { name: kidIds[a.user_id].name, avatar: kidIds[a.user_id].avatar, lecture: l ? l.title : '', at: a.at };
     });
-    const sugg = rows_('Suggestions').filter(s => s.status === 'جديد').length;
+    const sugg = classSuggestions_(me).filter(s => s.status === 'جديد').length;
     return {
       kids: kids.length, lectures: lectures.length, published: published.length, drafts: lectures.length - published.length,
       attendanceRate: possible ? Math.round(attPublished / possible * 100) : 0,
@@ -403,7 +424,7 @@ const ACTIONS = {
   suggestions: (p, me) => {
     needTeacher_(me);
     const users = {}; rows_('Users').forEach(u => users[u.user_id] = u);
-    return rows_('Suggestions').slice(-50).reverse().map(s => ({ id: s.id, text: s.text, status: s.status, at: s.at,
+    return classSuggestions_(me).slice(-50).reverse().map(s => ({ id: s.id, text: s.text, status: s.status, at: s.at,
       name: users[s.from_user] ? users[s.from_user].name : '' }));
   },
 
@@ -411,6 +432,7 @@ const ACTIONS = {
   suggest: (p, me) => {
     const text = String(p.text || '').slice(0, 1000);
     if (!text) throw new Error('اكتب اقتراحك');
+    rate_('suggest:' + me.user_id, 10, 3600);
     append_('Suggestions', { id: id_('s'), from_user: me.user_id, role: me.role, text, status: 'جديد', at: now_() });
     return true;
   },
@@ -423,7 +445,7 @@ const ACTIONS = {
     const res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', {
       method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify(meta),
       // درايف يسمح للمتصفح بالرفع فقط لو Origin هنا = أصل الصفحة بالضبط (بدون مسار مثل /Serah)
-      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'X-Upload-Content-Type': p.mime || 'audio/mpeg', Origin: uploadOrigin_(p.origin) },
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'X-Upload-Content-Type': uploadMime_(p.mime, kind), Origin: uploadOrigin_(p.origin) },
       muteHttpExceptions: true
     });
     if (res.getResponseCode() >= 300) throw new Error('تعذر بدء الرفع');
@@ -495,7 +517,11 @@ const ACTIONS = {
     if (['text', 'audio', 'image', 'youtube'].indexOf(kind) < 0) throw new Error('نوع غير صحيح');
     const f = { kind, title: String(p.title || '').slice(0, 200), body: String(p.body || '').slice(0, 5000), file_id: '', url: '' };
     if (kind === 'text' && !f.body.trim()) throw new Error('اكتب النص');
-    if (kind === 'audio' || kind === 'image') { f.file_id = String(p.file_id || ''); if (!f.file_id) throw new Error('ارفع الملف أولًا'); if (kind === 'audio') f.file_id = playableAudio_(f.file_id); share_(f.file_id); }
+    if (kind === 'audio' || kind === 'image') {
+      f.file_id = String(p.file_id || ''); if (!f.file_id) throw new Error('ارفع الملف أولًا');
+      const old = p.item_id ? rows_('ProphetContent').find(c => c.item_id === p.item_id) : null;
+      if (!old || String(old.file_id) !== f.file_id) { platformFile_(f.file_id); if (kind === 'audio') f.file_id = playableAudio_(f.file_id); share_(f.file_id); }
+    }
     if (kind === 'youtube') { const v = youtubeId_(p.url); if (!v) throw new Error('رابط يوتيوب غير صحيح'); f.url = v; }
     if (p.item_id) {
       if (!update_('ProphetContent', 'item_id', p.item_id, f)) throw new Error('العنصر غير موجود');
@@ -543,6 +569,7 @@ const ACTIONS = {
   addLectureImage: (p, me) => {
     const l = ownLecture_(me, p);
     if (!p.file_id) throw new Error('ارفعي الصورة أولًا');
+    platformFile_(p.file_id);
     share_(p.file_id);
     const sort = rows_('LectureImages').filter(i => i.lecture_id === l.lecture_id).reduce((m, i) => Math.max(m, Number(i.sort) || 0), 0) + 1;
     return append_('LectureImages', { image_id: id_('I'), lecture_id: l.lecture_id, sort, file_id: String(p.file_id) }).image_id;
@@ -643,6 +670,7 @@ const ACTIONS = {
   audioChunk: (p, me) => {
     const id = String(p.id || '');
     if (!canHearAudio_(me, p, id)) throw new Error('التسجيل غير متاح');
+    rate_('audio:' + me.user_id, 300, 3600);
     const start = Math.max(0, Number(p.start) || 0), end = start + AUDIO_CHUNK - 1;
     const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?alt=media', {
       headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), Range: 'bytes=' + start + '-' + end }, muteHttpExceptions: true });
@@ -709,7 +737,7 @@ const ACTIONS = {
     if (!name) throw new Error('اكتبي اسم الطفل');
     if (!/^\d{4}$/.test(pin)) throw new Error('الرمز السري 4 أرقام');
     const u = append_('Users', { user_id: id_('U'), role: 'student', name, class_id: cls_(me, p), avatar: String(p.avatar || '🌟').slice(0, 8),
-      pin_hash: hashPin_(pin), city: p.city || '', country: p.country || '', active: true, created_at: now_() });
+      pin_hash: hashPin_(pin), city: String(p.city || '').slice(0, 60), country: String(p.country || '').slice(0, 60), active: true, created_at: now_() });
     return { user_id: u.user_id };
   },
 
@@ -736,25 +764,39 @@ const ACTIONS = {
     const u = rows_('Users').find(x => x.user_id === me.user_id);
     if (!u || u.pin_hash !== hashPin_(p.oldPin)) throw new Error('الرمز الحالي غير صحيح');
     const np = normDigits_(p.newPin);
-    if (np.length < 4) throw new Error('الرمز الجديد 4 أرقام على الأقل');
+    if (!/^\d{6,}$/.test(np)) throw new Error('الرمز الجديد 6 أرقام على الأقل');
     update_('Users', 'user_id', me.user_id, { pin_hash: hashPin_(np) });
-    return true;
+    // تغيير الرمز يُنهي كل الجلسات القديمة؛ نرجع جلسة جديدة لهذا الجهاز
+    const nu = Object.assign({}, u, { pin_hash: hashPin_(np) });
+    return { token: makeToken_(nu), user: { user_id: nu.user_id, name: nu.name, role: nu.role, class_id: nu.class_id, avatar: nu.avatar } };
   },
 
   // بعد اكتمال الرفع من المتصفح: نسجل المحاضرة
   createLecture: (p, me) => {
     needTeacher_(me);
-    const l = append_('Lectures', { lecture_id: id_('L'), class_id: cls_(me, p), title: p.title, date: p.date || now_().slice(0, 10),
-      audio_file_id: playableAudio_(p.audio_file_id), duration_sec: p.duration_sec || '', status: 'draft', created_by: me.user_id, created_at: now_() });
+    const title = String(p.title || '').trim().slice(0, 120);
+    if (!title) throw new Error('اكتبي عنوان المحاضرة');
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(p.date || '')) ? String(p.date) : now_().slice(0, 10);
+    if (!p.audio_file_id) throw new Error('ارفعي التسجيل أولًا');
+    const l = append_('Lectures', { lecture_id: id_('L'), class_id: cls_(me, p), title, date,
+      audio_file_id: playableAudio_(platformFile_(p.audio_file_id)), duration_sec: Number(p.duration_sec) || '', status: 'draft', created_by: me.user_id, created_at: now_() });
     share_(l.audio_file_id);
     return l;
   },
 
   // ===== سجل العمليات (المعلمة الأدمن تقرأ، والمطوّر) =====
-  auditLog: (p) => {
-    const users = {}; rows_('Users').forEach(u => users[u.user_id] = u.name);
+  // الأدمن ترى عمليات فصلها فقط (منفّذها أو هدفها من فصلها)، والمطوّر يرى الكل
+  auditLog: (p, me) => {
+    const users = {}; rows_('Users').forEach(u => users[u.user_id] = u);
     const limit = Math.min(Number(p.limit) || 100, 500);
-    return rows_('AuditLog').slice(-limit).reverse().map(a => Object.assign({}, a, { name: users[a.user_id] || a.user_id, imp_name: a.imp_by ? users[a.imp_by] || a.imp_by : '' }));
+    let list = rows_('AuditLog');
+    if (me.role !== 'superadmin') {
+      const lec = {}; rows_('Lectures').forEach(l => lec[l.lecture_id] = l.class_id);
+      const mine = (id) => !!id && ((users[id] && String(users[id].class_id) === String(me.class_id)) || lec[id] === me.class_id || id === me.class_id);
+      list = list.filter(a => mine(a.user_id) || mine(a.target_id));
+    }
+    const nm = (id) => users[id] ? users[id].name : id;
+    return list.slice(-limit).reverse().map(a => Object.assign({}, a, { name: nm(a.user_id), imp_name: a.imp_by ? nm(a.imp_by) : '' }));
   },
 
   // ===== المطوّر (superadmin) =====
@@ -845,11 +887,36 @@ function failAttempt_(key, a) {
   return lockMin;
 }
 function clearAttempts_(key, a) { if (a && Number(a.fails)) update_('LoginAttempts', 'key', key, { fails: 0, first_at: '', locked_until: '' }); }
-function codeFail_() {
-  const cache = CacheService.getScriptCache();
-  const n = Number(cache.get('codeFails') || 0) + 1;
-  cache.put('codeFails', String(n), 600);
+function codeFail_(k) {
+  const cache = CacheService.getScriptCache(), key = k || 'codeFails';
+  const n = Number(cache.get(key) || 0) + 1;
+  cache.put(key, String(n), 600);
   if (n > 20) Utilities.sleep(Math.min(5000, (n - 20) * 250));
+}
+// حد بسيط للطلبات لكل مستخدم (يحمي حصص UrlFetch وحجم الشيت من الاستنزاف)
+function rate_(key, max, sec) {
+  const cache = CacheService.getScriptCache(), k = 'rl:' + key;
+  const n = Number(cache.get(k) || 0) + 1;
+  cache.put(k, String(n), sec);
+  if (n > max) throw new Error('طلبات كثيرة، حاول بعد قليل');
+}
+// ملف درايف يكتب معرّفه المستخدم: يجب أن يكون داخل مجلدات المنصة (رُفع من الموقع أو البوت)،
+// وإلا يمكن ربط أي ملف خاص لصاحب الحساب (حتى شيت قاعدة البيانات) ثم مشاركته للعامة أو قراءته عبر audioChunk
+function platformFile_(id) {
+  const v = String(id || '');
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(v)) throw new Error('الملف غير صالح');
+  const folders = ['audio', 'images'].map(k => prop_('FOLDER_' + k)).filter(Boolean);
+  try {
+    const it = DriveApp.getFileById(v).getParents();
+    while (it.hasNext()) if (folders.indexOf(it.next().getId()) >= 0) return v;
+  } catch (e) {}
+  throw new Error('الملف ليس من ملفات المنصة — ارفعيه من الموقع');
+}
+// نوع الملف في جلسة الرفع: صوت/صورة فقط، وإلا النوع الافتراضي
+function uploadMime_(mime, kind) {
+  const m = String(mime || '').toLowerCase();
+  if (kind === 'images') return /^image\/(jpeg|png|webp|gif|heic|heif)$/.test(m) ? m : 'image/jpeg';
+  return /^(audio|video)\/[a-z0-9.+-]{1,40}$/.test(m) ? m : 'audio/mpeg';
 }
 
 function publicUser_(u, classes) {
@@ -905,6 +972,13 @@ function ownLecture_(me, p) {
   const l = rows_('Lectures').find(x => x.lecture_id === p.lecture_id && x.class_id === cls_(me, p));
   if (!l) throw new Error('المحاضرة غير موجودة');
   return l;
+}
+// الاقتراحات: المعلمة والأدمن يرون اقتراحات فصلهم فقط، والمطوّر الكل
+function classSuggestions_(me) {
+  const all = rows_('Suggestions');
+  if (me.role === 'superadmin') return all;
+  const cls = {}; rows_('Users').forEach(u => cls[u.user_id] = String(u.class_id));
+  return all.filter(s => cls[s.from_user] === String(me.class_id));
 }
 function addPoints_(user_id, points, reason) { append_('Points', { user_id, points, reason, at: now_() }); }
 function share_(fileId) { try { DriveApp.getFileById(fileId).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {} }
@@ -979,7 +1053,9 @@ function prophetKb_(list, other) {
   rows.push([BTN.CANCEL]);
   return kb_(rows);
 }
-function suggestTitle_(p) { const n = String(p.name).replace(/\s*ﷺ\s*$/, ''); return p.prophet_id === 'muhammad' ? 'من سيرة سيدنا محمد ﷺ' : 'قصة سيدنا ' + n; }
+// اسم النبي مع اللقب الواجب: «ﷺ» لنبينا محمد، و«عليه السلام» لباقي الأنبياء
+function honored_(p) { const n = String(p.name).replace(/\s*(ﷺ|عليه السلام)\s*$/, ''); return p.prophet_id === 'muhammad' ? n + ' ﷺ' : n + ' عليه السلام'; }
+function suggestTitle_(p) { return p.prophet_id === 'muhammad' ? 'من سيرة سيدنا محمد ﷺ' : 'قصة سيدنا ' + honored_(p); }
 // SITE_ORIGIN قد يُكتب بالمسار (https://mrvoroo.github.io/Serah) كما في README: نفصل الأصل عن رابط الموقع
 function siteOrigin_() { const m = String(prop_('SITE_ORIGIN') || '').match(/^https?:\/\/[^/]+/); return m ? m[0] : 'https://mrvoroo.github.io'; }
 function siteUrl_() {
@@ -1105,7 +1181,10 @@ function onTelegram_(upd) {
     return say_(chat, 'المحتوى عن أي نبي؟', prophetKb_(list.map(r => ({ prophet_id: r.prophet_id, name: String(r.name) })), false));
   }
 
-  if (st.state === 'pc_content') return prophetContent_(chat, t, m, text, st);
+  if (st.state === 'pc_content') {
+    if (RANK[t.role] < RANK.admin) { setState_(chat, 'idle', {}); return say_(chat, 'محتوى الرحلة للمعلمة الأدمن فقط.', menuKb_(t)); }
+    return prophetContent_(chat, t, m, text, st);
+  }
 
   // تسجيل صوتي في أي وقت يبدأ محاضرة جديدة
   const file = audioOf_(m);
@@ -1162,7 +1241,7 @@ function onTelegram_(upd) {
       const r = rows_('Prophets').find(x => String(x.name) === text && truthy_(x.visible));
       if (!r) return say_(chat, 'تفضّلي باختيار النبي من الأزرار 👇');
       setState_(chat, 'pc_content', { prophet_id: r.prophet_id, prophet_name: String(r.name), n: 0 });
-      return say_(chat, 'تفضّلي بإرسال المحتوى عن سيدنا ' + r.name + ': صوت أو صور أو نص أو رابط يوتيوب.\nيُحفظ كل عنصر «بانتظار الاعتماد»، وعند الانتهاء اضغطي «' + BTN.DONE + '».', kb_([[BTN.DONE], [BTN.CANCEL]]));
+      return say_(chat, 'تفضّلي بإرسال المحتوى عن سيدنا ' + honored_(r) + ': صوت أو صور أو نص أو رابط يوتيوب.\nيُحفظ كل عنصر «بانتظار الاعتماد»، وعند الانتهاء اضغطي «' + BTN.DONE + '».', kb_([[BTN.DONE], [BTN.CANCEL]]));
     }
   }
   return say_(chat, 'تفضّلي بالاختيار من الأزرار بالأسفل 👇', menuKb_(t));
@@ -1212,7 +1291,7 @@ function prophetContent_(chat, t, m, text, st) {
   const d = st.data || {};
   if (text === BTN.DONE) {
     setState_(chat, 'idle', {});
-    return say_(chat, 'حُفظ ' + (d.n || 0) + ' عنصر لسيدنا ' + d.prophet_name + ' ✨\nيمكنكِ اعتمادها من الموقع: رحلة الأنبياء ← المحتوى.', menuKb_(t));
+    return say_(chat, 'حُفظ ' + (d.n || 0) + ' عنصر عن سيدنا ' + honored_({ prophet_id: d.prophet_id, name: d.prophet_name }) + ' ✨\nيمكنكِ اعتمادها من الموقع: رحلة الأنبياء ← المحتوى.', menuKb_(t));
   }
   let item = null;
   const audio = audioOf_(m);
@@ -1264,22 +1343,30 @@ function linkFlow_(chat, m, text, st) {
     const u = rows_('Users').find(x => x.class_id === d.class_id && String(x.name) === text && RANK[x.role] >= RANK.teacher && x.active !== false);
     if (!u) return startLink_(chat, 'اختاري فصلكِ من الأزرار 👇');
     const r = tg_('sendMessage', Object.assign({ chat_id: chat, text: 'تفضّلي بإدخال رمزكِ السري من الأزرار:\n' + dots_('') }, kb_(PIN_PAD)));
-    setState_(chat, 'link_pin', { user_id: u.user_id, pin: '', mid: r && r.ok ? r.result.message_id : '' });
+    pinCache_(chat, '');
+    setState_(chat, 'link_pin', { user_id: u.user_id, mid: r && r.ok ? r.result.message_id : '' });
     return;
   }
   if (st.state === 'link_pin') {
     try { tg_('deleteMessage', { chat_id: chat, message_id: m.message_id }); } catch (e) {} // لا يبقى أي رقم في المحادثة
     const digit = normDigits_(text);
-    let pin = String(d.pin || '');
+    // الأرقام في الذاكرة المؤقتة (10 دقائق) لا في شيت BotState حتى لا يُحفظ رمز المعلمة نصًا واضحًا
+    let pin = pinCache_(chat);
     if (/^\d$/.test(digit) && pin.length < 12) pin += digit;
     else if (text === BTN.DEL) pin = pin.slice(0, -1);
-    else if (text === BTN.OK) return checkLinkPin_(chat, d, pin);
-    else return startLink_(chat, 'اختاري فصلكِ من الأزرار 👇');
-    setState_(chat, 'link_pin', Object.assign(d, { pin }));
+    else if (text === BTN.OK) { pinCache_(chat, ''); return checkLinkPin_(chat, d, pin); }
+    else { pinCache_(chat, ''); return startLink_(chat, 'اختاري فصلكِ من الأزرار 👇'); }
+    pinCache_(chat, pin);
     if (d.mid) tg_('editMessageText', { chat_id: chat, message_id: d.mid, text: 'تفضّلي بإدخال رمزكِ السري من الأزرار:\n' + dots_(pin) });
     return;
   }
   return startLink_(chat, 'هذا البوت مخصص للمعلمات 🌙\nلربط حسابكِ تفضّلي باختيار فصلكِ:');
+}
+function pinCache_(chat, v) {
+  const c = CacheService.getScriptCache(), k = 'tgpin:' + chat;
+  if (v === undefined) return String(c.get(k) || '');
+  if (v) c.put(k, v, 600); else c.remove(k);
+  return v;
 }
 function dots_(pin) { return pin ? '●'.repeat(pin.length) : '○○○○○○'; }
 function checkLinkPin_(chat, d, pin) {
@@ -1290,7 +1377,7 @@ function checkLinkPin_(chat, d, pin) {
   try { a = checkLock_(key); } catch (e) { setState_(chat, 'link_class', {}); return say_(chat, String(e.message || e), kb_(rowsOf_(rows_('Classes').map(c => String(c.name)), 2))); }
   if (u.active === false || u.pin_hash !== hashPin_(pin)) {
     const lockMin = failAttempt_(key, a);
-    setState_(chat, 'link_pin', Object.assign(d, { pin: '' }));
+    setState_(chat, 'link_pin', { user_id: d.user_id, mid: d.mid });
     if (d.mid) tg_('editMessageText', { chat_id: chat, message_id: d.mid, text: 'تفضّلي بإدخال رمزكِ السري من الأزرار:\n' + dots_('') });
     return say_(chat, lockMin ? 'الرمز غير صحيح. محاولات كثيرة، تفضّلي بالانتظار ' + lockMin + ' دقيقة' : 'الرمز غير صحيح، تفضّلي بالمحاولة مرة أخرى');
   }

@@ -18,6 +18,7 @@ const TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] =
   { href: "/kid/journey/", label: "رحلة الأنبياء", icon: "rocket", tone: "from-[#7B5CFF] to-[#4B2FD1]" },
   { href: "/kid/lectures/", label: "المحاضرات", icon: "headphone", tone: "from-[#2FB5A3] to-[#167A6E]" },
   { href: "/kid/stars/", label: "لوحة النجوم", icon: "trophy", tone: "from-[#FFB020] to-[#E07A00]" },
+  { href: "/kid/quran/", label: "القرآن الكريم", icon: "open-book", tone: "from-[#1FA37F] to-[#0E6B52]" },
 ];
 
 export default function KidHome() {
@@ -74,7 +75,7 @@ export default function KidHome() {
         )}
       </BlurFade>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {TILES.map((t, i) => (
           <BlurFade key={t.href} delay={0.18 + i * 0.05}>
             <Link href={t.href} className={cn("flex aspect-square flex-col items-center justify-center gap-2 rounded-[28px] bg-gradient-to-br p-2 text-center font-bold text-white shadow-soft transition-transform active:scale-95", t.tone)}>

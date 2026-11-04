@@ -82,7 +82,7 @@ test("الرفع: تغيير النبي يغيّر العنوان المقترح
   await pick.selectOption("muhammad");
   await expect(title).toHaveValue("من سيرة سيدنا محمد ﷺ");
   await pick.selectOption("adam");
-  await expect(title).toHaveValue("قصة سيدنا آدم");
+  await expect(title).toHaveValue("قصة سيدنا آدم عليه السلام");
   await pick.selectOption("");
   await expect(title).toHaveValue("");
   await title.fill("درس عن الصبر");

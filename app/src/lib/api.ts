@@ -74,7 +74,7 @@ const MEDIA_KEY = "serah_media_key";
 export const mediaKey = () => safeGet(MEDIA_KEY) ?? "";
 export const driveAudio = (id: string, key = mediaKey()) => key
   ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media&key=${encodeURIComponent(key)}`
-  : `https://drive.usercontent.google.com/download?id=${id}&export=download`;
+  : `https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download`;
 export async function loadMediaConfig() {
   if (!session.token()) return;
   try {
@@ -82,7 +82,7 @@ export async function loadMediaConfig() {
     if ((c.driveKey || "") !== mediaKey()) { safeSet(MEDIA_KEY, c.driveKey || null); window.dispatchEvent(new Event("serah-media")); }
   } catch { /* نكمل بالرابط المباشر */ }
 }
-export const driveImage = (id: string, w = 1200) => `https://drive.google.com/thumbnail?id=${id}&sz=w${w}`;
+export const driveImage = (id: string, w = 1200) => `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${w}`;
 
 export const withBase = (p: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${p}`;
 

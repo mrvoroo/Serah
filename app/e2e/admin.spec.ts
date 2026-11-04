@@ -69,6 +69,7 @@ test("المطوّر يدخل فيتحول للوحة المطوّر ويرى ا
 test("المستخدمون: بحث وتصفية وتغيير دور وتعطيل ورمز جديد", async ({ page }) => {
   const calls = await mockBackend(page);
   await loginAs(page, "م.احمد", "987654");
+  await expect(page).toHaveURL(/\/Serah\/admin\/$/);
   await page.goto("/Serah/admin/users/");
   await expect(page.getByTestId("user-row")).toHaveCount(4);
   await page.getByRole("button", { name: "الأطفال" }).click();
@@ -97,6 +98,7 @@ test("المستخدمون: بحث وتصفية وتغيير دور وتعطيل
 test("عرض كـ طفل: شريط المعاينة، والرجوع يعيد حساب المطوّر", async ({ page }) => {
   await mockBackend(page);
   await loginAs(page, "م.احمد", "987654");
+  await expect(page).toHaveURL(/\/Serah\/admin\/$/);
   await page.goto("/Serah/admin/users/");
   await page.getByRole("button", { name: "عرض كـ يوسف" }).click();
   await expect(page).toHaveURL(/\/Serah\/kid\/$/);
@@ -115,6 +117,7 @@ test("عرض كـ طفل: شريط المعاينة، والرجوع يعيد ح
 test("عرض كـ معلمة: يفتح لوحة المعلمة، وزر الخروج يرجع للمطوّر بدل الخروج", async ({ page }) => {
   await mockBackend(page);
   await loginAs(page, "م.احمد", "987654");
+  await expect(page).toHaveURL(/\/Serah\/admin\/$/);
   await page.goto("/Serah/admin/");
   await page.getByRole("button", { name: /معلمة أدمن: المعلمة/ }).click();
   await expect(page).toHaveURL(/\/Serah\/teacher\/$/);
