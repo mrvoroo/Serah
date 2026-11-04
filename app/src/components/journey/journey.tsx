@@ -10,7 +10,8 @@ import SplitText from "@/components/SplitText";
 import { buttonVariants } from "@/components/ui/button";
 import { Zaid } from "@/components/zaid";
 import { BranchedMenu, type BranchedMenuItem } from "@/components/branched-menu";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { STATIONS } from "./stations";
 
@@ -71,7 +72,8 @@ function layout(i: number, section?: HTMLElement) {
   const sec = section?.getBoundingClientRect();
   if (window.matchMedia("(max-width: 760px)").matches) {
     // بين الشريط العلوي وأعلى البطاقة (موضعها داخل القسم، لا يتأثر بمكان السكرول)
-    const top = 84, bottom = card && sec ? Math.min(H * 0.72, Math.max(H * 0.42, card.top - sec.top - 12)) : H * 0.5;
+    // تحت شريط «٣ من ٢٨» العلوي
+    const top = 132, bottom = card && sec ? Math.min(H * 0.72, Math.max(H * 0.42, card.top - sec.top - 12)) : H * 0.5;
     const scale = Math.min(0.7, (2 * hw * 0.92) / shapeW, (((bottom - top) / H) * 2 * hh * 0.95) / shapeH);
     return { x: -shiftX * scale, y: toY((top + bottom) / 2), scale, yaw: 0 };
   }
@@ -187,6 +189,9 @@ export function Journey() {
   }, []);
 
   const current = target ?? STATIONS[active].id;
+  const ci = STATIONS.findIndex((s) => s.id === current);
+  // الأنبياء محطات ١..٢٥، والبداية والسيرة والقرآن بأسمائها فقط
+  const pos = ci >= 1 && ci <= 25 ? `${ci.toLocaleString("ar-EG")} من ٢٥ — ${STATIONS[ci].label}` : STATIONS[ci].label;
 
   // إبقاء المحطة الحالية ظاهرة داخل لوحة القائمة (بعد انتهاء طيّ وفتح الأقسام)
   useEffect(() => {
@@ -231,21 +236,28 @@ export function Journey() {
         </button>
         <div ref={navRef} {...(dots ? { role: "navigation", "aria-label": "محطات الرحلة" } : {})} className={cn("min-h-0 overflow-y-auto [scrollbar-width:none]", dots && "flex flex-col items-center")}>
           {dots ? STATIONS.map((s, i) => (
-            <button key={s.id} type="button" onClick={() => go(i)} aria-label={s.title} title={s.title} aria-current={s.id === current ? "true" : undefined} className="relative grid size-7 shrink-0 place-items-center rounded-full">
-              {s.id === current && <motion.span layoutId="station-dot" className="absolute inset-0.5 rounded-full bg-gold/25" transition={{ type: "spring", stiffness: 400, damping: 30 }} />}
-              <span className={cn("relative size-2 rounded-full transition-all", s.id === current ? "scale-125 bg-gold" : s.symbol ? "bg-muted-foreground/60" : "bg-muted-foreground/30")} />
-            </button>
+            <Tooltip key={s.id}>
+              <TooltipTrigger render={
+                <button type="button" onClick={() => go(i)} aria-label={s.title} aria-current={s.id === current ? "true" : undefined} className="relative grid size-7 shrink-0 place-items-center rounded-full">
+                  {s.id === current && <motion.span layoutId="station-dot" className="absolute inset-0.5 rounded-full bg-gold/25" transition={{ type: "spring", stiffness: 400, damping: 30 }} />}
+                  <span className={cn("relative size-2 rounded-full transition-all", s.id === current ? "scale-125 bg-gold" : s.symbol ? "bg-muted-foreground/60" : "bg-muted-foreground/30")} />
+                </button>
+              } />
+              <TooltipContent side="left" className="font-bold">{i > 0 && i < 26 ? `${i.toLocaleString("ar-EG")} · ` : ""}{nameOf(s.id)}</TooltipContent>
+            </Tooltip>
           )) : menu()}
         </div>
       </div>
 
-      {/* الموبايل والتابلت: زر يفتح نفس القائمة */}
+      {/* الموبايل: شريط علوي «٣ من ٢٨ — سيدنا نوح» يفتح القائمة. التابلت: زر عائم */}
+      <button type="button" onClick={() => setMenuOpen(true)} aria-label={`المحطات: ${pos}`}
+        className="fixed inset-x-0 top-[84px] z-30 mx-auto flex h-10 w-fit max-w-[calc(100vw-32px)] items-center gap-2 rounded-full border bg-card/90 px-4 text-sm font-bold shadow-soft backdrop-blur md:hidden">
+        <ListTree className="size-4 shrink-0 text-gold" /><span className="truncate">{pos}</span>
+      </button>
+      <button type="button" onClick={() => setMenuOpen(true)} className="fixed bottom-24 end-4 z-30 hidden h-12 items-center gap-2 rounded-full border bg-card/90 px-4 font-bold shadow-soft backdrop-blur md:flex lg:hidden">
+        <ListTree className="size-5 text-gold" /> المحطات
+      </button>
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-        <SheetTrigger render={
-          <button type="button" className="fixed bottom-24 end-4 z-30 flex h-12 items-center gap-2 rounded-full border bg-card/90 px-4 font-bold shadow-soft backdrop-blur lg:hidden">
-            <ListTree className="size-5 text-gold" /> المحطات
-          </button>
-        } />
         <SheetContent side="right" className="w-72 gap-3 overflow-y-auto p-5">
           <SheetHeader className="p-0"><SheetTitle>محطات الرحلة</SheetTitle></SheetHeader>
           {menu()}

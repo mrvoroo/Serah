@@ -66,7 +66,7 @@ test("الكمبيوتر: الضغط على اسم النبي ينزل لقسم�
 test("الموبايل: زر المحطات يفتح القائمة والاختيار ينزل للنبي", async ({ page, isMobile }) => {
   test.skip(!isMobile, "زر المحطات للشاشات الصغيرة");
   await open(page);
-  await page.getByRole("button", { name: "المحطات" }).click();
+  await page.getByRole("button", { name: /^المحطات/ }).click();
   const sheet = page.getByRole("dialog");
   await sheet.getByRole("button", { name: "من آدم إلى إبراهيم" }).click();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/menu-mobile.png` });

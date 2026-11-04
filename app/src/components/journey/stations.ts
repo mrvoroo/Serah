@@ -8,7 +8,7 @@ export type Station = {
   title: string;
   tag: string;
   text: string;
-  symbol?: "crescent" | "ark" | "staff" | "kaaba" | "whale" | "mushaf" | "dome" | "sword" | "book";
+  symbol?: "crescent" | "ark" | "staff" | "kaaba" | "whale" | "yusuf_dream" | "mushaf" | "dome" | "sword" | "book";
   symbolName?: string;
   layout?: "side" | "stack";
 };
@@ -24,7 +24,7 @@ const prophets: [id: string, name: string, text: string, symbol?: Station["symbo
   ["ismail", "إسماعيل", "كان صادق الوعد، وساعد أباه إبراهيم في بناء الكعبة."],
   ["ishaq", "إسحاق", "بشّر الله به إبراهيم وسارة، وجعله نبيًّا من الصالحين."],
   ["yaqub", "يعقوب", "أبو يوسف، صبر صبرًا جميلًا وأحسن الظن بالله."],
-  ["yusuf", "يوسف", "صبر على كيد إخوته، فرفع الله قدره وجعله على خزائن الأرض."],
+  ["yusuf", "يوسف", "صبر على كيد إخوته، فرفع الله قدره وجعله على خزائن الأرض.", "yusuf_dream", "رؤيا الشمس والقمر والكواكب"],
   ["ayyub", "أيوب", "صبر على المرض صبرًا عظيمًا، فشفاه الله وأكرمه."],
   ["shuayb", "شعيب", "أرسله الله إلى أهل مدين، وأمرهم بالعدل في الكيل والميزان."],
   ["musa", "موسى", "ضرب البحر بعصاه بأمر الله، فانشق البحر وصار طريقًا يابسًا.", "staff", "العصا"],

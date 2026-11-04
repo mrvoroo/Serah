@@ -4,7 +4,7 @@
 // مع نجوم تدور حول المجسم وتتسارع مع سرعة السكرول.
 import * as THREE from 'three';
 
-export const SHAPES = ['crescent', 'ark', 'staff', 'kaaba', 'whale', 'mushaf', 'dome', 'sword', 'book'];
+export const SHAPES = ['crescent', 'ark', 'staff', 'kaaba', 'whale', 'yusuf_dream', 'mushaf', 'dome', 'sword', 'book'];
 const TAU = Math.PI * 2;
 const MORPH_SECONDS = 1.6;
 
@@ -168,6 +168,19 @@ function buildShape(name, n, r) {
     const grip = () => { const ring = Math.floor(r() * 8), y = -0.72 - ring * 0.15, th = r() * TAU; return [Math.cos(th) * 0.1, y + J(0.01), Math.sin(th) * 0.1]; };
     const pommel = () => { const th = r() * TAU, ph = Math.acos(2 * r() - 1); return [Math.sin(ph) * Math.cos(th) * 0.16, -2.0 + Math.cos(ph) * 0.16, Math.sin(ph) * Math.sin(th) * 0.16]; };
     parts = [[0.17, edge(1)], [0.17, edge(-1)], [0.07, fuller], [0.09, prong(1)], [0.09, prong(-1)], [0.12, guard], [0.12, grip], [0.05, pommel], [0.12, dust(4.0)]];
+  } else if (name === 'yusuf_dream') {
+    // رؤيا يوسف: الشمس بأشعتها + القمر هلالًا + أحد عشر كوكبًا في قوس فوقهما (نور يصعد من الشمس)
+    const SX = -1.15, SY = -0.35, SR = 0.72;
+    const sunRing = curve((u) => [SX + Math.cos(u * TAU) * SR, SY + Math.sin(u * TAU) * SR, 0], 0.016);
+    const sunDisk = () => { const a = r() * TAU, q = Math.sqrt(r()) * SR * 0.92; return [SX + Math.cos(a) * q, SY + Math.sin(a) * q, J(0.05)]; };
+    const rays = () => { const a = Math.floor(r() * 12) * TAU / 12 + J(0.02), q = SR * (1.2 + r() * 0.45); return [SX + Math.cos(a) * q, SY + Math.sin(a) * q, J(0.02)]; };
+    const MX = 1.35, MY = -0.3;
+    const moonOuter = curve((u) => { const a = 0.338 * Math.PI + u * 1.324 * Math.PI; return [MX + Math.cos(a) * 0.78, MY + Math.sin(a) * 0.78, 0]; }, 0.014);
+    const moonInner = curve((u) => { const a = 0.477 * Math.PI + u * 1.046 * Math.PI; return [MX + 0.33 + Math.cos(a) * 0.68, MY + Math.sin(a) * 0.68, 0]; }, 0.014);
+    // 11 كوكبًا على قوس فوق الشمس والقمر
+    const stars = many(Array.from({ length: 11 }, (_, k) => { const a = Math.PI * (0.08 + k * 0.084); return starOutline(Math.cos(a) * 2.45, 0.05 + Math.sin(a) * 1.75, k % 2 ? 0.17 : 0.21); }));
+    parts = [[0.14, sunRing], [0.07, sunDisk], [0.1, rays], [0.13, moonOuter], [0.08, moonInner], [0.38, stars], [0.06, dust(4.2)]];
+    parts.light = [0.06, () => { const v = r(), a = r() * TAU, q = Math.sqrt(r()) * SR * 0.6; return [SX + Math.cos(a) * q, SY + 0.2 + v * 1.2, Math.sin(a) * q * 0.5]; }];
   } else if (name === 'book') {
     // مصحف مفتوح: حواف الصفحتين المنحنية + سطور + رحل بخطوط X + نور خفيف
     const pageY = (u) => 0.1 + u * 0.32 + Math.sin(u * Math.PI) * 0.16;
@@ -281,11 +294,15 @@ function buildStation(st, n, r, font) {
   const g = () => (r() + r() + r() - 1.5) / 1.5;
   const dust = (R, cy) => () => { const th = r() * TAU, ph = Math.acos(2 * r() - 1), q = R * (0.6 + r() * 0.4); return [Math.sin(ph) * Math.cos(th) * q, cy + Math.cos(ph) * q * 0.6 + g() * 0.02, Math.sin(ph) * Math.sin(th) * q * 0.6]; };
   const label = st.label || '';
+  // محور دوران الرمز وحده (x, y, مفعّل): الاسم لا يدور معه حتى يبقى كما هو مقروءًا
+  let pivot = [0, SYM_Y, 1];
   if (st.layout === 'side') {
+    pivot = [2.35, 0, 1];
     const nt = Math.floor(n * 0.55);
     take(nt, textSampler(label, font, r, { maxW: 3.5, maxH: 1.5, ox: -1.05, oy: 0 }), TEXT);
     takeShape(n - nt, st.symbol || 'crescent', 0.55, 2.35, 0);
   } else if (st.layout === 'name' || !st.symbol) {
+    pivot = [0, 0, 0];
     const nt = Math.floor(n * 0.72), no = Math.floor(n * 0.1);
     take(nt, textSampler(label, font, r, { maxW: 4.2, maxH: 1.75, ox: 0, oy: 0.35 }), TEXT);
     take(no, ornament(r, -1.05));
@@ -293,6 +310,7 @@ function buildStation(st, n, r, font) {
   } else if (st.sub) {
     // اسم + سطر صغير تحته (مثل: صلى الله عليه وسلم) ثم الرمز
     const nt = Math.floor(n * 0.33), ns = Math.floor(n * 0.12);
+    pivot = [0, SYM_Y - 0.1, 1];
     take(nt, textSampler(label, font, r, { maxW: 3.4, maxH: 1.0, ox: 0, oy: 2.05 }), TEXT);
     take(ns, textSampler(st.sub, font, r, { maxW: 2.6, maxH: 0.5, ox: 0, oy: 1.2 }), TEXT);
     takeShape(n - nt - ns, st.symbol, SYM_SCALE, 0, SYM_Y - 0.1);
@@ -307,7 +325,7 @@ function buildStation(st, n, r, font) {
     for (let a = 0; a < 3; a++) { const t = pos[i * 3 + a]; pos[i * 3 + a] = pos[j * 3 + a]; pos[j * 3 + a] = t; }
     const f = flow[i]; flow[i] = flow[j]; flow[j] = f;
   }
-  return { pos, flow };
+  return { pos, flow, pivot };
 }
 
 const vertex = /* glsl */`
@@ -318,6 +336,8 @@ const vertex = /* glsl */`
   uniform float uProgress;
   uniform float uSize;
   uniform float uPixel;
+  uniform float uSymRot;
+  uniform vec3 uPivot;
   varying float vRand;
   varying float vFlow;
   varying float vDepth;
@@ -334,10 +354,16 @@ const vertex = /* glsl */`
     }
     return p;
   }
+  // الرمز يدور حول محوره الرأسي مع السكرول والمؤشر، ونقاط الاسم (flow 4) ثابتة
+  vec3 spinSym(vec3 p, float f) {
+    if (f > 3.5 && f < 4.5) return p;
+    float a = uSymRot * uPivot.z, c = cos(a), s = sin(a), dx = p.x - uPivot.x;
+    return vec3(uPivot.x + dx * c + p.z * s, p.y, -dx * s + p.z * c);
+  }
   void main() {
     float k = clamp((uProgress - aRand * 0.35) / 0.65, 0.0, 1.0);
     k = k * k * (3.0 - 2.0 * k);
-    vec3 p = mix(position, flowed(aTo, aFlow, uTime), k);
+    vec3 p = mix(position, spinSym(flowed(aTo, aFlow, uTime), aFlow), k);
     float t = uTime * 0.6 + aRand * 20.0;
     p += vec3(sin(t), cos(t * 1.3), sin(t * 0.7)) * 0.018;
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
@@ -484,6 +510,7 @@ export function createWorld(canvas, opts = {}) {
   const small = window.matchMedia('(max-width: 760px)').matches;
   const uniforms = {
     uTime: { value: 0 }, uProgress: { value: reduced ? 1 : 0 }, uSize: { value: small ? 3.2 : 2.8 }, uPixel: { value: pixel }, uOpacity: { value: 1 }, uLight: { value: 0 },
+    uSymRot: { value: 0 }, uPivot: { value: new THREE.Vector3(...first.pivot) },
     uA: { value: new THREE.Color('#FFE7B0') }, uB: { value: new THREE.Color('#F5B942') }, uC: { value: new THREE.Color('#19C3B1') }, uD: { value: new THREE.Color('#9C8BFF') }
   };
   const mat = new THREE.ShaderMaterial({ vertexShader: vertex, fragmentShader: fragment, uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -548,14 +575,20 @@ export function createWorld(canvas, opts = {}) {
     else if (f > 1.5 && f < 2.5) { const i = j / 3; y = (((y + t * 0.21 + rnd[i] * 2.76 + 2.37) % 2.76) + 2.76) % 2.76 - 2.37; }
     return [x, y, z];
   }
+  function cpuSpin(p, f) {
+    if (f > 3.5 && f < 4.5) return p;
+    const pv = uniforms.uPivot.value, a = uniforms.uSymRot.value * pv.z, c = Math.cos(a), s = Math.sin(a), dx = p[0] - pv.x;
+    return [pv.x + dx * c + p[2] * s, p[1], -dx * s + p[2] * c];
+  }
   function retarget(next) {
     const p = uniforms.uProgress.value, t = uniforms.uTime.value;
     for (let i = 0, j = 0; i < N; i++, j += 3) {
       let k = Math.min(1, Math.max(0, (p - rnd[i] * 0.35) / 0.65)); k = k * k * (3 - 2 * k);
-      const tt = cpuFlowed(j, flow[i], t);
+      const tt = cpuSpin(cpuFlowed(j, flow[i], t), flow[i]);
       from[j] += (tt[0] - from[j]) * k; from[j + 1] += (tt[1] - from[j + 1]) * k; from[j + 2] += (tt[2] - from[j + 2]) * k;
     }
     to.set(next.pos); flow.set(next.flow);
+    uniforms.uPivot.value.set(...next.pivot);
     fromAttr.needsUpdate = toAttr.needsUpdate = flowAttr.needsUpdate = true;
     uniforms.uProgress.value = reduced ? 1 : 0;
   }
@@ -620,6 +653,7 @@ export function createWorld(canvas, opts = {}) {
     state.rotY += wrap(goal.yaw + (scrollLocalS - 0.5) * 0.5 + Math.sin(t * 0.3) * 0.08 - state.rotY) * 0.06;
     group.rotation.y = state.rotY + pointer.x * 0.22;
     group.rotation.x = 0.05 + pointer.y * 0.12 + (scrollLocalS - 0.5) * 0.1;
+    uniforms.uSymRot.value = (scrollLocalS - 0.5) * 1.4 + pointer.x * 0.6 + Math.sin(t * 0.25) * 0.25;
     starPoints.rotation.y = pointer.x * 0.05;
     draw();
     requestAnimationFrame(frame);
@@ -656,7 +690,7 @@ export function createWorld(canvas, opts = {}) {
     scroll(local, vel) { scrollLocal = local; velocity = vel; },
     setTheme(name) { applyTheme(name); if (reduced) draw(); },
     debug() {
-      return { shape: current, tier: tierName, progress: uniforms.uProgress.value, pixel, downgraded: perf.downgraded, drawCount: geo.drawRange.count === Infinity ? N : geo.drawRange.count, state: { ...state }, goal: { ...goal } };
+      return { shape: current, tier: tierName, progress: uniforms.uProgress.value, pixel, downgraded: perf.downgraded, drawCount: geo.drawRange.count === Infinity ? N : geo.drawRange.count, state: { ...state }, goal: { ...goal }, symRot: uniforms.uSymRot.value };
     }
   };
 }
