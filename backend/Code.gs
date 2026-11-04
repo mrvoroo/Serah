@@ -5,7 +5,7 @@
  */
 
 // رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
-const VERSION = 14;
+const VERSION = 15;
 
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
@@ -238,7 +238,9 @@ const POLICY = {
   updateTeacher: { min: 'admin', write: 1, audit: 1 },
   deleteTeacher: { min: 'admin', write: 1, audit: 1 },
   repairAudio: { min: 'superadmin', write: 1, audit: 1 },
-  config: { min: 'student' }
+  config: { min: 'student' },
+  audioChunk: { min: 'student' },
+  audioCheck: { min: 'superadmin' }
 };
 const SECRET_PARAMS = { pin: 1, oldPin: 1, newPin: 1, token: 1, action: 1 };
 
@@ -632,6 +634,42 @@ const ACTIONS = {
   // إصلاح التسجيلات القديمة: تحويل Ogg إلى WebM حتى تعمل على آيفون
   repairAudio: () => convertOldAudio_(),
 
+  // تشغيل مضمون: الخلفية تقرأ جزءًا من ملف الصوت بصلاحية صاحب الدرايف وترسله للمتصفح (يُجمّع ويُشغّل)
+  // يعمل حتى لو روابط درايف لا تعمل في المتصفح. مسموح فقط لملفات محاضرات فصل المستخدم أو محتوى الرحلة المعتمد
+  audioChunk: (p, me) => {
+    const id = String(p.id || '');
+    if (!canHearAudio_(me, p, id)) throw new Error('التسجيل غير متاح');
+    const start = Math.max(0, Number(p.start) || 0), end = start + AUDIO_CHUNK - 1;
+    const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?alt=media', {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), Range: 'bytes=' + start + '-' + end }, muteHttpExceptions: true });
+    const code = r.getResponseCode();
+    if (code === 416) return { data: '', total: start, type: '' };
+    if (code !== 200 && code !== 206) throw new Error('تعذّر قراءة التسجيل (' + code + ')');
+    const h = r.getHeaders(), range = String(h['Content-Range'] || h['content-range'] || '');
+    const bytes = r.getContent();
+    return { data: Utilities.base64Encode(bytes), total: Number((range.split('/')[1]) || bytes.length), type: String(h['Content-Type'] || h['content-type'] || 'audio/mpeg').split(';')[0] };
+  },
+
+  // فحص تشغيل الصوت لآخر المحاضرات: نوع الملف وحجمه ومشاركته، ورد رابط التنزيل المباشر ورابط Drive API كما يراه المتصفح
+  audioCheck: () => {
+    const key = prop_('DRIVE_API_KEY'), referer = siteOrigin_() + '/';
+    const probe = (url) => {
+      try {
+        const r = UrlFetchApp.fetch(url, { headers: { Range: 'bytes=0-15', Referer: referer }, muteHttpExceptions: true, followRedirects: true });
+        const h = r.getHeaders(), type = String(h['Content-Type'] || h['content-type'] || '');
+        return { status: r.getResponseCode(), type, body: /text|json|html/.test(type) ? r.getContentText().slice(0, 160) : '' };
+      } catch (e) { return { status: 0, type: '', body: String(e.message || e).slice(0, 160) }; }
+    };
+    return rows_('Lectures').slice(-5).reverse().map(l => {
+      const out = { title: l.title, id: l.audio_file_id };
+      try { const f = DriveApp.getFileById(l.audio_file_id); Object.assign(out, { mime: f.getMimeType(), size: f.getSize(), sharing: String(f.getSharingAccess()) }); }
+      catch (e) { out.mime = 'خطأ: ' + String(e.message || e).slice(0, 80); }
+      out.direct = probe('https://drive.usercontent.google.com/download?id=' + l.audio_file_id + '&export=download');
+      out.api = key ? probe('https://www.googleapis.com/drive/v3/files/' + l.audio_file_id + '?alt=media&key=' + encodeURIComponent(key)) : { status: -1, type: '', body: 'DRIVE_API_KEY غير موجود' };
+      return out;
+    });
+  },
+
   // إعدادات العرض: مفتاح Drive API (مقيّد بعنوان الموقع) لتشغيل الصوت بطريقة تدعم آيفون
   config: () => ({ driveKey: prop_('DRIVE_API_KEY') || '' }),
 
@@ -971,6 +1009,14 @@ function tgDownload_(file_id, folder, name) {
   return f.getId();
 }
 const MIME_BY_EXT = { oga: 'audio/ogg', ogg: 'audio/ogg', opus: 'audio/ogg', mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+const AUDIO_CHUNK = 2.5 * 1024 * 1024;
+// هل يحق للمستخدم سماع هذا الملف: تسجيل محاضرة في فصله (والطفل المنشورة فقط) أو صوت معتمد في صفحة نبي
+function canHearAudio_(me, p, id) {
+  if (!id) return false;
+  const isT = RANK[me.role] >= RANK.teacher;
+  if (rows_('Lectures').some(l => l.audio_file_id === id && l.class_id === cls_(me, p) && (isT || l.status === 'published'))) return true;
+  return rows_('ProphetContent').some(c => c.kind === 'audio' && c.file_id === id && (isT || (truthy_(c.approved) && truthy_(c.visible))));
+}
 // Ogg/Opus ← WebM/Opus (نفس الصوت). لو فشل التحويل لأي سبب نحتفظ بالملف كما هو
 function webmBlob_(blob, name) {
   try {

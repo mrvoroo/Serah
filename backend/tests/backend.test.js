@@ -40,6 +40,7 @@ function boot() {
       computeHmacSha256Signature: (s, k) => [...crypto.createHmac('sha256', k).update(s).digest()],
       base64EncodeWebSafe: (x) => Buffer.from(typeof x === 'string' ? x : Uint8Array.from(x.map(b => b & 255))).toString('base64url'),
       base64DecodeWebSafe: (s) => [...Buffer.from(s, 'base64url')],
+      base64Encode: (x) => Buffer.from(Uint8Array.from(x, (b) => b & 255)).toString('base64'),
       newBlob: (b, type, name) => ({ getDataAsString: () => Buffer.from(b).toString(), getContentType: () => type, getBytes: () => b, _b: { type, name, size: b.length } }),
       formatDate: (d) => d.toISOString().slice(0, 10),
       sleep: (ms) => { slept += ms; }
@@ -52,6 +53,12 @@ function boot() {
       fetches.push({ url, opts });
       if (/api\.telegram\.org\/file\//.test(url)) { const b = { type: 'application/octet-stream', name: '' }; return { getBlob: () => ({ setName(n) { b.name = n; return this; }, setContentType(t) { b.type = t; return this; }, getBytes: () => signed(VOICE), getContentType: () => b.type, _b: b }) }; }
       if (/googleapis\.com\/upload\/drive/.test(url)) return { getResponseCode: () => 200, getHeaders: () => ({ Location: 'https://upload/session' }) };
+      if (/googleapis\.com\/drive\/v3\/files\//.test(url)) {
+        const [, a, b] = /bytes=(\d+)-(\d+)/.exec(opts.headers.Range);
+        if (Number(a) >= VOICE.length) return { getResponseCode: () => 416, getHeaders: () => ({}), getContent: () => [] };
+        const part = VOICE.subarray(Number(a), Math.min(Number(b) + 1, VOICE.length));
+        return { getResponseCode: () => 206, getHeaders: () => ({ 'Content-Type': 'audio/webm', 'Content-Range': 'bytes ' + a + '-' + (Number(a) + part.length - 1) + '/' + VOICE.length }), getContent: () => signed(part) };
+      }
       const m = String(url).match(/api\.telegram\.org\/bot[^/]*\/(\w+)/);
       if (m) {
         const payload = JSON.parse((opts && opts.payload) || '{}');
@@ -626,6 +633,45 @@ test('مفتاح تشغيل الصوت يصل للمستخدم المسجل فق
   t.props.DRIVE_API_KEY = 'AIza-test';
   assert.strictEqual(t.call('config', {}, tok.student).data.driveKey, 'AIza-test');
   assert.ok(!t.call('config', {}).ok, 'needs login');
+});
+
+test('التشغيل المضمون: الخلفية ترسل التسجيل على أجزاء، ويتجمّع مطابقًا للملف تمامًا', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  const r = t.call('audioChunk', { id: 'f1', start: 0 }, tok.teacher);
+  assert.ok(r.ok, JSON.stringify(r).slice(0, 200));
+  assert.strictEqual(r.data.total, VOICE.length);
+  assert.strictEqual(r.data.type, 'audio/webm');
+  assert.ok(Buffer.from(r.data.data, 'base64').equals(VOICE), 'bytes identical');
+  const mid = t.call('audioChunk', { id: 'f1', start: 1000 }, tok.teacher).data;
+  assert.ok(Buffer.from(mid.data, 'base64').equals(VOICE.subarray(1000)), 'range from offset');
+  assert.strictEqual(t.call('audioChunk', { id: 'f1', start: VOICE.length }, tok.teacher).data.data, '', 'past the end');
+});
+
+test('التشغيل المضمون: لا يقرأ إلا ملفات المنصة المسموحة (لا ملفات درايف عشوائية)', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  assert.strictEqual(t.call('audioChunk', { id: 'some-private-drive-file' }, tok.admin).error, 'التسجيل غير متاح');
+  assert.strictEqual(t.call('audioChunk', { id: 'f1' }, tok.student).error, 'التسجيل غير متاح', 'kids: drafts are hidden');
+  t.call('setLectureStatus', { lecture_id: 'L1', status: 'published' }, tok.admin);
+  assert.ok(t.call('audioChunk', { id: 'f1' }, tok.student).ok, 'kids hear published lectures');
+  t.sheets.Lectures.appendRow(['L9', 'C2', 'فصل آخر', '2026-11-01', 'f9', 1, 'published', '', 'X', 'x', '']);
+  assert.strictEqual(t.call('audioChunk', { id: 'f9' }, tok.student).error, 'التسجيل غير متاح', 'other class');
+  assert.ok(!t.call('audioChunk', { id: 'f1' }).ok, 'needs login');
+  // صوت صفحة النبي: المعتمد فقط للأطفال
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  const c = t.call('saveContent', { prophet_id: 'noah', kind: 'audio', file_id: 'pa1' }, tok.admin).data;
+  assert.strictEqual(t.call('audioChunk', { id: 'pa1' }, tok.student).error, 'التسجيل غير متاح');
+  t.call('setContentFlags', { item_id: c, approved: true }, tok.admin);
+  assert.ok(t.call('audioChunk', { id: 'pa1' }, tok.student).ok);
+});
+
+test('فحص الصوت للمطوّر فقط', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  assert.ok(!t.call('audioCheck', {}, tok.admin).ok);
+  const r = t.call('audioCheck', {}, tok.superadmin);
+  assert.ok(r.ok && Array.isArray(r.data), JSON.stringify(r).slice(0, 200));
 });
 
 for (const [name, fn] of tests) {

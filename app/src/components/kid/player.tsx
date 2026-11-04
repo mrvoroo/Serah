@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import confetti from "canvas-confetti";
 import { ArrowRight, Loader2, Pause, Play, RotateCcw, RotateCw } from "lucide-react";
 import { api, driveImage, fmtDate, type Lecture, type Me } from "@/lib/api";
-import { useAudioUrl } from "@/hooks/use-media-key";
+import { useAudioSource } from "@/hooks/use-media-key";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { useMotionAllowed } from "@/lib/tier";
 import { Zaid } from "@/components/zaid";
@@ -21,8 +21,9 @@ export function Player({ id }: { id: string }) {
   const { data, loading } = useApi<Lecture[]>("lectures");
   const me = useApi<Me>("me");
   const lecture = useMemo(() => data?.find((l) => l.lecture_id === id), [data, id]);
+  // رابط درايف أولًا، ولو فشل يُجهَّز التسجيل من الخلفية
+  const source = useAudioSource(lecture?.audio_file_id ?? "");
   const audio = useRef<HTMLAudioElement>(null);
-  const audioUrl = useAudioUrl();
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [t, setT] = useState(0);
@@ -106,10 +107,10 @@ export function Player({ id }: { id: string }) {
         <h1 className="text-center font-heading text-2xl font-extrabold leading-snug">{lecture.title}</h1>
         <p className="text-center text-sm text-muted-foreground">{fmtDate(lecture.date)}</p>
 
-        <audio ref={audio} src={audioUrl(lecture.audio_file_id)} preload="metadata"
+        <audio ref={audio} src={source.src} preload="metadata"
           onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={onTime}
           onLoadedMetadata={(e) => setDur(e.currentTarget.duration)} onWaiting={() => setBuffering(true)} onPlaying={() => setBuffering(false)}
-          onEnded={celebrate} onError={() => setFailed(true)} />
+          onEnded={celebrate} onError={(e) => source.onError(e)} />
 
         <div className="mt-4" dir="ltr">
           <input type="range" min={0} max={total || 1} step={1} value={Math.min(t, total || 1)} aria-label="موضع الاستماع"
@@ -129,7 +130,8 @@ export function Player({ id }: { id: string }) {
         <div className="mt-3 flex justify-center">
           <button type="button" onClick={cycleSpeed} className="rounded-full bg-secondary px-4 py-1.5 text-sm font-bold">السرعة ×{SPEEDS[speed]}</button>
         </div>
-        {failed && <p role="alert" className="mt-3 text-center text-sm font-bold text-destructive">تعذّر تشغيل الصوت، تأكد من الإنترنت وحاول تاني</p>}
+        {source.loading && <p role="status" className="mt-3 text-center text-sm font-bold text-muted-foreground">جاري تجهيز التسجيل… {source.pct.toLocaleString("ar-EG")}٪</p>}
+        {(failed || source.error) && !source.loading && <p role="alert" className="mt-3 text-center text-sm font-bold text-destructive">تعذّر تشغيل الصوت، تأكد من الإنترنت وحاول تاني</p>}
       </div>
 
       <AnimatePresence>

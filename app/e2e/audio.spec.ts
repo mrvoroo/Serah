@@ -58,3 +58,49 @@ test("بدون مفتاح: يرجع للرابط المباشر (يعمل على
   await page.goto("/Serah/teacher/lectures/");
   await expect(page.locator("audio").first()).toHaveAttribute("src", /drive\.usercontent\.google\.com\/download\?id=drv-webm/);
 });
+
+// درايف يرفض الروابط (مثل ما حصل على الموقع الحقيقي) → المشغّل يجهّز التسجيل من الخلفية على أجزاء ويشغّله
+async function brokenDrive(page: Page) {
+  const chunks: number[] = [];
+  await page.route(/script\.google\.com\/macros/, (route) => {
+    const b = JSON.parse(route.request().postData() || "{}");
+    if (b.action === "audioChunk") {
+      const start = Number(b.start) || 0, part = VOICE_WEBM.subarray(start, start + 20000);
+      chunks.push(start);
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: { data: part.toString("base64"), total: VOICE_WEBM.length, type: "audio/webm" } }) });
+    }
+    const data = b.action === "config" ? { driveKey: "AIza-test" } : b.action === "lectures" ? [LECTURE] : b.action === "me" ? { points: 0, attended: [], rank: 1, total: 1 } : [];
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data }) });
+  });
+  await page.route(/googleapis\.com|drive\.usercontent\.google\.com/, (route) => route.fulfill({ status: 403, contentType: "text/html", body: "<html>Forbidden</html>" }));
+  return chunks;
+}
+const durationOf = (a: HTMLAudioElement) => new Promise<number>((res, rej) => {
+  if (a.readyState >= 1 && a.src.startsWith("blob:")) return res(a.duration);
+  a.addEventListener("loadedmetadata", () => res(a.duration), { once: true });
+  setTimeout(() => rej(new Error("no metadata: " + a.src.slice(0, 40))), 10000);
+});
+
+test("درايف يرفض الرابط: صفحة المحاضرات تجهّز التسجيل من الخلفية وتشغّله", async ({ page }) => {
+  const chunks = await brokenDrive(page);
+  await page.addInitScript((u) => { localStorage.setItem("serah_token", "t"); localStorage.setItem("serah_user", JSON.stringify(u)); }, TEACHER);
+  await page.goto("/Serah/teacher/lectures/");
+  await expect(page.getByTestId("audio")).toHaveAttribute("src", /googleapis/);
+  expect(chunks).toEqual([]); // لا تنزيل قبل الضغط على تشغيل
+  await page.getByTestId("audio").evaluate((a: HTMLAudioElement) => { a.play().catch(() => {}); });
+  await expect(page.getByTestId("audio")).toHaveAttribute("src", /^blob:/, { timeout: 15000 });
+  expect(chunks.length).toBe(2); // الملف على جزأين
+  const d = await page.getByTestId("audio").evaluate(durationOf);
+  expect(d).toBeGreaterThan(2.9); expect(d).toBeLessThan(3.1);
+});
+
+test("درايف يرفض الرابط: مشغّل الطفل يجهّز التسجيل تلقائيًا ويشغّله", async ({ page }) => {
+  await brokenDrive(page);
+  await page.addInitScript(() => { localStorage.setItem("serah_token", "t"); localStorage.setItem("serah_user", JSON.stringify({ user_id: "S1", name: "يوسف", role: "student", class_id: "C1", avatar: "🌟" })); });
+  await page.goto("/Serah/kid/lecture/?id=L1");
+  const audio = page.locator("audio");
+  await expect(audio).toHaveAttribute("src", /^blob:/, { timeout: 15000 });
+  const d = await audio.evaluate(durationOf);
+  expect(d).toBeGreaterThan(2.9); expect(d).toBeLessThan(3.1);
+  await expect(page.getByText("تعذّر تشغيل الصوت")).toHaveCount(0);
+});

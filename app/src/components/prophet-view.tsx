@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Headphones, PlayCircle } from "lucide-react";
 import { driveImage, type Lecture } from "@/lib/api";
-import { useAudioUrl } from "@/hooks/use-media-key";
+import { AudioPlayer } from "@/components/audio-player";
 import type { ContentItem, ProphetRow } from "@/lib/prophets";
 import { cn } from "@/lib/utils";
 
@@ -26,12 +26,11 @@ export function YouTube({ id, title }: { id: string; title?: string }) {
 }
 
 function Item({ it }: { it: ContentItem }) {
-  const audioUrl = useAudioUrl();
   return (
     <section data-testid="prophet-item" data-kind={it.kind} className={cn("rounded-[28px] border bg-card p-4 shadow-soft", (!it.approved || !it.visible) && "border-dashed")}>
       {it.title && <h2 className="mb-3 font-heading text-xl font-extrabold">{it.title}</h2>}
       {it.kind === "text" && <p className="whitespace-pre-line text-base leading-8 text-muted-foreground">{it.body}</p>}
-      {it.kind === "audio" && <audio controls preload="none" src={audioUrl(it.file_id)} className="w-full" />}
+      {it.kind === "audio" && <AudioPlayer id={it.file_id} />}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {it.kind === "image" && <img src={driveImage(it.file_id)} alt={it.title || "صورة"} loading="lazy" className="w-full rounded-2xl object-cover" />}
       {it.kind === "youtube" && <YouTube id={it.url} title={it.title} />}

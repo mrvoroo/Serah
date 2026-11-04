@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Bot, CheckCircle2, Eye, Loader2, Lock, RefreshCw, XCircle } from "lucide-react";
-import { type Role } from "@/lib/api";
+import { Bot, CheckCircle2, Eye, Loader2, Lock, RefreshCw, Stethoscope, XCircle } from "lucide-react";
+import { api, type Role } from "@/lib/api";
 import { useApi, invalidate } from "@/hooks/use-api";
 import { startViewAs } from "@/lib/view-as";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,47 @@ type Health = {
 type ClassRow = { class_id: string; name: string; join_code: string; teacher: string; kids: number; lectures: number; published: number };
 
 const card = "rounded-[24px] border bg-card p-4 shadow-soft";
+
+type Probe = { status: number; type: string; body: string };
+type AudioRow = { title: string; id: string; mime?: string; size?: number; sharing?: string; direct: Probe; api: Probe };
+const probeOk = (p: Probe) => (p.status === 200 || p.status === 206) && /audio|video|octet/.test(p.type);
+
+// فحص تشغيل الصوت: كيف يرد درايف على روابط آخر المحاضرات (لتشخيص أي مشكلة تشغيل)
+function AudioCheck() {
+  const [rows, setRows] = useState<AudioRow[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async () => { setBusy(true); try { setRows(await api<AudioRow[]>("audioCheck")); } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); } };
+  const Cell = ({ p }: { p: Probe }) => (
+    <span className={cn("font-bold", probeOk(p) ? "text-emerald-500" : "text-destructive")} title={p.body}>{p.status === -1 ? "لا يوجد مفتاح" : `${p.status} ${p.type.split(";")[0]}`}</span>
+  );
+  return (
+    <section aria-labelledby="audio-h" className="rounded-[24px] border bg-card p-4 shadow-soft">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 id="audio-h" className="font-heading text-lg font-extrabold">فحص تشغيل الصوت</h2>
+        <Button variant="secondary" size="lg2" disabled={busy} onClick={run}>{busy ? <Loader2 className="animate-spin" /> : <Stethoscope />} افحص الآن</Button>
+      </div>
+      {rows && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-muted-foreground"><th className="p-2 text-start">المحاضرة</th><th className="p-2 text-start">الملف</th><th className="p-2 text-start">المشاركة</th><th className="p-2 text-start">رابط مباشر</th><th className="p-2 text-start">Drive API</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t align-top" data-testid="audio-row">
+                  <td className="p-2 font-bold">{r.title}</td>
+                  <td className="p-2" dir="ltr">{r.mime} {r.size ? `· ${(r.size / 1048576).toFixed(1)}MB` : ""}</td>
+                  <td className={cn("p-2 font-bold", r.sharing === "ANYONE_WITH_LINK" ? "text-emerald-500" : "text-destructive")} dir="ltr">{r.sharing}</td>
+                  <td className="p-2" dir="ltr"><Cell p={r.direct} />{!probeOk(r.direct) && r.direct.body && <p className="max-w-56 truncate text-xs text-muted-foreground">{r.direct.body}</p>}</td>
+                  <td className="p-2" dir="ltr"><Cell p={r.api} />{!probeOk(r.api) && r.api.body && <p className="max-w-56 truncate text-xs text-muted-foreground">{r.api.body}</p>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-xs text-muted-foreground">لو الروابط باللون الأحمر، المنصة تشغّل الصوت تلقائيًا من الخلفية بدلها.</p>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function AdminHome() {
   const health = useApi<Health>("systemHealth");
@@ -119,6 +160,7 @@ export default function AdminHome() {
           )}
         </section>
       </div>
+      <AudioCheck />
       {(health.error || classes.error || users.error) && (
         <BlurFade><p role="alert" className="flex items-center gap-2 rounded-2xl bg-destructive/10 p-3 font-bold text-destructive"><Lock className="size-4" />{health.error || classes.error || users.error}</p></BlurFade>
       )}
