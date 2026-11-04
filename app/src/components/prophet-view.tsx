@@ -40,7 +40,7 @@ function Item({ it }: { it: ContentItem }) {
 
 export function ProphetView({ prophet, items, lectures }: { prophet: ProphetRow; items: ContentItem[]; lectures?: Lecture[] }) {
   const name = prophet.name.replace(/\s*ﷺ\s*$/, "");
-  const related = (lectures ?? []).filter((l) => String(l.title).includes(name));
+  const related = (lectures ?? []).filter((l) => l.prophet_id === prophet.prophet_id || String(l.title).includes(name));
   return (
     <div className="flex flex-col gap-4">
       <header className="relative overflow-hidden rounded-[32px] bg-hero p-6 text-white shadow-soft">

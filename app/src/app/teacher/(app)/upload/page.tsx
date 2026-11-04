@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckCircle2, FileAudio, Loader2, UploadCloud } from "lucide-react";
 import { api } from "@/lib/api";
 import { putChunks } from "@/lib/upload";
+import { ProphetSelect, useProphetOptions } from "@/components/teacher/lecture-editor";
 import { invalidate } from "@/hooks/use-api";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,14 @@ export default function UploadPage() {
   const [state, setState] = useState<"idle" | "busy" | "done">("idle");
   const [err, setErr] = useState("");
   const [drag, setDrag] = useState(false);
+  const [prophet, setProphet] = useState("");
+  const prophets = useProphetOptions();
+  // اختيار النبي يقترح العنوان لو لسه فاضي
+  const pickProphet = (v: string) => {
+    setProphet(v);
+    const name = prophets.find((p) => p.value === v)?.label.replace(/\s*ﷺ\s*$/, "");
+    if (name && !title.trim()) setTitle(v === "muhammad" ? "من سيرة سيدنا محمد ﷺ" : `قصة سيدنا ${name}`);
+  };
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault(); if (!file || !title.trim()) return;
@@ -33,7 +42,8 @@ export default function UploadPage() {
       const duration_sec = await audioDuration(file);
       const { uploadUrl } = await api<{ uploadUrl: string }>("startUpload", { name: file.name, mime: file.type || "audio/ogg", kind: "audio" });
       const id = await putChunks(uploadUrl, file, setPct);
-      await api("createLecture", { title: title.trim(), audio_file_id: id, duration_sec });
+      const l = await api<{ lecture_id: string }>("createLecture", { title: title.trim(), audio_file_id: id, duration_sec });
+      if (prophet) await api("updateLecture", { lecture_id: l.lecture_id, prophet_id: prophet });
       setPct(100); setState("done"); invalidate("lectures"); invalidate("dashboard");
     } catch (e2) { setErr("تعذّر الرفع: " + (e2 as Error).message); setState("idle"); }
   };
@@ -45,7 +55,7 @@ export default function UploadPage() {
       <p className="text-muted-foreground">المحاضرة الآن مسودة، راجعيها ثم انشريها للأطفال</p>
       <div className="flex gap-2">
         <Link href="/teacher/lectures/" className={buttonVariants({ variant: "hero", size: "lg2" })}>مراجعة ونشر</Link>
-        <Button variant="secondary" size="lg2" onClick={() => { setFile(null); setTitle(""); setPct(-1); setState("idle"); }}>رفع آخر</Button>
+        <Button variant="secondary" size="lg2" onClick={() => { setFile(null); setTitle(""); setProphet(""); setPct(-1); setState("idle"); }}>رفع آخر</Button>
       </div>
     </div>
   );
@@ -56,6 +66,8 @@ export default function UploadPage() {
       <div className="flex flex-col gap-2 rounded-[24px] border bg-card p-5 shadow-soft">
         <Label htmlFor="lt">اسم المحاضرة</Label>
         <Input id="lt" value={title} onChange={(e) => setTitle(e.target.value)} required className="h-12 rounded-xl text-base" placeholder="مثلًا: قصة سيدنا نوح" />
+        <Label htmlFor="lp">المحاضرة عن أي نبي؟</Label>
+        <ProphetSelect id="lp" value={prophet} onChange={pickProphet} />
         <input ref={input} type="file" accept="audio/*,.ogg,.opus,.m4a,.mp3" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         <button type="button" onClick={() => input.current?.click()}
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}

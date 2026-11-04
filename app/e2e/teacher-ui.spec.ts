@@ -58,6 +58,8 @@ test("دخول الطفل: نفس المشاعر — كود أو رمز غلط �
   await page.keyboard.type("9999");
   await expect(page.getByText("الرمز غير صحيح")).toBeVisible();
   await expect(zaid(page)).toHaveAccessibleName("زيد مستغرب");
+  // خانة الرمز ترجع جاهزة للكتابة بعد الخطأ مباشرة
+  await expect(page.getByRole("textbox")).toBeFocused();
   await page.keyboard.type("1");
   await expect(zaid(page)).toHaveAccessibleName("زيد بيفكر");
   await page.keyboard.type("111");

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { toast } from "sonner";
-import { KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { api, type Kid } from "@/lib/api";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { AVATARS, KidAvatar } from "@/components/kid/kid-avatar";
@@ -25,6 +25,7 @@ export default function StudentsPage() {
   const [busy, setBusy] = useState(false);
   const [pinFor, setPinFor] = useState<Kid | null>(null);
   const [delFor, setDelFor] = useState<Kid | null>(null);
+  const [editFor, setEditFor] = useState<Kid | null>(null);
 
   const refresh = () => { invalidate("students"); invalidate("dashboard"); reload(); };
   const run = async (fn: () => Promise<unknown>, ok: string, done: () => void) => {
@@ -46,6 +47,7 @@ export default function StudentsPage() {
               <li className="flex items-center gap-3 rounded-[24px] border bg-card p-3 shadow-soft">
                 <KidAvatar value={k.avatar} size={44} />
                 <div className="min-w-0 flex-1"><p className="truncate font-bold">{k.name}</p><p className="text-sm text-muted-foreground">{k.points ?? 0} نجمة</p></div>
+                <Button variant="secondary" size="icon-xl" aria-label={`تعديل ${k.name}`} onClick={() => { setName(k.name); setAvatar(k.avatar || `3d:${AVATARS[0]}`); setEditFor(k); }}><Pencil /></Button>
                 <Button variant="secondary" size="icon-xl" aria-label={`تغيير رمز ${k.name}`} onClick={() => { setPin(""); setPinFor(k); }}><KeyRound /></Button>
                 <Button variant="ghost" size="icon-xl" aria-label={`حذف ${k.name}`} className="text-destructive" onClick={() => setDelFor(k)}><Trash2 /></Button>
               </li>
@@ -73,6 +75,26 @@ export default function StudentsPage() {
               ))}
             </div>
             <DialogFooter><Button type="submit" variant="hero" size="lg2" disabled={busy || !name.trim() || pin.length < 4}>{busy ? <Loader2 className="animate-spin" /> : "حفظ"}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editFor} onOpenChange={(o) => !o && setEditFor(null)}>
+        <DialogContent className="rounded-[28px] sm:max-w-md">
+          <DialogHeader><DialogTitle>تعديل {editFor?.name}</DialogTitle></DialogHeader>
+          <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (editFor) run(() => api("updateStudent", { user_id: editFor.user_id, name, avatar }), "تم حفظ التعديل", () => setEditFor(null)); }}>
+            <Label htmlFor="en">الاسم</Label>
+            <Input id="en" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required className="h-12 rounded-xl text-base" />
+            <Label>الشكل</Label>
+            <div className="grid grid-cols-6 gap-2">
+              {AVATARS.map((a) => (
+                <button key={a} type="button" aria-label={a} aria-pressed={avatar === `3d:${a}`} onClick={() => setAvatar(`3d:${a}`)}
+                  className={cn("grid aspect-square place-items-center rounded-2xl bg-secondary/60 transition", avatar === `3d:${a}` && "bg-primary/20 ring-2 ring-primary")}>
+                  <KidAvatar value={`3d:${a}`} size={34} />
+                </button>
+              ))}
+            </div>
+            <DialogFooter><Button type="submit" variant="hero" size="lg2" disabled={busy || !name.trim()}>{busy ? <Loader2 className="animate-spin" /> : "حفظ"}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

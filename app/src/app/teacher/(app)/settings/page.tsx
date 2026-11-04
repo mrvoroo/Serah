@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Loader2 } from "lucide-react";
+import { Copy, ExternalLink, Loader2, Send } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,17 @@ export default function SettingsPage() {
   const [oldPin, setOld] = useState("");
   const [newPin, setNew] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [tgUrl, setTgUrl] = useState("");
   useEffect(() => { if (cc.data) setCode(cc.data.code); }, [cc.data]);
 
   const saveCode = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy("code");
     try { const r = await api<{ code: string }>("setClassCode", { code }); setCode(r.code); toast.success("تم حفظ كود الفصل"); } catch (e2) { toast.error((e2 as Error).message); } finally { setBusy(null); }
+  };
+  // رابط لمرة واحدة (15 دقيقة): يفتح البوت والمعلمة تضغط Start فقط
+  const linkTelegram = async () => {
+    setBusy("tg");
+    try { const r = await api<{ url: string }>("tgLinkToken"); setTgUrl(r.url); } catch (e2) { toast.error((e2 as Error).message); } finally { setBusy(null); }
   };
   const savePin = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy("pin");
@@ -47,6 +53,18 @@ export default function SettingsPage() {
           <Input id="np" type="password" inputMode="numeric" value={newPin} onChange={(e) => setNew(e.target.value)} autoComplete="new-password" className="h-12 rounded-xl" required minLength={4} />
           <Button type="submit" variant="hero" size="lg2" disabled={busy === "pin"}>{busy === "pin" ? <Loader2 className="animate-spin" /> : "تغيير الرمز"}</Button>
         </form>
+        <section className="flex flex-col gap-3 rounded-[24px] border bg-card p-5 shadow-soft lg:col-span-2">
+          <div className="flex items-center gap-2"><Icon3D name="speech" size={32} float /><h2 className="font-heading text-lg font-extrabold">بوت تيليجرام</h2></div>
+          <p className="text-sm leading-7 text-muted-foreground">اربطي حسابكِ بالبوت لترفعي المحاضرات من تيليجرام بالأزرار: ابعتي التسجيل، اختاري النبي، وابعتي الصور.</p>
+          {tgUrl ? (
+            <a href={tgUrl} target="_blank" rel="noopener noreferrer" className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#229ED9] px-5 font-bold text-white">
+              <ExternalLink className="size-5" /> افتحي تيليجرام واضغطي Start
+            </a>
+          ) : (
+            <Button variant="hero" size="lg2" disabled={busy === "tg"} onClick={linkTelegram}>{busy === "tg" ? <Loader2 className="animate-spin" /> : <Send />} ربط تيليجرام</Button>
+          )}
+          {tgUrl && <p className="text-xs text-muted-foreground">الرابط صالح لمدة ١٥ دقيقة ولمرة واحدة.</p>}
+        </section>
       </div>
     </div>
   );

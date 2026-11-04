@@ -9,6 +9,7 @@ export type Kid = { user_id: string; name: string; avatar: string; points?: numb
 export type Lecture = {
   lecture_id: string; class_id: string; title: string; date: string; audio_file_id: string;
   duration_sec: number | string; status: "draft" | "published"; images: string[];
+  prophet_id?: string; notes?: string; imageItems?: { image_id: string; file_id: string }[];
 };
 export type Leaderboard = { top: (Kid & { points: number })[]; me: number };
 

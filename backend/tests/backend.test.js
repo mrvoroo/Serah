@@ -8,6 +8,8 @@ function boot() {
   const props = { PIN_SALT: 'salt', HMAC_KEY: 'hmac', SHEET_ID: 'x', BOT_TOKEN: 'set' };
   const cache = {};
   let slept = 0;
+  const tg = [];
+  let mid = 1000, drv = 0;
   function mkSheet(name) {
     const data = [];
     const sh = {
@@ -41,14 +43,25 @@ function boot() {
       sleep: (ms) => { slept += ms; }
     },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => JSON.parse(t) }), MimeType: { JSON: 1 } },
-    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; } }) },
+    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; }, remove: (k) => { delete cache[k]; } }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
     ScriptApp: { getProjectTriggers: () => [{ getHandlerFunction: () => 'pollTelegram' }], getOAuthToken: () => 't', getService: () => ({ getUrl: () => 'u' }) },
-    UrlFetchApp: { fetch: () => ({ getContentText: () => JSON.stringify({ ok: true, result: { url: 'https://relay.example.workers.dev/hook?x', pending_update_count: 0 } }) }) },
-    DriveApp: { getFileById: () => ({ setSharing() {} }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
+    UrlFetchApp: { fetch: (url, opts) => {
+      if (/api\.telegram\.org\/file\//.test(url)) return { getBlob: () => ({ setName() {} }) };
+      const m = String(url).match(/api\.telegram\.org\/bot[^/]*\/(\w+)/);
+      if (m) {
+        const payload = JSON.parse((opts && opts.payload) || '{}');
+        tg.push({ method: m[1], ...payload });
+        const result = m[1] === 'getFile' ? { file_path: 'voice/f.oga' } : m[1] === 'sendMessage' ? { message_id: ++mid } : m[1] === 'getMe' ? { username: 'Serah_2026_bot' }
+          : { url: 'https://relay.example.workers.dev/hook?x', pending_update_count: 0 };
+        return { getContentText: () => JSON.stringify({ ok: true, result }) };
+      }
+      return { getContentText: () => JSON.stringify({ ok: true, result: { url: 'https://relay.example.workers.dev/hook?x', pending_update_count: 0 } }) };
+    } },
+    DriveApp: { getFileById: () => ({ setSharing() {} }), getFolderById: () => ({ createFile: () => ({ getId: () => 'drv' + (++drv) }) }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
-  const g = new Function(...Object.keys(env), code + '\nreturn { handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION };')(...Object.values(env));
-  return { g, sheets, props, mkSheet, slept: () => slept };
+  const g = new Function(...Object.keys(env), code + '\nreturn { handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN };')(...Object.values(env));
+  return { g, sheets, props, mkSheet, slept: () => slept, tg };
 }
 
 // بيانات بالشكل القديم (قبل أعمدة last_login_at وجدول LoginAttempts) كما في الشيت الحقيقي
@@ -328,6 +341,165 @@ test('الرحلة في وضع «عرض كـ»: القراءة مسموحة وا
   const imp = t.call('viewAs', { user_id: 'T1' }, tok.superadmin).data.token;
   assert.ok(t.call('journeyAdmin', {}, imp).ok);
   assert.strictEqual(t.call('saveProphet', { prophet_id: 'adam', name: 'x' }, imp).error, 'وضع المعاينة للعرض فقط — لا يمكن الحفظ');
+});
+
+// ===== المرحلة 4: المحاضرات والبوت بالأزرار =====
+function botSetup() {
+  const { t, tok } = journeySetup();
+  t.call('ping'); // الترحيل: جداول وأعمدة جديدة
+  let uid = 1;
+  const send = (chat, msg) => t.g.onTelegram_({ update_id: uid++, message: Object.assign({ message_id: 500 + uid, chat: { id: chat, type: 'private' } }, typeof msg === 'string' ? { text: msg } : msg) });
+  const last = (chat) => [...t.tg].reverse().find(x => x.method === 'sendMessage' && String(x.chat_id) === String(chat));
+  const buttons = (chat) => (last(chat).reply_markup.keyboard || []).flat().map(b => b.text);
+  return { t, tok, send, last, buttons, B: t.g.BTN };
+}
+
+test('المحاضرات: تعديل العنوان والتاريخ والنبي، وحذف المسودة، والمنشورة للأدمن فقط', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  assert.ok(t.call('updateLecture', { lecture_id: 'L1', title: 'قصة سيدنا نوح', date: '2026-11-02', prophet_id: 'noah' }, tok.teacher).ok);
+  const l = t.call('lectures', {}, tok.teacher).data.find(x => x.lecture_id === 'L1');
+  assert.strictEqual(l.title, 'قصة سيدنا نوح'); assert.strictEqual(l.prophet_id, 'noah'); assert.strictEqual(l.date, '2026-11-02');
+  assert.strictEqual(t.call('updateLecture', { lecture_id: 'L1', title: '  ' }, tok.teacher).error, 'اكتبي عنوان المحاضرة');
+  assert.strictEqual(t.call('updateLecture', { lecture_id: 'L1', date: 'غدًا' }, tok.teacher).error, 'تاريخ غير صحيح');
+  assert.ok(!t.call('updateLecture', { lecture_id: 'L1', title: 'x' }, tok.student).ok, 'student cannot edit');
+  t.call('setLectureStatus', { lecture_id: 'L1', status: 'published' }, tok.admin);
+  assert.strictEqual(t.call('deleteLecture', { lecture_id: 'L1' }, tok.teacher).error, 'المحاضرة المنشورة تحذفها الأدمن فقط');
+  assert.ok(t.call('deleteLecture', { lecture_id: 'L1' }, tok.admin).ok);
+  assert.strictEqual(t.call('lectures', {}, tok.admin).data.length, 0);
+});
+
+test('صور المحاضرة: إضافة وترتيب وحذف، ولا تلمس محاضرات فصل آخر', () => {
+  const { t, tok } = journeySetup();
+  t.call('ping');
+  const a = t.call('addLectureImage', { lecture_id: 'L1', file_id: 'f-a' }, tok.teacher).data;
+  const b = t.call('addLectureImage', { lecture_id: 'L1', file_id: 'f-b' }, tok.teacher).data;
+  let l = t.call('lectures', {}, tok.teacher).data[0];
+  assert.deepStrictEqual(l.images, ['f-a', 'f-b']);
+  assert.deepStrictEqual(l.imageItems.map(i => i.image_id), [a, b]);
+  assert.ok(!t.call('lectures', {}, tok.student).data.length || !('imageItems' in t.call('lectures', {}, tok.student).data[0]), 'kids get no ids');
+  assert.ok(t.call('reorderLectureImages', { lecture_id: 'L1', ids: [b, a] }, tok.teacher).ok);
+  assert.deepStrictEqual(t.call('lectures', {}, tok.teacher).data[0].images, ['f-b', 'f-a']);
+  assert.strictEqual(t.call('reorderLectureImages', { lecture_id: 'L1', ids: [b, 'Ixx'] }, tok.teacher).error, 'ترتيب غير صحيح');
+  assert.ok(t.call('deleteLectureImage', { image_id: a }, tok.teacher).ok);
+  assert.deepStrictEqual(t.call('lectures', {}, tok.teacher).data[0].images, ['f-b']);
+  t.sheets.Lectures.appendRow(['L9', 'C2', 'فصل آخر', '2026-11-01', 'f9', 1, 'draft', '', 'X', 'x', '']);
+  assert.strictEqual(t.call('addLectureImage', { lecture_id: 'L9', file_id: 'f' }, tok.teacher).error, 'المحاضرة غير موجودة');
+});
+
+test('تعديل اسم الطفل وصورته الرمزية', () => {
+  const { t, tok } = journeySetup();
+  assert.ok(t.call('updateStudent', { user_id: 'S1', name: 'يوسف أحمد', avatar: '🚀' }, tok.teacher).ok);
+  const u = t.g.rows_('Users').find(x => x.user_id === 'S1');
+  assert.strictEqual(u.name, 'يوسف أحمد'); assert.strictEqual(u.avatar, '🚀');
+  assert.strictEqual(t.call('updateStudent', { user_id: 'T1', name: 'x' }, tok.teacher).error, 'الطالب غير موجود', 'cannot rename staff');
+  assert.strictEqual(t.call('updateStudent', { user_id: 'S1', name: ' ' }, tok.teacher).error, 'اكتبي اسم الطفل');
+});
+
+test('البوت: كود الفصل لم يعد يربط الحساب (ثغرة)، والربط من الموقع بضغطة Start', () => {
+  const { t, tok, send, last, buttons } = botSetup();
+  send(77, '/start SERAH1');
+  assert.ok(!t.g.rows_('Users').some(u => String(u.telegram_id) === '77'), 'class code must not link');
+  assert.deepStrictEqual(buttons(77), ['الفصل الأول']);
+  const url = t.call('tgLinkToken', {}, tok.teacher).data.url;
+  assert.match(url, /^https:\/\/t\.me\/Serah_2026_bot\?start=[a-f0-9]{24}$/);
+  send(77, '/start ' + url.split('=')[1]);
+  assert.strictEqual(String(t.g.rows_('Users').find(u => u.user_id === 'T2').telegram_id), '77');
+  assert.match(last(77).text, /أهلًا بكِ معلمة ثانية/);
+  // الرمز لمرة واحدة
+  send(78, '/start ' + url.split('=')[1]);
+  assert.ok(!t.g.rows_('Users').some(u => String(u.telegram_id) === '78'));
+  assert.ok(!t.call('tgLinkToken', {}, tok.student).ok, 'students cannot link');
+});
+
+test('البوت: الربط بالأزرار — الفصل ثم الاسم ثم الرمز بلوحة أرقام تُحذف أرقامها، ومنع التخمين', () => {
+  const { t, send, last, buttons, B } = botSetup();
+  send(55, 'مرحبا');
+  assert.deepStrictEqual(buttons(55), ['الفصل الأول']);
+  send(55, 'الفصل الأول');
+  assert.deepStrictEqual(buttons(55).sort(), ['المعلمة', 'معلمة ثانية'].sort());
+  send(55, 'المعلمة');
+  assert.ok(buttons(55).includes('5') && buttons(55).includes(B.OK));
+  for (const d of '000000') send(55, d);
+  const deleted = t.tg.filter(x => x.method === 'deleteMessage' && x.chat_id === 55).length;
+  assert.strictEqual(deleted, 6, 'every digit deleted from chat');
+  assert.match([...t.tg].reverse().find(x => x.method === 'editMessageText').text, /●●●●●●/);
+  send(55, B.OK);
+  assert.match(last(55).text, /الرمز غير صحيح/);
+  for (const d of '482615') send(55, d);
+  send(55, B.OK);
+  assert.strictEqual(String(t.g.rows_('Users').find(u => u.user_id === 'T1').telegram_id), '55');
+  assert.ok(buttons(55).includes(B.NEW) && buttons(55).includes(B.JOURNEY), 'admin menu');
+});
+
+test('البوت: محاضرة كاملة بالأزرار — صوت، نبي، عنوان مقترح، صور، ملخص، إرسال، وإشعار الأدمن', () => {
+  const { t, tok, send, last, buttons, B } = botSetup();
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  send(1, '/start ' + t.call('tgLinkToken', {}, tok.admin).data.url.split('=')[1]);   // الأدمن للإشعار
+  send(2, '/start ' + t.call('tgLinkToken', {}, tok.teacher).data.url.split('=')[1]); // المعلمة
+  send(2, B.NEW);
+  assert.deepStrictEqual(buttons(2), [B.CANCEL]);
+  send(2, { voice: { file_id: 'v1', duration: 600, file_size: 1000 } });
+  assert.deepStrictEqual(buttons(2), ['آدم', 'نوح', 'يوسف', B.OTHER, B.CANCEL]);
+  send(2, 'نوح');
+  assert.match(last(2).text, /«قصة سيدنا نوح»/);
+  send(2, B.USE);
+  send(2, { photo: [{ file_id: 'p-small' }, { file_id: 'p1' }] });
+  send(2, { photo: [{ file_id: 'p2' }] });
+  send(2, B.DONE_IMG);
+  assert.match(last(2).text, /العنوان: قصة سيدنا نوح\nعن: نوح\nالصور: 2\nالمدة: 10 دقيقة/);
+  send(2, B.SEND);
+  const l = t.g.rows_('Lectures').find(x => x.title === 'قصة سيدنا نوح');
+  assert.ok(l && l.status === 'draft' && l.prophet_id === 'noah' && l.created_by === 'T2' && l.class_id === 'C1');
+  assert.strictEqual(t.g.rows_('LectureImages').filter(i => i.lecture_id === l.lecture_id).length, 2);
+  const note = last(1);
+  assert.match(note.text, /محاضرة جديدة تنتظر المراجعة/);
+  assert.strictEqual(note.reply_markup.inline_keyboard[0][0].url, 'https://mrvoroo.github.io/Serah/teacher/lectures/');
+  assert.ok(buttons(2).includes(B.NEW), 'back to main menu');
+  send(2, B.MINE);
+  assert.match(last(2).text, /📝 مسودة — قصة سيدنا نوح/);
+});
+
+test('البوت: «موضوع آخر» بعنوان مكتوب، والإلغاء يحذف صور المحاضرة غير المرسلة', () => {
+  const { t, tok, send, last, B } = botSetup();
+  send(2, '/start ' + t.call('tgLinkToken', {}, tok.teacher).data.url.split('=')[1]);
+  send(2, { audio: { file_id: 'a1', duration: 60 } });
+  send(2, B.OTHER);
+  send(2, 'أذكار الصباح');
+  send(2, { photo: [{ file_id: 'p1' }] });
+  const before = t.g.rows_('LectureImages').length;
+  send(2, B.CANCEL);
+  assert.match(last(2).text, /تم الإلغاء/);
+  assert.strictEqual(t.g.rows_('LectureImages').length, before - 1, 'orphan image removed');
+  assert.ok(!t.g.rows_('Lectures').some(l => l.title === 'أذكار الصباح'));
+  // ملف أكبر من 20 ميجا → رابط صفحة الرفع
+  send(2, { voice: { file_id: 'big', file_size: 30 * 1024 * 1024 } });
+  assert.match(last(2).text, /teacher\/login\/\?next=upload/);
+});
+
+test('البوت: الأدمن ترفع محتوى صفحة النبي (صوت، صورة، يوتيوب، نص) غير معتمد', () => {
+  const { t, tok, send, last, buttons, B } = botSetup();
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  send(1, '/start ' + t.call('tgLinkToken', {}, tok.admin).data.url.split('=')[1]);
+  send(1, B.JOURNEY);
+  assert.deepStrictEqual(buttons(1), ['آدم', 'نوح', 'يوسف', B.CANCEL]);
+  send(1, 'يوسف');
+  send(1, { voice: { file_id: 'v', duration: 5 } });
+  send(1, { photo: [{ file_id: 'p' }], caption: 'رؤيا يوسف' });
+  send(1, 'شاهدوا https://youtu.be/dQw4w9WgXcQ');
+  send(1, 'قصة جميلة عن الصبر');
+  send(1, B.DONE);
+  assert.match(last(1).text, /حفظت 4 عنصر/);
+  const items = t.call('prophet', { id: 'yusuf', preview: true }, tok.admin).data.items;
+  assert.deepStrictEqual(items.map(i => i.kind), ['audio', 'image', 'youtube', 'text']);
+  assert.strictEqual(items[2].url, 'dQw4w9WgXcQ');
+  assert.ok(items.every(i => !i.approved));
+  assert.strictEqual(t.call('prophet', { id: 'yusuf' }, tok.student).data.items.length, 0);
+  // المعلمة العادية لا ترى زر محتوى الرحلة ولا تصل له
+  send(2, '/start ' + t.call('tgLinkToken', {}, tok.teacher).data.url.split('=')[1]);
+  assert.ok(!buttons(2).includes(B.JOURNEY));
+  send(2, B.JOURNEY);
+  assert.match(last(2).text, /اختاري من الأزرار/);
 });
 
 for (const [name, fn] of tests) {

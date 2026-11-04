@@ -2,15 +2,17 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
-import { api, driveAudio, fmtDate, fmtDur, type Lecture } from "@/lib/api";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { api, driveAudio, fmtDate, fmtDur, session, type Lecture } from "@/lib/api";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { LectureEditor, useProphetOptions } from "@/components/teacher/lecture-editor";
 import { Icon3D } from "@/components/icon3d";
 
 export default function TeacherLectures() {
@@ -18,6 +20,18 @@ export default function TeacherLectures() {
   const [filter, setFilter] = useState<"all" | "draft" | "published">("all");
   const [pending, setPending] = useState<string | null>(null);
   const list = (data ?? []).filter((l) => filter === "all" || l.status === filter);
+  const [editing, setEditing] = useState<Lecture | null>(null);
+  const [delFor, setDelFor] = useState<Lecture | null>(null);
+  const isAdmin = ["admin", "superadmin"].includes(session.user()?.role ?? "");
+  const prophets = useProphetOptions();
+  const prophetName = (id?: string) => prophets.find((p) => p.value === id)?.label;
+  const refresh = () => { invalidate("lectures"); invalidate("dashboard"); reload(); };
+  const del = async () => {
+    if (!delFor) return;
+    setPending(delFor.lecture_id);
+    try { await api("deleteLecture", { lecture_id: delFor.lecture_id }); toast.success("تم حذف المحاضرة"); setDelFor(null); refresh(); }
+    catch (e) { toast.error((e as Error).message); } finally { setPending(null); }
+  };
 
   const toggle = async (l: Lecture, on: boolean) => {
     setPending(l.lecture_id);
@@ -49,11 +63,15 @@ export default function TeacherLectures() {
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="font-heading text-lg font-extrabold leading-snug">{l.title}</p>
-                    <p className="text-sm text-muted-foreground">{fmtDate(l.date)}{fmtDur(l.duration_sec) && ` · ${fmtDur(l.duration_sec)}`} · {l.images?.length ?? 0} صور</p>
+                    <p className="text-sm text-muted-foreground">{fmtDate(l.date)}{fmtDur(l.duration_sec) && ` · ${fmtDur(l.duration_sec)}`} · {l.images?.length ?? 0} صور{prophetName(l.prophet_id) && ` · ${prophetName(l.prophet_id)}`}</p>
                   </div>
                   {l.status === "published" ? <Badge className="rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">منشورة</Badge> : <Badge className="rounded-full bg-gold text-[#3A2400]">مسودة</Badge>}
                 </div>
                 <audio controls preload="none" src={driveAudio(l.audio_file_id)} className="w-full" />
+                <div className="flex gap-2">
+                  <Button variant="secondary" size="lg2" className="flex-1" aria-label={`تعديل ${l.title}`} onClick={() => setEditing(l)}><Pencil /> تعديل والصور</Button>
+                  {(l.status === "draft" || isAdmin) && <Button variant="ghost" size="icon-xl" className="text-destructive" aria-label={`حذف ${l.title}`} onClick={() => setDelFor(l)}><Trash2 /></Button>}
+                </div>
                 <label className="flex items-center justify-between rounded-2xl bg-secondary/50 p-3 font-bold">
                   تمت المراجعة — ظاهرة للأطفال
                   <Switch checked={l.status === "published"} disabled={pending === l.lecture_id} onCheckedChange={(v) => toggle(l, v)} />
@@ -64,6 +82,14 @@ export default function TeacherLectures() {
           {list.length === 0 && <p className="col-span-full rounded-[24px] border bg-card p-6 text-center text-muted-foreground">لا توجد محاضرات هنا</p>}
         </ul>
       )}
+
+      <LectureEditor lecture={editing} onClose={() => setEditing(null)} onChanged={refresh} />
+      <Dialog open={!!delFor} onOpenChange={(o) => !o && setDelFor(null)}>
+        <DialogContent className="rounded-[28px] sm:max-w-sm">
+          <DialogHeader><DialogTitle>حذف «{delFor?.title}»؟</DialogTitle><DialogDescription>تختفي المحاضرة وصورها من المنصة (الملفات تبقى على درايف)</DialogDescription></DialogHeader>
+          <DialogFooter><Button variant="destructive" size="lg2" disabled={!!pending} onClick={del}>حذف</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
