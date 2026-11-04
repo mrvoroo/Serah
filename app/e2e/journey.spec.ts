@@ -5,6 +5,8 @@ import { test, expect, type Page } from "@playwright/test";
 const URL = "/Serah/kid/journey/?tier=high";
 
 async function open(page: Page) {
+  // خلفية وهمية: الرحلة تطلب أقسامها من الخلفية ([] = البيانات الاحتياطية)، والتوكن الوهمي يُرفض من الخلفية الحقيقية
+  await page.route(/script\.google\.com\/macros/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) }));
   await page.addInitScript(() => {
     localStorage.setItem("serah_token", "test");
     localStorage.setItem("serah_user", JSON.stringify({ user_id: "k1", name: "زيد", role: "student", class_id: "c1", avatar: "" }));

@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, FileAudio, Loader2, UploadCloud } from "lucide-react";
 import { api } from "@/lib/api";
+import { putChunks } from "@/lib/upload";
 import { invalidate } from "@/hooks/use-api";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,22 +11,6 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Icon3D } from "@/components/icon3d";
 import { cn } from "@/lib/utils";
-
-// رفع على دفعات (8 ميجا) إلى جلسة رفع متصلة على درايف — يكمل حتى لو النت ضعيف
-async function putChunks(url: string, file: File, onProgress: (p: number) => void): Promise<string> {
-  const CH = 8 * 1024 * 1024; let start = 0, tries = 0;
-  while (start < file.size) {
-    const end = Math.min(start + CH, file.size);
-    try {
-      const r = await fetch(url, { method: "PUT", headers: { "Content-Range": `bytes ${start}-${end - 1}/${file.size}` }, body: file.slice(start, end) });
-      if (r.status === 308) { const rg = r.headers.get("Range"); start = rg ? Number(rg.split("-")[1]) + 1 : end; }
-      else if (r.ok) return (await r.json()).id;
-      else throw new Error("status " + r.status);
-      tries = 0; onProgress(Math.round((start / file.size) * 100));
-    } catch (e) { if (++tries > 6) throw e; await new Promise((res) => setTimeout(res, 2000 * tries)); }
-  }
-  throw new Error("لم يكتمل الرفع");
-}
 
 const audioDuration = (f: File) => new Promise<number>((res) => {
   const a = document.createElement("audio"); const u = URL.createObjectURL(f);

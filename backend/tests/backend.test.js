@@ -20,6 +20,7 @@ function boot() {
       }),
       setFrozenRows() {},
       appendRow: (row) => data.push(row.slice()),
+      deleteRow: (i) => { data.splice(i - 1, 1); },
       getDataRange: () => ({ getValues: () => { const w = sh.getLastColumn(); return data.map(r => Array.from({ length: w }, (_, i) => r[i] ?? '')); } }),
       _data: data
     };
@@ -44,7 +45,7 @@ function boot() {
     LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
     ScriptApp: { getProjectTriggers: () => [{ getHandlerFunction: () => 'pollTelegram' }], getOAuthToken: () => 't', getService: () => ({ getUrl: () => 'u' }) },
     UrlFetchApp: { fetch: () => ({ getContentText: () => JSON.stringify({ ok: true, result: { url: 'https://relay.example.workers.dev/hook?x', pending_update_count: 0 } }) }) },
-    DriveApp: {}, Logger: { log() {} }, console: { error() {}, log() {} }
+    DriveApp: { getFileById: () => ({ setSharing() {} }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
   const g = new Function(...Object.keys(env), code + '\nreturn { handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION };')(...Object.values(env));
   return { g, sheets, props, mkSheet, slept: () => slept };
@@ -233,6 +234,102 @@ test('المطوّر يعمل على الفصل الأول تلقائيًا أو
 });
 
 let failed = 0;
+// ===== رحلة الأنبياء (المرحلة 3) =====
+const SEED = [
+  { prophet_id: 'adam', name: 'آدم', title: 'سيدنا آدم عليه السلام', tag: 'المحطة ١', text: 'أول البشر', symbol: '' },
+  { prophet_id: 'noah', name: 'نوح', title: 'سيدنا نوح عليه السلام', tag: 'المحطة ٣', text: 'صبر سنين', symbol: 'ark', symbol_name: 'السفينة' },
+  { prophet_id: 'yusuf', name: 'يوسف', title: 'سيدنا يوسف عليه السلام', tag: 'المحطة ١١', text: 'صبر', symbol: 'yusuf_dream' }
+];
+function journeySetup() {
+  const t = setup();
+  const tok = { student: t.login({ user_id: 'S1', pin: '1111' }), teacher: t.login({ name: 'معلمة ثانية', pin: '222222' }),
+    admin: t.login({ name: 'المعلمة', pin: '482615' }), superadmin: t.login({ name: 'م.احمد', pin: '987654' }) };
+  return { t, tok };
+}
+
+test('الرحلة: الجدول الفاضي يرجع [] (الموقع يستخدم الاحتياطي)، والاستيراد مرة واحدة للأدمن فقط', () => {
+  const { t, tok } = journeySetup();
+  const j = t.call('journey', {}, tok.student);
+  assert.ok(j.ok); assert.deepStrictEqual(j.data, []);
+  assert.ok(!t.call('seedProphets', { list: SEED }, tok.teacher).ok, 'teacher cannot seed');
+  const r = t.call('seedProphets', { list: SEED }, tok.admin);
+  assert.ok(r.ok && r.data === 3, JSON.stringify(r));
+  assert.strictEqual(t.call('seedProphets', { list: SEED }, tok.admin).error, 'الأقسام موجودة بالفعل');
+  const list = t.call('journey', {}, tok.student).data;
+  assert.deepStrictEqual(list.map(p => p.prophet_id), ['adam', 'noah', 'yusuf']);
+  assert.strictEqual(list[1].symbol, 'ark');
+  assert.strictEqual(list[2].symbol, 'yusuf_dream');
+});
+
+test('الرحلة: إخفاء وترتيب وتعديل وإضافة وحذف قسم', () => {
+  const { t, tok } = journeySetup();
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  assert.ok(t.call('saveProphet', { prophet_id: 'noah', name: 'نوح', title: 'سيدنا نوح', text: 'نص جديد', symbol: 'rocket', visible: false }, tok.admin).ok);
+  let list = t.call('journey', {}, tok.student).data;
+  assert.deepStrictEqual(list.map(p => p.prophet_id), ['adam', 'yusuf'], 'hidden prophet not shown');
+  const all = t.call('journeyAdmin', {}, tok.admin).data;
+  const noah = all.find(p => p.prophet_id === 'noah');
+  assert.strictEqual(noah.visible, false); assert.strictEqual(noah.text, 'نص جديد'); assert.strictEqual(noah.symbol, '', 'unknown symbol dropped');
+  assert.ok(t.call('reorderProphets', { ids: ['yusuf', 'adam', 'noah'] }, tok.admin).ok);
+  assert.deepStrictEqual(t.call('journey', {}, tok.student).data.map(p => p.prophet_id), ['yusuf', 'adam']);
+  const add = t.call('saveProphet', { name: 'هود', new_id: 'hud', title: 'سيدنا هود عليه السلام' }, tok.admin);
+  assert.ok(add.ok && add.data === 'hud');
+  assert.strictEqual(t.call('journey', {}, tok.student).data.at(-1).prophet_id, 'hud');
+  assert.ok(!t.call('saveProphet', { name: '' }, tok.admin).ok, 'name required');
+  t.call('saveContent', { prophet_id: 'hud', kind: 'text', body: 'نص' }, tok.admin);
+  assert.ok(t.call('deleteProphet', { prophet_id: 'hud' }, tok.admin).ok);
+  assert.ok(!t.call('journeyAdmin', {}, tok.admin).data.some(p => p.prophet_id === 'hud'));
+  assert.ok(!t.g.rows_('ProphetContent').some(c => c.prophet_id === 'hud'), 'content removed with prophet');
+  assert.ok(!t.call('saveProphet', { prophet_id: 'adam', name: 'x' }, tok.teacher).ok, 'teacher cannot edit');
+});
+
+test('صفحة النبي: العناصر الجديدة تنتظر الاعتماد، والطفل يرى المعتمد الظاهر فقط', () => {
+  const { t, tok } = journeySetup();
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  const a = t.call('saveContent', { prophet_id: 'noah', kind: 'text', title: 'القصة', body: 'بنى السفينة' }, tok.admin).data;
+  const b = t.call('saveContent', { prophet_id: 'noah', kind: 'youtube', title: 'فيديو', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10' }, tok.admin).data;
+  const c = t.call('saveContent', { prophet_id: 'noah', kind: 'image', file_id: 'img1' }, tok.admin).data;
+  assert.deepStrictEqual(t.call('prophet', { id: 'noah' }, tok.student).data.items, [], 'nothing approved yet');
+  assert.strictEqual(t.call('prophet', { id: 'noah', preview: true }, tok.admin).data.items.length, 3, 'admin preview sees all');
+  assert.strictEqual(t.call('prophet', { id: 'noah', preview: true }, tok.student).data.items.length, 0, 'student cannot preview');
+  [a, b, c].forEach(id => assert.ok(t.call('setContentFlags', { item_id: id, approved: true }, tok.admin).ok));
+  t.call('setContentFlags', { item_id: c, visible: false }, tok.admin);
+  const items = t.call('prophet', { id: 'noah' }, tok.student).data.items;
+  assert.deepStrictEqual(items.map(i => i.kind), ['text', 'youtube']);
+  assert.strictEqual(items[1].url, 'dQw4w9WgXcQ', 'stored as video id');
+  assert.ok(t.call('reorderContent', { ids: [b, a, c] }, tok.admin).ok);
+  assert.deepStrictEqual(t.call('prophet', { id: 'noah' }, tok.student).data.items.map(i => i.item_id), [b, a]);
+  assert.ok(t.call('deleteContent', { item_id: a }, tok.admin).ok);
+  assert.deepStrictEqual(t.call('prophet', { id: 'noah' }, tok.student).data.items.map(i => i.item_id), [b]);
+  assert.ok(!t.call('saveContent', { prophet_id: 'noah', kind: 'text', body: 'x' }, tok.teacher).ok, 'teacher cannot add');
+});
+
+test('روابط يوتيوب: كل الأشكال المعروفة، ورفض غيرها', () => {
+  const { t, tok } = journeySetup();
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  const ok = ['https://youtu.be/dQw4w9WgXcQ', 'https://www.youtube.com/shorts/dQw4w9WgXcQ', 'https://m.youtube.com/watch?feature=x&v=dQw4w9WgXcQ',
+    'https://www.youtube.com/embed/dQw4w9WgXcQ', 'dQw4w9WgXcQ', 'https://youtube.com/live/dQw4w9WgXcQ?si=1'];
+  for (const url of ok) {
+    const r = t.call('saveContent', { prophet_id: 'adam', kind: 'youtube', url }, tok.admin);
+    assert.ok(r.ok, url + ' ' + JSON.stringify(r));
+  }
+  for (const url of ['https://vimeo.com/123', 'javascript:alert(1)', 'https://evil.com/watch?v=dQw4w9WgXcQ', '', 'https://youtube.com/watch?v=short']) {
+    assert.strictEqual(t.call('saveContent', { prophet_id: 'adam', kind: 'youtube', url }, tok.admin).error, 'رابط يوتيوب غير صحيح', url);
+  }
+  assert.ok(t.g.rows_('ProphetContent').every(c => c.url === 'dQw4w9WgXcQ'));
+  assert.strictEqual(t.call('saveContent', { prophet_id: 'adam', kind: 'html', body: '<script>' }, tok.admin).error, 'نوع غير صحيح');
+  assert.strictEqual(t.call('saveContent', { prophet_id: 'adam', kind: 'audio' }, tok.admin).error, 'ارفع الملف أولًا');
+  assert.strictEqual(t.call('saveContent', { prophet_id: 'none', kind: 'text', body: 'x' }, tok.admin).error, 'القسم غير موجود');
+});
+
+test('الرحلة في وضع «عرض كـ»: القراءة مسموحة والكتابة مرفوضة', () => {
+  const { t, tok } = journeySetup();
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  const imp = t.call('viewAs', { user_id: 'T1' }, tok.superadmin).data.token;
+  assert.ok(t.call('journeyAdmin', {}, imp).ok);
+  assert.strictEqual(t.call('saveProphet', { prophet_id: 'adam', name: 'x' }, imp).error, 'وضع المعاينة للعرض فقط — لا يمكن الحفظ');
+});
+
 for (const [name, fn] of tests) {
   try { fn(); console.log('✔', name); } catch (e) { failed++; console.log('✘', name, '\n   ', e.message); }
 }

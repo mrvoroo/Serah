@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText } from "lucide-react";
+import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map } from "lucide-react";
 import { session, type Role } from "@/lib/api";
 import { ROLE_LABEL, stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useRequireRole } from "@/components/kid/kid-shell";
@@ -22,6 +22,7 @@ export const TEACHER_NAV: { href: string; label: string; icon: typeof Users; min
   { href: "/teacher/lectures/", label: "المحاضرات", icon: Headphones },
   { href: "/teacher/upload/", label: "رفع تسجيل", icon: Upload },
   { href: "/teacher/suggestions/", label: "الاقتراحات", icon: MessageSquareHeart },
+  { href: "/teacher/journey/", label: "رحلة الأنبياء", icon: Map, min: "admin" },
   { href: "/teacher/audit/", label: "سجل العمليات", icon: ScrollText, min: "admin" },
   { href: "/teacher/settings/", label: "الإعدادات", icon: Settings },
 ];

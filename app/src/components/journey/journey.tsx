@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { ArrowLeft, ChevronsLeft, ChevronsRight, Headphones, ListTree } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronsLeft, ChevronsRight, Headphones, ListTree } from "lucide-react";
 import { useTier } from "@/lib/tier";
 import { BlurFade } from "@/components/ui/blur-fade";
 import SplitText from "@/components/SplitText";
@@ -13,29 +13,27 @@ import { BranchedMenu, type BranchedMenuItem } from "@/components/branched-menu"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { STATIONS } from "./stations";
+import { isProphet, menuName } from "@/lib/prophets";
+import type { Station } from "./stations";
 
-export { STATIONS };
-
-// قائمة المحطات: الأنبياء مقسّمون لمجموعات بالترتيب، وكل نبي برقم محطته
-const nameOf = (id: string) => {
-  const s = STATIONS.find((x) => x.id === id)!;
-  return id === "muhammad" ? "محمد ﷺ" : s.label.replace(/^سيدنا /, "");
-};
-const stop = (id: string, n?: number) => ({
-  value: id,
-  label: nameOf(id),
-  icon: n ? <span className="grid size-6 place-items-center rounded-full bg-secondary text-[11px] font-bold text-secondary-foreground">{n.toLocaleString("ar-EG")}</span> : undefined,
-});
-const range = (ids: string[]) => ids.map((id) => stop(id, STATIONS.findIndex((s) => s.id === id)));
-const MENU: BranchedMenuItem[] = [
-  { label: "البداية", value: "start" },
-  { label: "من آدم إلى إبراهيم", children: range(["adam", "idris", "noah", "hud", "salih", "ibrahim"]) },
-  { label: "من لوط إلى يوسف", children: range(["lut", "ismail", "ishaq", "yaqub", "yusuf"]) },
-  { label: "من أيوب إلى سليمان", children: range(["ayyub", "shuayb", "musa", "harun", "dhulkifl", "dawud", "sulayman"]) },
-  { label: "من إلياس إلى محمد ﷺ", children: range(["ilyas", "alyasa", "yunus", "zakariya", "yahya", "isa", "muhammad"]) },
-  { label: "السيرة والقرآن", children: [stop("sira"), stop("quran")] },
-];
+// قائمة المحطات: الأنبياء مقسّمون لمجموعات بالترتيب (حتى 7 في المجموعة، أو عند إبراهيم ويوسف وسليمان)، وكل نبي برقم محطته
+const BREAKS = new Set(["ibrahim", "yusuf", "sulayman"]);
+const badge = (n: number) => <span className="grid size-6 place-items-center rounded-full bg-secondary text-[11px] font-bold text-secondary-foreground">{n.toLocaleString("ar-EG")}</span>;
+function buildMenu(stations: Station[]): BranchedMenuItem[] {
+  const groups: Station[][] = [];
+  let cur: Station[] = [];
+  stations.filter(isProphet).forEach((s) => { cur.push(s); if (BREAKS.has(s.id) || cur.length === 7) { groups.push(cur); cur = []; } });
+  if (cur.length) groups.push(cur);
+  const items: BranchedMenuItem[] = [{ label: "البداية", value: "start" }];
+  let n = 0;
+  for (const g of groups) {
+    const label = g.length > 1 ? `من ${menuName(g[0])} إلى ${menuName(g[g.length - 1])}` : menuName(g[0]);
+    items.push({ label, children: g.map((s) => ({ value: s.id, label: menuName(s), icon: badge(++n) })) });
+  }
+  const tail = stations.filter((s) => s.id === "sira" || s.id === "quran");
+  if (tail.length) items.push({ label: "السيرة والقرآن", children: tail.map((s) => ({ value: s.id, label: menuName(s) })) });
+  return items;
+}
 
 // القائمة في الشاشات الكبيرة: مفتوحة أو نقاط. نحفظ اختيار الطفل، والافتراضي نقاط لو الشاشة ليست واسعة
 const MENU_KEY = "serah_journey_menu";
@@ -62,11 +60,11 @@ type World = {
 
 // مكان المجسم وحجمه في المساحة الفاضية بجانب بطاقة المحطة (أو فوقها في الموبايل)، من مكان البطاقة الفعلي
 // الكاميرا: مجال رؤية 45° على بعد 10 → نصف ارتفاع المشهد ≈ 4.14 وحدة
-function layout(i: number, section?: HTMLElement) {
+function layout(st: Station, section?: HTMLElement) {
   const W = window.innerWidth, H = window.innerHeight;
   const hh = Math.tan(Math.PI / 8) * 10, hw = hh * (W / H);
   const toX = (px: number) => (px / W) * 2 * hw - hw, toY = (px: number) => hh - (px / H) * 2 * hh;
-  const side = STATIONS[i].layout === "side";
+  const side = st.layout === "side";
   const shapeW = side ? 6.6 : 4.4, shapeH = side ? 3.2 : 4.9, shiftX = side ? 0.37 : 0;
   const card = section?.querySelector<HTMLElement>("[data-card]")?.getBoundingClientRect();
   const sec = section?.getBoundingClientRect();
@@ -107,7 +105,8 @@ async function ruqaaFont() {
   return fam;
 }
 
-export function Journey() {
+// stations: من الخلفية (جدول Prophets) أو الاحتياطية — تتغير فقط بإعادة تركيب المكوّن (key)
+export function Journey({ stations }: { stations: Station[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scope = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
@@ -132,18 +131,18 @@ export function Journey() {
       if (disposed || !canvasRef.current || !scope.current) return;
       const sections = Array.from(scope.current.querySelectorAll<HTMLElement>("[data-station]"));
       const { idx } = stationAtCenter(sections);
-      const stations = STATIONS.map((s) => ({ id: s.id, label: s.label, sub: s.sub, symbol: s.symbol, layout: s.layout }));
-      const w = createWorld(canvasRef.current, { tier, theme: themeRef.current === "light" ? "light" : "dark", stations, font, initial: STATIONS[idx].id }) as World | null;
+      const shapes = stations.map((s) => ({ id: s.id, label: s.label, sub: s.sub, symbol: s.symbol, layout: s.layout }));
+      const w = createWorld(canvasRef.current, { tier, theme: themeRef.current === "light" ? "light" : "dark", stations: shapes, font, initial: stations[idx].id }) as World | null;
       worldRef.current = w;
       if (w) { syncRef.current(true); setReady(true); }
     });
     (window as unknown as { __serah?: unknown }).__serah = {
       debug: () => worldRef.current?.debug() ?? null,
       active: () => activeRef.current,
-      expected: () => (scope.current ? STATIONS[stationAtCenter(Array.from(scope.current.querySelectorAll<HTMLElement>("[data-station]"))).idx].id : null),
+      expected: () => (scope.current ? stations[stationAtCenter(Array.from(scope.current.querySelectorAll<HTMLElement>("[data-station]"))).idx].id : null),
     };
     return () => { disposed = true; worldRef.current?.dispose(); worldRef.current = null; };
-  }, [tier]);
+  }, [tier, stations]);
 
   useEffect(() => {
     themeRef.current = resolvedTheme;
@@ -163,7 +162,7 @@ export function Journey() {
       if (idx !== activeRef.current || force) {
         activeRef.current = idx;
         setActive(idx);
-        w?.morph(STATIONS[idx].id, layout(idx, sections[idx]));
+        w?.morph(stations[idx].id, layout(stations[idx], sections[idx]));
       }
       const now = performance.now(), y = window.scrollY;
       const vel = ((y - lastY) / Math.max(16, now - lastT)) * 1000;
@@ -186,12 +185,14 @@ export function Journey() {
       window.visualViewport?.removeEventListener("resize", onResize);
       syncRef.current = () => {};
     };
-  }, []);
+  }, [stations]);
 
-  const current = target ?? STATIONS[active].id;
-  const ci = STATIONS.findIndex((s) => s.id === current);
-  // الأنبياء محطات ١..٢٥، والبداية والسيرة والقرآن بأسمائها فقط
-  const pos = ci >= 1 && ci <= 25 ? `${ci.toLocaleString("ar-EG")} من ٢٥ — ${STATIONS[ci].label}` : STATIONS[ci].label;
+  const current = target ?? stations[active].id;
+  const prophets = useMemo(() => stations.filter(isProphet), [stations]);
+  const menuItems = useMemo(() => buildMenu(stations), [stations]);
+  const ci = stations.findIndex((s) => s.id === current), pi = prophets.findIndex((s) => s.id === current);
+  // الأنبياء محطات ١..عددهم، والبداية والسيرة والقرآن بأسمائها فقط
+  const pos = pi >= 0 ? `${(pi + 1).toLocaleString("ar-EG")} من ${prophets.length.toLocaleString("ar-EG")} — ${stations[ci].label}` : stations[ci].label;
 
   // إبقاء المحطة الحالية ظاهرة داخل لوحة القائمة (بعد انتهاء طيّ وفتح الأقسام)
   useEffect(() => {
@@ -209,18 +210,18 @@ export function Journey() {
 
   const targetTimer = useRef(0);
   const go = (i: number) => {
-    const el = document.getElementById(`station-${STATIONS[i].id}`);
+    const el = document.getElementById(`station-${stations[i].id}`);
     if (!el) return;
     const lenis = (window as unknown as { __lenis?: { scrollTo: (t: Element, o?: object) => void } }).__lenis;
-    setTarget(STATIONS[i].id);
+    setTarget(stations[i].id);
     const done = () => { window.clearTimeout(targetTimer.current); setTarget(null); };
     window.clearTimeout(targetTimer.current);
     // احتياط: لو الطفل لمس السكرول أثناء النزول فلا يكتمل، نرجع لمتابعة السكرول بعد قليل
     targetTimer.current = window.setTimeout(done, 2500);
     if (lenis) lenis.scrollTo(el, { offset: 0, onComplete: done }); else el.scrollIntoView({ behavior: "smooth" });
   };
-  const pick = (id: string) => { setMenuOpen(false); go(STATIONS.findIndex((s) => s.id === id)); };
-  const menu = (className?: string) => <BranchedMenu label="محطات الرحلة" items={MENU} active={current} onSelect={pick} className={className} />;
+  const pick = (id: string) => { setMenuOpen(false); go(stations.findIndex((s) => s.id === id)); };
+  const menu = (className?: string) => <BranchedMenu label="محطات الرحلة" items={menuItems} active={current} onSelect={pick} className={className} />;
 
   return (
     <div ref={scope} className="relative">
@@ -235,7 +236,7 @@ export function Journey() {
           {dots ? <ChevronsLeft className="size-5" /> : <ChevronsRight className="size-5" />}
         </button>
         <div ref={navRef} {...(dots ? { role: "navigation", "aria-label": "محطات الرحلة" } : {})} className={cn("min-h-0 overflow-y-auto [scrollbar-width:none]", dots && "flex flex-col items-center")}>
-          {dots ? STATIONS.map((s, i) => (
+          {dots ? stations.map((s, i) => (
             <Tooltip key={s.id}>
               <TooltipTrigger render={
                 <button type="button" onClick={() => go(i)} aria-label={s.title} aria-current={s.id === current ? "true" : undefined} className="relative grid size-7 shrink-0 place-items-center rounded-full">
@@ -243,7 +244,7 @@ export function Journey() {
                   <span className={cn("relative size-2 rounded-full transition-all", s.id === current ? "scale-125 bg-gold" : s.symbol ? "bg-muted-foreground/60" : "bg-muted-foreground/30")} />
                 </button>
               } />
-              <TooltipContent side="left" className="font-bold">{i > 0 && i < 26 ? `${i.toLocaleString("ar-EG")} · ` : ""}{nameOf(s.id)}</TooltipContent>
+              <TooltipContent side="left" className="font-bold">{isProphet(s) ? `${(prophets.indexOf(s) + 1).toLocaleString("ar-EG")} · ` : ""}{menuName(s)}</TooltipContent>
             </Tooltip>
           )) : menu()}
         </div>
@@ -267,7 +268,7 @@ export function Journey() {
       {/* الشاشات الكبيرة: الأقسام بعرض الشاشة كله (خارج عمود الصفحة 768px) حتى تتبدل البطاقة يمين/شمال بوضوح
           ويبقى للمجسم مكان واسع في الجهة الأخرى، مع ترك مكان لقائمة المحطات */}
       <div className="relative z-10 lg:mx-[calc(50%-50vw+8px)]">
-        {STATIONS.map((s, i) => (
+        {stations.map((s, i) => (
           <section
             key={s.id}
             id={`station-${s.id}`}
@@ -278,7 +279,7 @@ export function Journey() {
               <div data-card className="rounded-[28px] border bg-card/90 p-5 shadow-soft backdrop-blur-md md:p-6">
                 <div className="flex items-center gap-3">
                   {i === 0 && <Zaid mood="helping" size={84} />}
-                  {i === STATIONS.length - 1 && <Zaid mood="happy" size={84} />}
+                  {i === stations.length - 1 && <Zaid mood="happy" size={84} />}
                   <div>
                     <span className="inline-block rounded-full bg-secondary px-3 py-1 text-xs font-bold text-secondary-foreground">{s.tag}</span>
                     {i === 0 ? (
@@ -294,6 +295,10 @@ export function Journey() {
                     <button type="button" onClick={() => go(1)} className={buttonVariants({ variant: "gold", size: "lg2" })}>
                       يلا نبدأ <ArrowLeft />
                     </button>
+                  ) : isProphet(s) ? (
+                    <Link href={`/kid/prophet/?id=${s.id}`} className={buttonVariants({ variant: "gold", size: "lg2" })}>
+                      <BookOpen /> ادخل الصفحة
+                    </Link>
                   ) : (
                     <Link href="/kid/lectures/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>
                       <Headphones /> استمع للمحاضرات

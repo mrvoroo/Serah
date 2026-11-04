@@ -5,7 +5,7 @@
  */
 
 // رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
-const VERSION = 9;
+const VERSION = 10;
 
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
@@ -22,7 +22,10 @@ const SCHEMA = {
   Suggestions:  ['id', 'from_user', 'role', 'text', 'audio_file_id', 'status', 'at'],
   BotState:     ['chat_id', 'state', 'data', 'at'],
   AuditLog:     ['at', 'user_id', 'role', 'action', 'target_type', 'target_id', 'details_json', 'imp_by'],
-  LoginAttempts:['key', 'fails', 'first_at', 'locked_until']
+  LoginAttempts:['key', 'fails', 'first_at', 'locked_until'],
+  // رحلة الأنبياء: الأقسام (sort ترتيب، symbol شكل المجسم 3D) وعناصر صفحة كل نبي (نص/صوت/صورة/يوتيوب)
+  Prophets:     ['prophet_id', 'sort', 'name', 'title', 'tag', 'text', 'symbol', 'symbol_name', 'visible', 'updated_at'],
+  ProphetContent:['item_id', 'prophet_id', 'kind', 'title', 'body', 'file_id', 'url', 'sort', 'visible', 'approved', 'created_by', 'created_at']
 };
 const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من تيليجرام (20MB)
 
@@ -103,6 +106,12 @@ function update_(name, keyCol, keyVal, patch) {
     }
   }
   return false;
+}
+function remove_(name, keyCol, keyVal) {
+  const sh = ss_().getSheetByName(name);
+  const v = sh.getDataRange().getValues();
+  const ki = v[0].indexOf(keyCol);
+  for (let i = v.length - 1; i >= 1; i--) if (String(v[i][ki]) === String(keyVal)) sh.deleteRow(i + 1);
 }
 function id_(p) { return p + Utilities.getUuid().slice(0, 8); }
 function now_() { return new Date().toISOString(); }
@@ -207,7 +216,16 @@ const POLICY = {
   viewAs: { min: 'superadmin', audit: 1 },
   setRole: { min: 'superadmin', write: 1, audit: 1 },
   setUserActive: { min: 'superadmin', write: 1, audit: 1 },
-  setUserPin: { min: 'superadmin', write: 1, audit: 1 }
+  setUserPin: { min: 'superadmin', write: 1, audit: 1 },
+  journey: { min: 'student' }, prophet: { min: 'student' }, journeyAdmin: { min: 'admin' },
+  seedProphets: { min: 'admin', write: 1, audit: 1 },
+  saveProphet: { min: 'admin', write: 1, audit: 1 },
+  deleteProphet: { min: 'admin', write: 1, audit: 1 },
+  reorderProphets: { min: 'admin', write: 1, audit: 1 },
+  saveContent: { min: 'admin', write: 1, audit: 1 },
+  setContentFlags: { min: 'admin', write: 1, audit: 1 },
+  deleteContent: { min: 'admin', write: 1, audit: 1 },
+  reorderContent: { min: 'admin', write: 1, audit: 1 }
 };
 const SECRET_PARAMS = { pin: 1, oldPin: 1, newPin: 1, token: 1, action: 1 };
 
@@ -227,7 +245,7 @@ function handle_(action, p, token) {
     const data = fn(p, me);
     if (pol.audit) {
       const details = {}; Object.keys(p || {}).forEach(k => { if (!SECRET_PARAMS[k]) details[k] = p[k]; });
-      audit_(me, action, '', p.user_id || p.lecture_id || p.class_id || '', details);
+      audit_(me, action, '', p.user_id || p.lecture_id || p.class_id || p.item_id || p.prophet_id || '', details);
     }
     return json_({ ok: true, data });
   } catch (err) {
@@ -385,6 +403,95 @@ const ACTIONS = {
     if (res.getResponseCode() >= 300) throw new Error('تعذر بدء الرفع');
     return { uploadUrl: res.getHeaders()['Location'] || res.getHeaders()['location'] };
   },
+
+  // ===== رحلة الأنبياء (المرحلة 3) =====
+  // الأقسام الظاهرة بالترتيب؛ لو الجدول فاضي ترجع [] والموقع يستخدم بياناته الاحتياطية
+  journey: () => rows_('Prophets').filter(r => truthy_(r.visible)).sort(bySort_).map(prophetOut_),
+
+  // صفحة النبي: الطفل يرى العناصر الظاهرة والمعتمدة فقط؛ الأدمن تعاين الكل بـ preview
+  prophet: (p, me) => {
+    const pr = rows_('Prophets').find(r => r.prophet_id === p.id);
+    const all = !!p.preview && RANK[me.role] >= RANK.admin;
+    if (!pr || (!truthy_(pr.visible) && !all)) throw new Error('القسم غير موجود');
+    const items = rows_('ProphetContent').filter(c => c.prophet_id === p.id && (all || (truthy_(c.visible) && truthy_(c.approved))))
+      .sort(bySort_).map(contentOut_);
+    return { prophet: prophetOut_(pr), items };
+  },
+
+  // إدارة الرحلة: كل الأقسام مع عدد العناصر والمنتظرة للاعتماد
+  journeyAdmin: () => {
+    const content = rows_('ProphetContent');
+    return rows_('Prophets').sort(bySort_).map(r => Object.assign(prophetOut_(r), {
+      visible: truthy_(r.visible),
+      items: content.filter(c => c.prophet_id === r.prophet_id).length,
+      pending: content.filter(c => c.prophet_id === r.prophet_id && !truthy_(c.approved)).length
+    }));
+  },
+
+  // استيراد الأقسام الافتراضية من الموقع مرة واحدة (لو الجدول فاضي فقط)
+  seedProphets: (p) => {
+    if (rows_('Prophets').length) throw new Error('الأقسام موجودة بالفعل');
+    const list = Array.isArray(p.list) ? p.list : [];
+    if (!list.length || list.length > 60) throw new Error('بيانات غير صحيحة');
+    list.forEach((x, i) => append_('Prophets', Object.assign(cleanProphet_(x), { prophet_id: slug_(x.prophet_id), sort: i, visible: true, updated_at: now_() })));
+    return list.length;
+  },
+
+  // إضافة قسم (بدون prophet_id) أو تعديله
+  saveProphet: (p) => {
+    const f = cleanProphet_(p);
+    if (!f.name) throw new Error('اكتب اسم النبي');
+    if (!p.prophet_id) {
+      const rows = rows_('Prophets');
+      let id = slug_(p.new_id || ('p' + Utilities.getUuid().replace(/-/g, '').slice(0, 6)));
+      if (rows.some(r => r.prophet_id === id)) id += Utilities.getUuid().replace(/-/g, '').slice(0, 4);
+      append_('Prophets', Object.assign(f, { prophet_id: id, sort: rows.length, visible: p.visible === undefined ? true : !!p.visible, updated_at: now_() }));
+      return id;
+    }
+    const patch = Object.assign(f, { updated_at: now_() });
+    if (p.visible !== undefined) patch.visible = !!p.visible;
+    if (!update_('Prophets', 'prophet_id', p.prophet_id, patch)) throw new Error('القسم غير موجود');
+    return p.prophet_id;
+  },
+
+  deleteProphet: (p) => {
+    remove_('ProphetContent', 'prophet_id', p.prophet_id);
+    remove_('Prophets', 'prophet_id', p.prophet_id);
+    return true;
+  },
+
+  reorderProphets: (p) => { reorder_('Prophets', 'prophet_id', p.ids); return true; },
+
+  // عنصر في صفحة النبي: text نص، audio/image ملف على درايف (من startUpload)، youtube رابط فيديو
+  // العنصر الجديد غير معتمد حتى تعتمده الأدمن (المراجعة الشرعية)
+  saveContent: (p, me) => {
+    const kind = String(p.kind || '');
+    if (['text', 'audio', 'image', 'youtube'].indexOf(kind) < 0) throw new Error('نوع غير صحيح');
+    const f = { kind, title: String(p.title || '').slice(0, 200), body: String(p.body || '').slice(0, 5000), file_id: '', url: '' };
+    if (kind === 'text' && !f.body.trim()) throw new Error('اكتب النص');
+    if (kind === 'audio' || kind === 'image') { f.file_id = String(p.file_id || ''); if (!f.file_id) throw new Error('ارفع الملف أولًا'); share_(f.file_id); }
+    if (kind === 'youtube') { const v = youtubeId_(p.url); if (!v) throw new Error('رابط يوتيوب غير صحيح'); f.url = v; }
+    if (p.item_id) {
+      if (!update_('ProphetContent', 'item_id', p.item_id, f)) throw new Error('العنصر غير موجود');
+      return p.item_id;
+    }
+    if (!rows_('Prophets').some(r => r.prophet_id === p.prophet_id)) throw new Error('القسم غير موجود');
+    const sort = rows_('ProphetContent').filter(c => c.prophet_id === p.prophet_id).length;
+    const item = append_('ProphetContent', Object.assign(f, { item_id: id_('c'), prophet_id: p.prophet_id, sort, visible: true, approved: !!p.approved, created_by: me.user_id, created_at: now_() }));
+    return item.item_id;
+  },
+
+  setContentFlags: (p) => {
+    const patch = {};
+    if (p.visible !== undefined) patch.visible = !!p.visible;
+    if (p.approved !== undefined) patch.approved = !!p.approved;
+    if (!update_('ProphetContent', 'item_id', p.item_id, patch)) throw new Error('العنصر غير موجود');
+    return true;
+  },
+
+  deleteContent: (p) => { remove_('ProphetContent', 'item_id', p.item_id); return true; },
+
+  reorderContent: (p) => { reorder_('ProphetContent', 'item_id', p.ids); return true; },
 
   // ===== كود الفصل (للمعلمات) =====
   classCode: (p, me) => {
@@ -573,6 +680,29 @@ function targetUser_(me, user_id) {
   return u;
 }
 
+// ===== أدوات رحلة الأنبياء =====
+const SYMBOLS = ['crescent', 'ark', 'staff', 'kaaba', 'whale', 'yusuf_dream', 'mushaf', 'dome', 'sword', 'book'];
+function truthy_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
+function bySort_(a, b) { return Number(a.sort) - Number(b.sort); }
+function slug_(s) { const v = String(s || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30); if (!v) throw new Error('معرّف غير صحيح'); return v; }
+function cleanProphet_(x) {
+  const sym = String(x.symbol || '');
+  return { name: String(x.name || '').trim().slice(0, 40), title: String(x.title || '').slice(0, 80), tag: String(x.tag || '').slice(0, 80),
+    text: String(x.text || '').slice(0, 600), symbol: SYMBOLS.indexOf(sym) >= 0 ? sym : '', symbol_name: String(x.symbol_name || '').slice(0, 60) };
+}
+function prophetOut_(r) { return { prophet_id: r.prophet_id, name: r.name, title: r.title, tag: r.tag, text: r.text, symbol: r.symbol, symbol_name: r.symbol_name }; }
+function contentOut_(c) { return { item_id: c.item_id, kind: c.kind, title: c.title, body: c.body, file_id: c.file_id, url: c.url, visible: truthy_(c.visible), approved: truthy_(c.approved) }; }
+// معرّف فيديو يوتيوب من أي شكل للرابط (watch, youtu.be, shorts, embed, live) أو المعرّف نفسه
+function youtubeId_(u) {
+  const s = String(u || '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  const m = s.match(/^https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : '';
+}
+function reorder_(name, keyCol, ids) {
+  if (!Array.isArray(ids)) throw new Error('ترتيب غير صحيح');
+  ids.forEach((id, i) => update_(name, keyCol, id, { sort: i }));
+}
 function addPoints_(user_id, points, reason) { append_('Points', { user_id, points, reason, at: now_() }); }
 function share_(fileId) { try { DriveApp.getFileById(fileId).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {} }
 
