@@ -12,7 +12,9 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
   const tier = useTier();
   useEffect(() => {
     if (tier === "static" || tier === "low") return;
-    const lenis = new Lenis({ duration: 1.1, smoothWheel: true, touchMultiplier: 1.2 });
+    // naiveDimensions: نقرأ طول الصفحة الحقيقي كل مرة. <html> طوله ثابت (h-full) فـLenis لا يلاحظ
+    // طول الصفحة الجديدة بعد التنقل (الرحلة مثلًا)، فتتوقف العجلة أو ترجع لأول الصفحة
+    const lenis = new Lenis({ duration: 1.1, smoothWheel: true, touchMultiplier: 1.2, naiveDimensions: true });
     lenis.on("scroll", ScrollTrigger.update);
     const tick = (t: number) => lenis.raf(t * 1000);
     gsap.ticker.add(tick);
