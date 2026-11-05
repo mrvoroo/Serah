@@ -7,6 +7,7 @@ import { ruqaaFont } from "@/lib/particles/font";
 import { arNum } from "@/lib/quran";
 import type { ShapeStep } from "@/content/prophets";
 import { cn } from "@/lib/utils";
+import { RT } from "@/components/religious-text";
 
 // رمز النبي التفاعلي في صفحته: نقاط مضيئة تتحول بالضغط من شكل إلى شكل كقصة قصيرة
 // (موسى: عصا ← حيّة تسعى ← عصا ← انفلاق البحر)، مع جملة ومرجعها تحت كل شكل
@@ -65,8 +66,8 @@ export function SymbolStage({ steps, title }: { steps: ShapeStep[]; title: strin
       </button>
       <div className="flex flex-col gap-2 p-4 text-center">
         <p className="font-heading text-xl font-extrabold text-gold">{step.label}</p>
-        <p aria-live="polite" className="text-base leading-8 text-white/90">{step.caption}</p>
-        {step.ref && <p className="text-xs text-white/60">المرجع: {step.ref}</p>}
+        <p aria-live="polite" className="text-base leading-8 text-white/90"><RT text={step.caption} /></p>
+        {step.ref && <p className="text-xs text-white/60">المرجع: <RT text={step.ref} /></p>}
         <div role="tablist" aria-label="الأشكال" className="flex justify-center gap-1">
           {steps.map((s, k) => (
             <button key={k} type="button" role="tab" aria-selected={k === i} aria-label={s.label} onClick={() => go(k)}

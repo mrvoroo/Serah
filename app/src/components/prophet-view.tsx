@@ -9,6 +9,7 @@ import { SymbolStage } from "@/components/prophet/symbol-stage";
 import { ProphetBio } from "@/components/prophet/prophet-bio";
 import { ImageGallery } from "@/components/prophet/image-gallery";
 import { cn } from "@/lib/utils";
+import { RT } from "@/components/religious-text";
 
 // صفحة النبي: البطاقة الرئيسية، ثم الرمز التفاعلي والنبذة (من المحتوى المراجَع)، ثم العناصر بالترتيب
 // (نص، صوت، فيديوهات يوتيوب، والصور مجمّعة في معرض صغير مكان أول صورة) ثم المحاضرات عنه
@@ -34,12 +35,12 @@ function Item({ it }: { it: ContentItem }) {
   return (
     <section data-testid="prophet-item" data-kind={it.kind} className={cn("rounded-[28px] border bg-card p-4 shadow-soft", (!it.approved || !it.visible) && "border-dashed")}>
       {it.title && <h2 className="mb-3 font-heading text-xl font-extrabold">{it.title}</h2>}
-      {it.kind === "text" && <p className="whitespace-pre-line text-base leading-8 text-muted-foreground">{it.body}</p>}
+      {it.kind === "text" && <p className="whitespace-pre-line text-base leading-8 text-muted-foreground"><RT text={it.body} /></p>}
       {it.kind === "audio" && <AudioPlayer id={it.file_id} />}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {it.kind === "image" && <img src={driveImage(it.file_id)} alt={it.title || "صورة"} loading="lazy" className="w-full rounded-2xl object-cover" />}
       {it.kind === "youtube" && <YouTube id={it.url} title={it.title} />}
-      {it.body && it.kind !== "text" && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-muted-foreground">{it.body}</p>}
+      {it.body && it.kind !== "text" && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-muted-foreground"><RT text={it.body} /></p>}
     </section>
   );
 }
@@ -59,7 +60,7 @@ export function ProphetView({ prophet, items, lectures, lectureHref = (id) => `/
       <header className="relative overflow-hidden rounded-[32px] bg-hero p-6 text-white shadow-soft">
         {prophet.symbol_name && <span className="inline-block rounded-full bg-white/15 px-3 py-1 text-xs font-bold">{prophet.symbol_name}</span>}
         <h1 className="mt-2 font-heading text-3xl font-extrabold leading-tight md:text-4xl">{prophet.title || `سيدنا ${honored}`}</h1>
-        <p className="mt-3 text-base leading-8 text-white/85">{prophet.text}</p>
+        <p className="mt-3 text-base leading-8 text-white/85"><RT text={prophet.text} /></p>
       </header>
 
       {steps.length > 0 && <SymbolStage steps={steps} title={`رمز سيدنا ${honored}`} />}

@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { isProphet, menuName } from "@/lib/prophets";
 import type { Station } from "./stations";
+import { RT } from "@/components/religious-text";
 
 // قائمة المحطات: الأنبياء مقسّمون لمجموعات بالترتيب (حتى 7 في المجموعة، أو عند إبراهيم ويوسف وسليمان)، وكل نبي برقم محطته
 const BREAKS = new Set(["ibrahim", "yusuf", "sulayman"]);
@@ -99,6 +100,10 @@ function stationAtCenter(sections: HTMLElement[]) {
 }
 
 // stations: من الخلفية (جدول Prophets) أو الاحتياطية — تتغير فقط بإعادة تركيب المكوّن (key)
+// آخر نبي فتح الطفل صفحته من الرحلة (للرجوع لقسمه)
+const AT_KEY = "serah_journey_at";
+const rememberStation = (id: string) => { try { sessionStorage.setItem(AT_KEY, id); } catch { /* لا شيء */ } };
+
 export function Journey({ stations }: { stations: Station[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scope = useRef<HTMLDivElement>(null);
@@ -213,6 +218,26 @@ export function Journey({ stations }: { stations: Station[] }) {
     targetTimer.current = window.setTimeout(done, 2500);
     if (lenis) lenis.scrollTo(el, { offset: 0, onComplete: done }); else el.scrollIntoView({ behavior: "smooth" });
   };
+  // الرجوع من صفحة النبي (زر «رجوع للرحلة» ?at=… أو زر الرجوع في المتصفح/الموبايل): نقفز مباشرة لقسم النبي بدل أول الرحلة
+  useEffect(() => {
+    let id = "";
+    try { id = new URLSearchParams(window.location.search).get("at") || sessionStorage.getItem(AT_KEY) || ""; sessionStorage.removeItem(AT_KEY); } catch { /* لا شيء */ }
+    if (!id || !stations.some((s) => s.id === id)) return;
+    const jump = () => {
+      const el = document.getElementById(`station-${id}`);
+      if (!el) return;
+      const lenis = (window as unknown as { __lenis?: { scrollTo: (t: Element, o?: object) => void } }).__lenis;
+      if (lenis) lenis.scrollTo(el, { offset: 0, immediate: true, force: true });
+      window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY, behavior: "instant" as ScrollBehavior });
+      syncRef.current(true);
+    };
+    jump();
+    // مرة ثانية بعد استقرار التخطيط (تحميل الخطوط والمجسم)
+    const t = window.setTimeout(jump, 350);
+    const q = new URLSearchParams(window.location.search);
+    if (q.has("at")) { q.delete("at"); window.history.replaceState(window.history.state, "", window.location.pathname + (q.size ? `?${q}` : "")); }
+    return () => window.clearTimeout(t);
+  }, [stations]);
   const pick = (id: string) => { setMenuOpen(false); go(stations.findIndex((s) => s.id === id)); };
   const menu = (className?: string) => <BranchedMenu label="محطات الرحلة" items={menuItems} active={current} onSelect={pick} className={className} />;
 
@@ -282,14 +307,14 @@ export function Journey({ stations }: { stations: Station[] }) {
                     )}
                   </div>
                 </div>
-                <p className="mt-3 text-base leading-8 text-muted-foreground">{s.text}</p>
+                <p className="mt-3 text-base leading-8 text-muted-foreground"><RT text={s.text} /></p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {i === 0 ? (
                     <button type="button" onClick={() => go(1)} className={buttonVariants({ variant: "gold", size: "lg2" })}>
                       يلا نبدأ <ArrowLeft />
                     </button>
                   ) : isProphet(s) ? (
-                    <Link href={`/kid/prophet/?id=${s.id}`} className={buttonVariants({ variant: "gold", size: "lg2" })}>
+                    <Link href={`/kid/prophet/?id=${s.id}`} onClick={() => rememberStation(s.id)} className={buttonVariants({ variant: "gold", size: "lg2" })}>
                       <BookOpen /> ادخل الصفحة
                     </Link>
                   ) : s.id === "quran" ? (

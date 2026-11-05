@@ -6,3 +6,12 @@ export function teacherTitle(name: string | undefined, role?: string) {
   if (!n || role === "superadmin" || role === "student" || /^(أ|د|م)\s*[./]/.test(n)) return n;
   return `أ. ${n}`;
 }
+
+// عدد الأسئلة بالتمييز العربي الصحيح: سؤال واحد، سؤالان، ٣ أسئلة، ١١ سؤالًا
+export function questionCount(n: number) {
+  const ar = (v: number) => v.toLocaleString("ar-EG");
+  if (n === 1) return "سؤال واحد";
+  if (n === 2) return "سؤالان";
+  if (n >= 3 && n <= 10) return `${ar(n)} أسئلة`;
+  return `${ar(n)} سؤالًا`;
+}

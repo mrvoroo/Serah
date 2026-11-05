@@ -11,6 +11,7 @@ function boot() {
   const cache = {};
   let slept = 0;
   const tg = [], saved = [], fetches = [], shared = [];
+  const lock = { held: 0 };
   // ملفات درايف ليست من مجلدات المنصة (مثل الشيت نفسه أو ملف خاص لصاحب الحساب)
   const foreign = (id) => /^ext/.test(id) || id === '1rSVqAiyoQKLvlOYMCXaTYHR_7q3HSz2RHwFN2zwHjPU';
   let mid = 1000, drv = 0;
@@ -49,7 +50,8 @@ function boot() {
     },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => JSON.parse(t) }), MimeType: { JSON: 1 } },
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; }, remove: (k) => { delete cache[k]; } }) },
-    LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
+    // القفل يُحاكى بحالة «محجوز»: طلب متداخل أثناء قسم حرج لا يحصل عليه (كطلب متزامن ينتظر)
+    LockService: { getScriptLock: () => ({ tryLock: () => (lock.held ? false : (lock.held = 1, true)), waitLock() { if (lock.held) throw new Error('lock busy'); lock.held = 1; }, releaseLock() { lock.held = 0; } }) },
     ScriptApp: { getProjectTriggers: () => [{ getHandlerFunction: () => 'pollTelegram' }], getOAuthToken: () => 't', getService: () => ({ getUrl: () => 'u' }) },
     UrlFetchApp: { fetch: (url, opts) => {
       fetches.push({ url, opts });
@@ -77,7 +79,7 @@ function boot() {
     }, getFolderById: () => ({ createFile: (blob) => { saved.push({ ...(blob && blob._b) }); return { getId: () => 'drv' + (++drv) }; } }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
   const g = new Function(...Object.keys(env), code + '\nreturn { handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN, oggOpusToWebm_ };')(...Object.values(env));
-  return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches, shared };
+  return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches, shared, lock };
 }
 
 // بيانات بالشكل القديم (قبل أعمدة last_login_at وجدول LoginAttempts) كما في الشيت الحقيقي
@@ -893,6 +895,209 @@ test('أمن: البوت — الأدمن التي صارت معلمة لا تك
   t.call('setRole', { user_id: 'T1', role: 'teacher' }, tok.superadmin);
   send(1, 'نص بعد سحب الصلاحية');
   assert.strictEqual(t.g.rows_('ProphetContent').length, 0);
+});
+
+// ===== المرحلة 7: الاختبارات والواجبات =====
+function quizSetup() {
+  const t = setup();
+  const tok = { kid: t.login({ user_id: 'S1', pin: '1111' }), kid2: t.login({ user_id: 'S2', pin: '2222' }),
+    teacher: t.login({ name: 'معلمة ثانية', pin: '222222' }), admin: t.login({ name: 'المعلمة', pin: '482615' }), superadmin: t.login({ name: 'م.احمد', pin: '987654' }) };
+  const Q = [
+    { text: 'من صنع السفينة؟', options: ['سيدنا نوح', 'سيدنا موسى', '', ''], correct: 0 },
+    { text: 'كم سنة دعا قومه؟', options: ['100', '', '950', '50'], correct: 2 }
+  ];
+  const mk = (who = 'teacher', extra = {}) => { const r = t.call('saveQuiz', { title: 'اختبار نوح', prophet_id: 'nuh', questions: Q, ...extra }, tok[who]); assert.ok(r.ok, JSON.stringify(r)); return r.data; };
+  return { t, tok, Q, mk };
+}
+
+test('اختبار: المعلمة تنشئ مسودة، والأدمن فقط تنشر، والطفل لا يرى المسودة', () => {
+  const { t, tok, mk } = quizSetup();
+  const id = mk();
+  assert.strictEqual(t.call('quizzes', {}, tok.kid).data.length, 0);
+  assert.ok(!t.call('quiz', { quiz_id: id }, tok.kid).ok, 'kid cannot open a draft');
+  assert.ok(!t.call('setQuizStatus', { quiz_id: id, status: 'published' }, tok.teacher).ok, 'teacher cannot publish');
+  assert.ok(t.call('setQuizStatus', { quiz_id: id, status: 'published' }, tok.admin).ok);
+  const list = t.call('quizzes', { prophet_id: 'nuh' }, tok.kid).data;
+  assert.strictEqual(list.length, 1); assert.strictEqual(list[0].count, 2); assert.strictEqual(list[0].mine, null);
+  assert.strictEqual(t.call('quizzes', { prophet_id: 'musa' }, tok.kid).data.length, 0);
+  // الخيار الفارغ يُحذف والإجابة الصحيحة تتبع مكانها الجديد
+  const full = t.call('quiz', { quiz_id: id }, tok.teacher).data;
+  assert.deepStrictEqual(full.questions[1].options, ['100', '950', '50']);
+  assert.strictEqual(full.questions[1].correct, 1);
+});
+
+test('أمن: الطفل لا يستلم الإجابة الصحيحة قبل الحل', () => {
+  const { t, tok, mk } = quizSetup();
+  const id = mk(); t.call('setQuizStatus', { quiz_id: id, status: 'published' }, tok.admin);
+  const r = t.call('quiz', { quiz_id: id }, tok.kid);
+  assert.ok(r.ok);
+  assert.ok(r.data.questions.every(q => !('correct' in q)), JSON.stringify(r.data));
+  assert.ok(!JSON.stringify(r.data).includes('"correct"'));
+});
+
+test('اختبار: التصحيح في الخلفية، والنجوم مرة واحدة على أول محاولة', () => {
+  const { t, tok, mk } = quizSetup();
+  const id = mk(); t.call('setQuizStatus', { quiz_id: id, status: 'published' }, tok.admin);
+  const qs = t.call('quiz', { quiz_id: id }, tok.kid).data.questions;
+  const pts = (u) => t.g.rows_('Points').filter(p => p.user_id === u).reduce((s, p) => s + Number(p.points), 0);
+  const r1 = t.call('submitQuiz', { quiz_id: id, answers: { [qs[0].question_id]: 0, [qs[1].question_id]: 0 } }, tok.kid).data;
+  assert.strictEqual(r1.score, 1); assert.strictEqual(r1.total, 2); assert.strictEqual(r1.stars, 10); assert.ok(r1.first);
+  assert.strictEqual(r1.review[1].correct, 1); assert.strictEqual(r1.review[1].ok, false);
+  assert.strictEqual(pts('S1'), 10);
+  // محاولة ثانية كاملة: تدريب فقط، لا نجوم ولا نتيجة جديدة
+  const r2 = t.call('submitQuiz', { quiz_id: id, answers: { [qs[0].question_id]: 0, [qs[1].question_id]: 1 } }, tok.kid).data;
+  assert.strictEqual(r2.score, 2); assert.strictEqual(r2.stars, 0); assert.ok(!r2.first); assert.strictEqual(r2.best.score, 1);
+  assert.strictEqual(pts('S1'), 10);
+  assert.strictEqual(t.g.rows_('Results').length, 1);
+  assert.deepStrictEqual(t.call('quizzes', {}, tok.kid).data[0].mine, { score: 1, total: 2, stars: 10 });
+  // إجابات عبثية لا تُحسب
+  const r3 = t.call('submitQuiz', { quiz_id: id, answers: { [qs[0].question_id]: '0; DROP', [qs[1].question_id]: 9 } }, tok.kid2).data;
+  assert.strictEqual(r3.score, 0); assert.strictEqual(r3.stars, 0);
+  // المعلمة تجرّب بدون تسجيل
+  const rt = t.call('submitQuiz', { quiz_id: id, answers: {} }, tok.teacher).data;
+  assert.ok(!rt.first); assert.strictEqual(t.g.rows_('Results').length, 2);
+});
+
+test('اختبار: النتائج للمعلمة لكل طفل وكل سؤال، ولا تعديل للأسئلة بعد الحل', () => {
+  const { t, tok, mk } = quizSetup();
+  const id = mk(); t.call('setQuizStatus', { quiz_id: id, status: 'published' }, tok.admin);
+  const qs = t.call('quiz', { quiz_id: id }, tok.kid).data.questions;
+  t.call('submitQuiz', { quiz_id: id, answers: { [qs[0].question_id]: 0, [qs[1].question_id]: 1 } }, tok.kid);
+  const r = t.call('quizResults', { quiz_id: id }, tok.teacher);
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.strictEqual(r.data.kids[0].user_id, 'S1'); assert.deepStrictEqual(r.data.kids[0].answers, [0, 1]);
+  assert.strictEqual(r.data.kids[1].done, false);
+  assert.deepStrictEqual(r.data.per, [{ right: 1, answered: 1 }, { right: 1, answered: 1 }]);
+  assert.ok(!t.call('quizResults', { quiz_id: id }, tok.kid).ok, 'kid cannot see results');
+  assert.ok(!t.call('saveQuiz', { quiz_id: id, title: 'x', questions: [{ text: 'a', options: ['1', '2'], correct: 0 }] }, tok.admin).ok);
+});
+
+test('اختبار: تحقق المدخلات وحذف المسودة والمنشور', () => {
+  const { t, tok, mk } = quizSetup();
+  const bad = (questions) => t.call('saveQuiz', { title: 'x', questions }, tok.teacher).error;
+  assert.match(bad([]), /سؤالًا واحدًا/);
+  assert.match(bad([{ text: '', options: ['a', 'b'], correct: 0 }]), /نص السؤال/);
+  assert.match(bad([{ text: 'س', options: ['a', ''], correct: 0 }]), /اختيارين/);
+  assert.match(bad([{ text: 'س', options: ['a', 'b', ''], correct: 2 }]), /الإجابة الصحيحة/);
+  assert.match(bad(Array.from({ length: 31 }, () => ({ text: 'س', options: ['a', 'b'], correct: 0 }))), /30/);
+  const id = mk();
+  assert.ok(t.call('saveQuiz', { quiz_id: id, title: 'معدّل', questions: [{ text: 'س', options: ['a', 'b'], correct: 1 }] }, tok.teacher).ok);
+  assert.strictEqual(t.g.rows_('Questions').filter(q => q.quiz_id === id).length, 1);
+  t.call('setQuizStatus', { quiz_id: id, status: 'published' }, tok.admin);
+  assert.match(t.call('saveQuiz', { quiz_id: id, title: 'x', questions: [{ text: 'س', options: ['a', 'b'], correct: 1 }] }, tok.teacher).error, /للأدمن/);
+  assert.match(t.call('deleteQuiz', { quiz_id: id }, tok.teacher).error, /الأدمن/);
+  assert.ok(t.call('deleteQuiz', { quiz_id: id }, tok.admin).ok);
+  assert.strictEqual(t.g.rows_('Questions').length, 0);
+});
+
+test('أمن: اختبار/واجب فصل آخر لا يُفتح ولا يُحل (IDOR)، وصورة السؤال من ملفات المنصة فقط', () => {
+  const { t, tok, mk } = quizSetup();
+  const id = mk(); t.call('setQuizStatus', { quiz_id: id, status: 'published' }, tok.admin);
+  t.sheets.Classes.appendRow(['C2', 'فصل آخر', 'T9', 'OTHER2', 'x']);
+  t.sheets.Users.appendRow(['S9', 'student', 'غريب', 'C2', '', t.g.hashPin_('9999'), '', '', '', true, 'x']);
+  const k9 = t.login({ user_id: 'S9', pin: '9999' });
+  assert.ok(!t.call('quiz', { quiz_id: id }, k9).ok);
+  assert.ok(!t.call('submitQuiz', { quiz_id: id, answers: {} }, k9).ok);
+  assert.strictEqual(t.call('quizzes', {}, k9).data.length, 0);
+  const w = t.call('saveAssignment', { title: 'احفظ الفاتحة' }, tok.teacher).data;
+  assert.ok(!t.call('markAssignment', { assignment_id: w, done: true }, k9).ok);
+  assert.ok(!t.call('reviewAssignment', { assignment_id: w, user_id: 'S9', approve: true }, tok.teacher).ok, 'kid of another class');
+  const img = t.call('saveQuiz', { title: 'x', questions: [{ text: 'س', options: ['a', 'b'], correct: 0, image_file_id: 'ext-private' }] }, tok.teacher);
+  assert.ok(!img.ok && /ملفات المنصة/.test(img.error));
+  assert.ok(t.call('saveQuiz', { title: 'x', questions: [{ text: 'س', options: ['a', 'b'], correct: 0, image_file_id: 'img1' }] }, tok.teacher).ok);
+  // حقن صيغة في نص السؤال يُخزَّن نصًا
+  t.call('saveQuiz', { title: '=IMPORTXML("x")', questions: [{ text: '=HYPERLINK("x")', options: ['+1', '-2'], correct: 0 }] }, tok.teacher);
+  assert.ok(t.sheets.Quizzes._data.some(r => r.includes("'=IMPORTXML(\"x\")")));
+  assert.ok(t.sheets.Questions._data.some(r => r.includes("'=HYPERLINK(\"x\")") && r.includes("'+1")));
+});
+
+test('واجب: الطفل يضع «أنجزت»، والمعلمة تعتمد فيأخذ 15 نجمة مرة واحدة، والإرجاع يسحبها', () => {
+  const { t, tok } = quizSetup();
+  const pts = () => t.g.rows_('Points').filter(p => p.user_id === 'S1').reduce((s, p) => s + Number(p.points), 0);
+  assert.match(t.call('saveAssignment', { title: '' }, tok.teacher).error, /عنوان/);
+  assert.match(t.call('saveAssignment', { title: 'x', due: 'غدًا' }, tok.teacher).error, /تاريخ/);
+  const w = t.call('saveAssignment', { title: 'احفظ سورة الفاتحة', details: 'مع التجويد', due: '2026-11-20', prophet_id: 'muhammad' }, tok.teacher).data;
+  let mine = t.call('assignments', {}, tok.kid).data[0];
+  assert.strictEqual(mine.status, ''); assert.strictEqual(mine.due, '2026-11-20');
+  assert.ok(!t.call('markAssignment', { assignment_id: w, done: true }, tok.teacher).ok, 'teacher cannot mark');
+  assert.strictEqual(t.call('markAssignment', { assignment_id: w, done: true }, tok.kid).data, 'done');
+  assert.strictEqual(t.call('markAssignment', { assignment_id: w, done: true }, tok.kid).data, 'done');
+  assert.strictEqual(t.g.rows_('Submissions').length, 1);
+  const list = t.call('assignments', {}, tok.teacher).data[0];
+  assert.strictEqual(list.done, 1); assert.strictEqual(list.kids, 2);
+  assert.ok(!t.call('reviewAssignment', { assignment_id: w, user_id: 'S1', approve: true }, tok.kid).ok);
+  t.call('reviewAssignment', { assignment_id: w, user_id: 'S1', approve: true }, tok.teacher);
+  t.call('reviewAssignment', { assignment_id: w, user_id: 'S1', approve: true }, tok.teacher);
+  assert.strictEqual(pts(), 15);
+  assert.match(t.call('markAssignment', { assignment_id: w, done: false }, tok.kid).error, /اعتمدته/);
+  t.call('reviewAssignment', { assignment_id: w, user_id: 'S1', approve: false }, tok.teacher);
+  assert.strictEqual(pts(), 0);
+  assert.strictEqual(t.call('assignments', {}, tok.kid).data[0].status, 'returned');
+  // اعتماد مباشر لطفل لم يضع «أنجزت»
+  t.call('reviewAssignment', { assignment_id: w, user_id: 'S2', approve: true }, tok.teacher);
+  const st = t.call('assignmentStatus', { assignment_id: w }, tok.teacher).data.kids;
+  assert.deepStrictEqual(st.map(k => k.status).sort(), ['approved', 'returned']);
+  assert.ok(t.call('deleteAssignment', { assignment_id: w }, tok.teacher).ok);
+  assert.strictEqual(t.g.rows_('Submissions').length, 0);
+});
+
+test('الاختبارات والواجبات: المعاينة («عرض كـ») لا تحل ولا تعتمد', () => {
+  const { t, tok, mk } = quizSetup();
+  const id = mk(); t.call('setQuizStatus', { quiz_id: id, status: 'published' }, tok.admin);
+  const as = t.call('viewAs', { user_id: 'S1' }, tok.superadmin);
+  assert.ok(as.ok, JSON.stringify(as));
+  const r = t.call('submitQuiz', { quiz_id: id, answers: {} }, as.data.token);
+  assert.ok(!r.ok && /المعاينة/.test(r.error));
+});
+
+// يحاكي طلبًا متزامنًا: بعد أول قراءة لجدول Submissions (وقبل الكتابة) يمر طلب آخر في المنتصف
+function raceOn(t, fn) {
+  const sh = t.sheets.Submissions, orig = sh.getDataRange; let fired = false;
+  sh.getDataRange = () => { if (fired) return orig(); fired = true; const v = orig().getValues(); fn(); return { getValues: () => v }; };
+  return () => { sh.getDataRange = orig; };
+}
+test('أمن: ضغطتا «اعتماد» متزامنتان لا تعطيان نجوم الواجب مرتين (سباق)', () => {
+  const { t, tok } = quizSetup();
+  const pts = () => t.g.rows_('Points').filter(p => p.user_id === 'S1').reduce((s, p) => s + Number(p.points), 0);
+  const w = t.call('saveAssignment', { title: 'احفظ الفاتحة' }, tok.teacher).data;
+  const undo = raceOn(t, () => t.call('reviewAssignment', { assignment_id: w, user_id: 'S1', approve: true }, tok.admin));
+  t.call('reviewAssignment', { assignment_id: w, user_id: 'S1', approve: true }, tok.teacher);
+  undo();
+  t.call('reviewAssignment', { assignment_id: w, user_id: 'S1', approve: true }, tok.teacher);
+  assert.strictEqual(pts(), 15);
+  assert.strictEqual(t.lock.held, 0, 'lock released');
+});
+
+test('أمن: الطفل لا يمسح الاعتماد بسباق «أنجزت/إلغاء» ليأخذ النجوم مرة ثانية', () => {
+  const { t, tok } = quizSetup();
+  const pts = () => t.g.rows_('Points').filter(p => p.user_id === 'S1').reduce((s, p) => s + Number(p.points), 0);
+  const w = t.call('saveAssignment', { title: 'احفظ الفاتحة' }, tok.teacher).data;
+  t.call('markAssignment', { assignment_id: w, done: true }, tok.kid);
+  // المعلمة تعتمد بين قراءة الطفل وحذفه للصف
+  const undo = raceOn(t, () => t.call('reviewAssignment', { assignment_id: w, user_id: 'S1', approve: true }, tok.teacher));
+  t.call('markAssignment', { assignment_id: w, done: false }, tok.kid);
+  undo();
+  t.call('reviewAssignment', { assignment_id: w, user_id: 'S1', approve: true }, tok.teacher);
+  assert.strictEqual(pts(), 15);
+  assert.strictEqual(t.g.rows_('Points').filter(p => p.user_id === 'S1').length, 1);
+});
+
+test('أمن: تبديل «أنجزت» له حد (لا كتابات لا نهائية على الشيت)', () => {
+  const { t, tok } = quizSetup();
+  const w = t.call('saveAssignment', { title: 'احفظ الفاتحة' }, tok.teacher).data;
+  let last;
+  for (let i = 0; i < 61; i++) last = t.call('markAssignment', { assignment_id: w, done: i % 2 === 0 }, tok.kid);
+  assert.ok(!last.ok && /طلبات كثيرة/.test(last.error), JSON.stringify(last));
+});
+
+test('أمن: طلب منفوخ لا يُسقط سطر سجل العمليات (لا تهرّب من التدقيق)', () => {
+  const { t, tok, mk } = quizSetup();
+  const id = mk();
+  // الخلية الحقيقية حدها 50 ألف حرف وإلا يفشل appendRow
+  const sh = t.sheets.AuditLog, orig = sh.appendRow;
+  sh.appendRow = (row) => { if (row.some(c => String(c).length > 50000)) throw new Error('cell too big'); return orig(row); };
+  assert.ok(t.call('deleteQuiz', { quiz_id: id, pad: 'x'.repeat(60000) }, tok.teacher).ok);
+  assert.ok(t.g.rows_('AuditLog').some(r => r.action === 'deleteQuiz' && r.target_id === id));
 });
 
 for (const [name, fn] of tests) {

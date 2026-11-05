@@ -102,7 +102,7 @@ export default function TeacherHome() {
           <p className="mt-2 text-center text-sm text-muted-foreground">من المحاضرات المنشورة سمعها الأطفال</p>
         </Panel>
         <Panel title="الحضور في آخر المحاضرات" className="lg:col-span-2">
-          {loading && !data ? <Skeleton className="h-52" /> : data?.perLecture.length ? (
+          {loading && !data ? <Skeleton className="h-52" /> : data?.perLecture?.length ? (
             <ChartContainer config={barCfg} className="h-52 w-full">
               <BarChart data={data.perLecture} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
                 <CartesianGrid vertical={false} strokeOpacity={0.4} />
@@ -134,7 +134,7 @@ export default function TeacherHome() {
         <Panel title="أبطال النجوم">
           {loading && !data ? <Skeleton className="h-48" /> : (
             <ul className="flex flex-col gap-2">
-              {data?.top.map((k, i) => (
+              {data?.top?.map((k, i) => (
                 <li key={k.user_id} className="flex items-center gap-2 rounded-2xl bg-secondary/50 p-2">
                   <span className="grid size-7 place-items-center rounded-full bg-background text-sm font-extrabold">{i + 1}</span>
                   <KidAvatar value={k.avatar} size={30} />
@@ -142,14 +142,14 @@ export default function TeacherHome() {
                   <span className="font-heading font-extrabold">{k.points}</span>
                 </li>
               ))}
-              {!data?.top.length && <p className="text-center text-muted-foreground">لا يوجد أطفال بعد</p>}
+              {!data?.top?.length && <p className="text-center text-muted-foreground">لا يوجد أطفال بعد</p>}
             </ul>
           )}
         </Panel>
       </div>
 
       <Panel title="آخر النشاط">
-        {loading && !data ? <Skeleton className="h-24" /> : data?.recent.length ? (
+        {loading && !data ? <Skeleton className="h-24" /> : data?.recent?.length ? (
           <ul className="divide-y">
             {data.recent.map((r, i) => (
               <li key={i} className="flex items-center gap-3 py-2">

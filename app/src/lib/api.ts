@@ -98,3 +98,19 @@ export type Dashboard = {
 export type Suggestion = { id: string; text: string; status: string; at: string; name: string };
 export const fmtDate = (d: string) => { try { return new Date(d).toLocaleDateString("ar-EG", { day: "numeric", month: "long" }); } catch { return String(d).slice(0, 10); } };
 export const fmtDur = (s: number | string) => { const n = Number(s) || 0; if (!n) return ""; const m = Math.round(n / 60); return m >= 60 ? `${Math.floor(m / 60)} س ${m % 60} د` : `${m} دقيقة`; };
+
+// ===== الاختبارات والواجبات =====
+export type QuizStatus = "draft" | "published";
+export type QuizMine = { score: number; total: number; stars: number } | null;
+export type Quiz = { quiz_id: string; title: string; status: QuizStatus; prophet_id: string; lecture_id: string; created_at: string; count: number; results?: number; mine?: QuizMine };
+// correct موجودة للمعلمة فقط (الطفل لا يستلم الإجابة قبل الحل)
+export type Question = { question_id: string; text: string; options: string[]; image_file_id: string; correct?: number };
+export type QuizFull = { quiz: Quiz; questions: Question[]; mine?: QuizMine };
+export type QuizSubmit = { score: number; total: number; stars: number; first: boolean; best: QuizMine; review: { question_id: string; chosen: number; correct: number; ok: boolean }[] };
+export type QuizResults = {
+  quiz: Quiz; questions: Question[]; per: { right: number; answered: number }[];
+  kids: { user_id: string; name: string; avatar: string; done: boolean; score?: number; total?: number; stars?: number; at?: string; answers?: number[] }[];
+};
+export type SubStatus = "" | "done" | "approved" | "returned";
+export type Assignment = { assignment_id: string; title: string; details: string; due: string; prophet_id: string; lecture_id: string; created_at: string; status?: SubStatus; kids?: number; done?: number; approved?: number };
+export type AssignmentStatus = { assignment: Assignment; kids: { user_id: string; name: string; avatar: string; status: SubStatus; at: string }[] };

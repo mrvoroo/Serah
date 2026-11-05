@@ -22,12 +22,12 @@ async function open(page: Page, id: string, items: object[] = []) {
 const progress = (page: Page) => page.evaluate(() => (window as unknown as { __symbol?: { debug: () => { progress: number } | null } }).__symbol?.debug()?.progress ?? 0);
 const shape = (page: Page) => page.evaluate(() => (window as unknown as { __symbol?: { debug: () => { shape: string } | null } }).__symbol?.debug()?.shape ?? null);
 
-test("موسى: الضغط على الرمز يحوّله عصا ← حيّة تسعى ← عصا ← انفلاق البحر ثم يرجع للأول", async ({ page }, info) => {
+test("موسى: الضغط على الرمز يحوّله عصا ← حيّة تسعى ← عصا ← انفلاق البحر ← السماء السادسة ثم يرجع للأول", async ({ page }, info) => {
   await open(page, "musa");
   const stage = page.getByRole("region", { name: "رمز سيدنا موسى عليه السلام" });
   await expect(stage).toBeVisible();
   await expect.poll(() => shape(page), { timeout: 30_000 }).toBe("s0");
-  const labels = ["العصا", "حيّة تسعى", "عادت عصا", "انفلق البحر"];
+  const labels = ["العصا", "حيّة تسعى", "عادت عصا", "انفلق البحر", "السماء السادسة"];
   for (let k = 0; k < labels.length; k++) {
     await expect(stage.getByRole("button", { name: new RegExp(`^${labels[k]} —`) })).toBeVisible();
     await expect(stage.getByRole("tab", { name: labels[k] })).toHaveAttribute("aria-selected", "true");

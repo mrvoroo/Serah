@@ -196,6 +196,18 @@
   }
 }
 
+/* الخطوط المميزة: الرقعة لاسم المنصة وأسماء السور، وخط المصحف للآيات، وCinzel لاسم المنصة بالإنجليزية */
+@layer components {
+  .font-ruqaa { font-family: var(--font-ruqaa), "Aref Ruqaa", serif; font-weight: 700; }
+  .font-quran { font-family: var(--font-quran), "Amiri Quran", "Amiri", serif; font-weight: 400; }
+  .font-brand-en { font-family: var(--font-cinzel), "Cinzel", serif; }
+  /* اسم السورة داخل الكلام: رقعة وأكبر قليلًا بلون مميز يقرأ في الوضعين */
+  .surah-name { font-family: var(--font-ruqaa), "Aref Ruqaa", serif; font-weight: 700; font-size: 1.12em; line-height: 1; color: #9a5b00; }
+  .dark .surah-name { color: var(--gold); }
+  /* الآية: خط المصحف بالتشكيل، أكبر قليلًا مع مسافة سطر تسمح بالحركات */
+  .ayah-text { font-family: var(--font-quran), "Amiri Quran", "Amiri", serif; font-weight: 400; font-size: 1.18em; line-height: 2.1; }
+}
+
 /* شريط السكرول: كبسولة بنفسجي → ذهبي بلون المنصة، رفيعة ومستديرة */
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-track { background: color-mix(in srgb, var(--primary) 8%, var(--background)); }

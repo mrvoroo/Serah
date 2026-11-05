@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles } from "lucide-react";
+import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles, ClipboardCheck, NotebookPen } from "lucide-react";
 import { session, type Role } from "@/lib/api";
 import { ROLE_LABEL, stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useRequireRole } from "@/components/kid/kid-shell";
@@ -24,6 +24,8 @@ export const TEACHER_NAV: { href: string; label: string; icon: typeof Users; min
   { href: "/teacher/team/", label: "المعلمات", icon: UserCog, min: "admin" },
   { href: "/teacher/lectures/", label: "المحاضرات", icon: Headphones },
   { href: "/teacher/upload/", label: "رفع تسجيل", icon: Upload },
+  { href: "/teacher/quizzes/", label: "الاختبارات", icon: ClipboardCheck },
+  { href: "/teacher/homework/", label: "الواجبات", icon: NotebookPen },
   { href: "/teacher/suggestions/", label: "الاقتراحات", icon: MessageSquareHeart },
   { href: "/kid/journey/", label: "رحلة الأنبياء", icon: Sparkles },
   { href: "/teacher/journey/", label: "إدارة الرحلة", icon: Map, min: "admin" },
@@ -70,10 +72,11 @@ export function TeacherShell({ children, roles = ["teacher", "admin", "superadmi
 
   return (
     <div className="min-h-svh lg:grid lg:grid-cols-[260px_1fr]">
-      <aside className="sticky top-0 hidden h-svh flex-col gap-6 border-e bg-card/60 p-4 backdrop-blur lg:flex">
+      <aside className="sticky top-0 hidden h-svh flex-col gap-4 overflow-hidden border-e bg-card/60 p-4 backdrop-blur lg:flex">
         <Brand role={role} />
-        <NavList id="side" role={role} />
-        <div className="mt-auto flex items-center justify-between rounded-2xl bg-secondary/60 p-3">
+        {/* القائمة تسكرول وحدها (الشعار فوق وبطاقة الحساب تحت ثابتين) حتى لو زادت العناصر */}
+        <div data-testid="side-nav-scroll" className="-mx-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2"><NavList id="side" role={role} /></div>
+        <div className="flex shrink-0 items-center justify-between rounded-2xl bg-secondary/60 p-3">
           <div className="min-w-0"><p className="truncate font-bold">{teacherTitle(user?.name, user?.role)}</p><p className="text-xs text-muted-foreground">{role ? ROLE_LABEL[role] : ""}</p></div>
           <button type="button" onClick={logout} aria-label="خروج" className="grid size-10 place-items-center rounded-xl hover:bg-secondary"><LogOut className="size-5" /></button>
         </div>
@@ -83,10 +86,10 @@ export function TeacherShell({ children, roles = ["teacher", "admin", "superadmi
           <div className="flex items-center gap-2">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger render={<button type="button" aria-label="فتح القائمة" className="grid size-11 place-items-center rounded-2xl bg-secondary lg:hidden"><Menu className="size-5" /></button>} />
-              <SheetContent side="right" className="w-72 gap-6 p-4">
+              <SheetContent side="right" className="w-72 gap-4 overflow-hidden p-4">
                 <SheetHeader className="p-0"><SheetTitle className="sr-only">القائمة</SheetTitle><Brand role={role} /></SheetHeader>
-                <NavList id="sheet" role={role} onNavigate={() => setOpen(false)} />
-                <button type="button" onClick={logout} className="mt-auto flex h-12 items-center gap-3 rounded-2xl px-4 font-bold text-destructive hover:bg-destructive/10"><LogOut className="size-5" /> خروج</button>
+                <div className="-mx-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2"><NavList id="sheet" role={role} onNavigate={() => setOpen(false)} /></div>
+                <button type="button" onClick={logout} className="flex h-12 shrink-0 items-center gap-3 rounded-2xl px-4 font-bold text-destructive hover:bg-destructive/10"><LogOut className="size-5" /> خروج</button>
               </SheetContent>
             </Sheet>
             <div className="lg:hidden"><Brand role={role} /></div>

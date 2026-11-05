@@ -86,5 +86,6 @@ export function KidShell({ children }: { children: ReactNode }) {
     </div>
   );
 
-  return animate ? <ClickSpark sparkColor={["#FFC24D", "#9C8BFF", "#3FD08F"]} sparkCount={8} sparkRadius={22} shape="star" duration={500}>{content}</ClickSpark> : content;
+  // الغلاف ثابت دائمًا (والشرارات تتعطل فقط): لو تبدّل بين غلاف وبدونه عند تخفيف الأداء تُبنى الصفحة من جديد وتضيع حالتها (مثل الاختبار)
+  return <ClickSpark disabled={!animate} sparkColor={["#FFC24D", "#9C8BFF", "#3FD08F"]} sparkCount={8} sparkRadius={22} shape="star" duration={500}>{content}</ClickSpark>;
 }

@@ -8,6 +8,7 @@ import {
   type Ayah, type QuranPrefs, type SurahInfo,
 } from "@/lib/quran";
 import { cn } from "@/lib/utils";
+import { SurahName } from "@/components/religious-text";
 
 // القرآن للأطفال: المصحف المعلّم (الشيخ يقرأ والأطفال يرددون) أو «دورك تقرأ» (الشيخ يقرأ ثم سكوت يقرأ فيه الطفل)
 // السورة الطويلة تُعرض صفحة صفحة كما في مصحف المدينة، والآية التي يقرؤها الشيخ مظللة وباقي الصفحة أخفت حتى لا يتشتت الطفل،
@@ -230,7 +231,7 @@ export function QuranReader() {
 
       <article id="quran-page" aria-label={`سورة ${surahName}`} dir="rtl" className="scroll-mt-4 rounded-[28px] border bg-card p-5 shadow-soft">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <h2 className="font-heading text-2xl font-extrabold text-gold">سورة {surahName}</h2>
+          <h2 className="font-heading text-2xl font-extrabold">سورة <SurahName name={surahName} className="text-[1.25em]" /></h2>
           {shownPage > 0 && <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold">صفحة {arNum(shownPage)}</span>}
         </div>
         {!ayahs ? (textError ? null : <div className="grid gap-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 rounded-xl" />)}</div>) : (
@@ -264,7 +265,7 @@ export function QuranReader() {
         )}
       </article>
 
-      {phase === "done" && <p role="status" className="rounded-[24px] bg-gold/15 p-4 text-center font-heading text-xl font-extrabold">ما شاء الله تبارك الله! وصلنا إلى آخر سورة {surahName} 🌟</p>}
+      {phase === "done" && <p role="status" className="rounded-[24px] bg-gold/15 p-4 text-center font-heading text-xl font-extrabold">ما شاء الله تبارك الله! وصلنا إلى آخر سورة <SurahName name={surahName} /> 🌟</p>}
 
       {/* شريط التشغيل فوق شريط التنقل */}
       <div className="fixed inset-x-3 bottom-24 z-30 mx-auto flex max-w-md items-center gap-3 rounded-[28px] border bg-card/95 p-3 shadow-soft backdrop-blur">

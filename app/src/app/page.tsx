@@ -71,7 +71,8 @@ export default function Welcome() {
         <Zaid mood={mood} size={170} />
         <div className="flex flex-col items-center gap-2">
           <BrandLogo size={88} glow />
-          <h1 className="text-center font-heading text-4xl font-extrabold leading-tight">المُنْتَهَى</h1>
+          <h1 className="text-center font-ruqaa text-6xl leading-tight" aria-label="المُنْتَهَى">المنتهى</h1>
+          <p className="font-brand-en text-sm font-bold tracking-[0.35em] text-gold" aria-hidden>MUNTAHA</p>
           <p className="text-sm font-bold text-muted-foreground">رحلة مع الأنبياء والقرآن الكريم</p>
         </div>
         <div className="w-full rounded-[32px] border bg-card/90 p-5 shadow-soft backdrop-blur-md">

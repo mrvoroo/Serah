@@ -1,7 +1,8 @@
 import { cn } from "@/lib/utils";
 
 // شعار المنصة «المُنْتَهَى | Muntaha»: شجرة ذهبية داخل دائرة (public/brand)
-export const BRAND = { ar: "المُنْتَهَى", en: "Muntaha" } as const;
+// display: بخط الرقعة بدون تشكيل (التشكيل فوق الرقعة يزحم الحروف ويصعّب القراءة)، والاسم بالتشكيل للعنوان وقارئ الشاشة
+export const BRAND = { ar: "المُنْتَهَى", display: "المنتهى", en: "Muntaha" } as const;
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export function BrandLogo({ size = 40, glow = false, className }: { size?: number; glow?: boolean; className?: string }) {
@@ -19,8 +20,9 @@ export function BrandMark({ size = 40 }: { size?: number }) {
     <span className="flex items-center gap-2">
       <BrandLogo size={size} />
       <span className="flex flex-col leading-none">
-        <span className="font-heading text-lg font-extrabold">{BRAND.ar}</span>
-        <span className="text-[10px] font-bold tracking-[0.25em] text-gold">{BRAND.en.toUpperCase()}</span>
+        {/* الاسم بخط الرقعة، والإنجليزي بخط Cinzel الكلاسيكي */}
+        <span className="font-ruqaa text-[1.6rem] leading-[1.1]" aria-label={BRAND.ar}>{BRAND.display}</span>
+        <span className="font-brand-en text-[10px] font-bold tracking-[0.3em] text-gold">{BRAND.en.toUpperCase()}</span>
       </span>
     </span>
   );

@@ -14,10 +14,12 @@ const SCHEMA = {
   Lectures:     ['lecture_id', 'class_id', 'title', 'date', 'audio_file_id', 'duration_sec', 'status', 'notes', 'created_by', 'created_at', 'prophet_id'],
   LectureImages:['image_id', 'lecture_id', 'sort', 'file_id'],
   Attendance:   ['lecture_id', 'user_id', 'at'],
-  Quizzes:      ['quiz_id', 'class_id', 'lecture_id', 'title', 'status', 'created_at'],
-  Questions:    ['question_id', 'quiz_id', 'text', 'opt_a', 'opt_b', 'opt_c', 'opt_d', 'correct', 'points'],
-  Results:      ['quiz_id', 'user_id', 'score', 'total', 'at'],
-  Assignments:  ['assignment_id', 'class_id', 'lecture_id', 'title', 'details', 'due', 'created_at'],
+  // الاختبارات والواجبات (المرحلة 7): الأعمدة الجديدة في آخر كل ورقة حتى يضيفها الترحيل بدون لمس البيانات
+  Quizzes:      ['quiz_id', 'class_id', 'lecture_id', 'title', 'status', 'created_at', 'prophet_id', 'created_by', 'updated_at'],
+  Questions:    ['question_id', 'quiz_id', 'text', 'opt_a', 'opt_b', 'opt_c', 'opt_d', 'correct', 'points', 'image_file_id', 'sort'],
+  Results:      ['quiz_id', 'user_id', 'score', 'total', 'at', 'answers', 'stars'],
+  Assignments:  ['assignment_id', 'class_id', 'lecture_id', 'title', 'details', 'due', 'created_at', 'prophet_id', 'created_by'],
+  Submissions:  ['sub_id', 'assignment_id', 'user_id', 'status', 'at', 'reviewed_by', 'reviewed_at'],
   Points:       ['user_id', 'points', 'reason', 'at'],
   Suggestions:  ['id', 'from_user', 'role', 'text', 'audio_file_id', 'status', 'at'],
   BotState:     ['chat_id', 'state', 'data', 'at'],
@@ -95,7 +97,9 @@ function append_(name, obj) {
 function audit_(me, action, target_type, target_id, details) {
   try {
     append_('AuditLog', { at: now_(), user_id: me ? me.user_id : 'system', role: me ? me.role : 'system', action,
-      target_type: target_type || '', target_id: target_id || '', details_json: details ? JSON.stringify(details) : '', imp_by: me && me.imp || '' });
+      target_type: target_type || '', target_id: String(target_id || '').slice(0, 200),
+      // الخلية في Sheets حدها 50 ألف حرف: طلب منفوخ بحقل زائد كان يُسقط سطر السجل كله (تهرّب من التدقيق)، فنقصّه
+      details_json: details ? JSON.stringify(details).slice(0, 20000) : '', imp_by: me && me.imp || '' });
   } catch (e) { console.error(e); }
 }
 function update_(name, keyCol, keyVal, patch) {
@@ -256,7 +260,20 @@ const POLICY = {
   repairAudio: { min: 'superadmin', write: 1, audit: 1 },
   config: { min: 'student' },
   audioChunk: { min: 'student' },
-  audioCheck: { min: 'superadmin' }
+  audioCheck: { min: 'superadmin' },
+  // الاختبارات والواجبات
+  quizzes: { min: 'student' }, quiz: { min: 'student' },
+  submitQuiz: { min: 'student', write: 1 },
+  saveQuiz: { min: 'teacher', write: 1, audit: 1 },
+  setQuizStatus: { min: 'admin', write: 1, audit: 1 },
+  deleteQuiz: { min: 'teacher', write: 1, audit: 1 },
+  quizResults: { min: 'teacher' },
+  assignments: { min: 'student' },
+  saveAssignment: { min: 'teacher', write: 1, audit: 1 },
+  deleteAssignment: { min: 'teacher', write: 1, audit: 1 },
+  markAssignment: { min: 'student', write: 1 },
+  assignmentStatus: { min: 'teacher' },
+  reviewAssignment: { min: 'teacher', write: 1, audit: 1 }
 };
 const SECRET_PARAMS = { pin: 1, oldPin: 1, newPin: 1, token: 1, action: 1 };
 
@@ -276,7 +293,7 @@ function handle_(action, p, token) {
     const data = fn(p, me);
     if (pol.audit) {
       const details = {}; Object.keys(p || {}).forEach(k => { if (!SECRET_PARAMS[k]) details[k] = p[k]; });
-      audit_(me, action, '', p.user_id || p.lecture_id || p.class_id || p.item_id || p.prophet_id || p.image_id || '', details);
+      audit_(me, action, '', p.user_id || p.quiz_id || p.assignment_id || p.lecture_id || p.class_id || p.item_id || p.prophet_id || p.image_id || '', details);
     }
     return json_({ ok: true, data });
   } catch (err) {
@@ -784,6 +801,211 @@ const ACTIONS = {
     return l;
   },
 
+  // ===== الاختبارات والواجبات (المرحلة 7) =====
+  // الاختبار يُنشأ مسودة وتنشره الأدمن بعد المراجعة الشرعية (مثل المحاضرات). الإجابة الصحيحة لا تُرسل للطفل قبل الحل،
+  // والتصحيح هنا في الخلفية، والنجوم على أول محاولة فقط (المحاولات بعدها للتدريب)
+  quizzes: (p, me) => {
+    const isT = RANK[me.role] >= RANK.teacher;
+    const qs = rows_('Questions'), res = rows_('Results');
+    const pid = p.prophet_id ? prophetRef_(p.prophet_id) : '';
+    return rows_('Quizzes').filter(z => z.class_id === cls_(me, p) && (isT || z.status === 'published') && (!pid || z.prophet_id === pid))
+      .sort(byNewest_).map(z => {
+        const o = quizOut_(z); o.count = qs.filter(q => q.quiz_id === z.quiz_id).length;
+        if (isT) o.results = res.filter(r => r.quiz_id === z.quiz_id).length;
+        else { const r = res.find(x => x.quiz_id === z.quiz_id && x.user_id === me.user_id); o.mine = r ? { score: Number(r.score), total: Number(r.total), stars: Number(r.stars) || 0 } : null; }
+        return o;
+      });
+  },
+
+  quiz: (p, me) => {
+    const isT = RANK[me.role] >= RANK.teacher;
+    const z = ownQuiz_(me, p);
+    if (!isT && z.status !== 'published') throw new Error('الاختبار غير موجود');
+    const out = { quiz: quizOut_(z), questions: quizQuestions_(z.quiz_id).map(q => questionOut_(q, isT)) };
+    if (!isT) { const r = rows_('Results').find(x => x.quiz_id === z.quiz_id && x.user_id === me.user_id); out.mine = r ? { score: Number(r.score), total: Number(r.total), stars: Number(r.stars) || 0 } : null; }
+    return out;
+  },
+
+  saveQuiz: (p, me) => {
+    const title = String(p.title || '').trim().slice(0, 120);
+    if (!title) throw new Error('اكتبي عنوان الاختبار');
+    const list = Array.isArray(p.questions) ? p.questions : [];
+    if (!list.length) throw new Error('أضيفي سؤالًا واحدًا على الأقل');
+    if (list.length > 30) throw new Error('الحد الأقصى 30 سؤالًا');
+    const old = p.quiz_id ? ownQuiz_(me, p) : null;
+    if (old) {
+      if (old.status === 'published' && RANK[me.role] < RANK.admin) throw new Error('الاختبار منشور — تعديله للأدمن فقط');
+      if (rows_('Results').some(r => r.quiz_id === old.quiz_id)) throw new Error('حلّه أطفال بالفعل، فلا تتغير أسئلته — أنشئي اختبارًا جديدًا');
+    }
+    const oldQs = old ? quizQuestions_(old.quiz_id) : [];
+    const clean = list.map((q, i) => cleanQuestion_(q, i, oldQs));
+    const f = { title, prophet_id: p.prophet_id ? prophetRef_(p.prophet_id) : '', lecture_id: p.lecture_id ? ownLecture_(me, p).lecture_id : '', updated_at: now_() };
+    let id;
+    if (old) {
+      id = old.quiz_id;
+      update_('Quizzes', 'quiz_id', id, f);
+      remove_('Questions', 'quiz_id', id);
+    } else {
+      id = id_('Z');
+      append_('Quizzes', Object.assign(f, { quiz_id: id, class_id: cls_(me, p), status: 'draft', created_by: me.user_id, created_at: now_() }));
+    }
+    clean.forEach(q => append_('Questions', Object.assign(q, { question_id: id_('q'), quiz_id: id })));
+    return id;
+  },
+
+  setQuizStatus: (p, me) => {
+    if (['draft', 'published'].indexOf(p.status) < 0) throw new Error('حالة غير صحيحة');
+    const z = ownQuiz_(me, p);
+    if (p.status === 'published' && !quizQuestions_(z.quiz_id).length) throw new Error('الاختبار بلا أسئلة');
+    update_('Quizzes', 'quiz_id', z.quiz_id, { status: p.status });
+    return true;
+  },
+
+  // المسودة تحذفها المعلمة، والمنشور تحذفه الأدمن فقط (النجوم التي أخذها الأطفال تبقى لهم)
+  deleteQuiz: (p, me) => {
+    const z = ownQuiz_(me, p);
+    if (z.status === 'published' && RANK[me.role] < RANK.admin) throw new Error('الاختبار المنشور تحذفه الأدمن فقط');
+    remove_('Questions', 'quiz_id', z.quiz_id);
+    remove_('Results', 'quiz_id', z.quiz_id);
+    remove_('Quizzes', 'quiz_id', z.quiz_id);
+    return true;
+  },
+
+  submitQuiz: (p, me) => {
+    const z = ownQuiz_(me, p);
+    const kid = me.role === 'student';
+    if (kid && z.status !== 'published') throw new Error('الاختبار غير موجود');
+    rate_('quiz:' + me.user_id, 30, 600);
+    const qs = quizQuestions_(z.quiz_id);
+    const ans = p.answers && typeof p.answers === 'object' ? p.answers : {};
+    const chosen = {};
+    let score = 0;
+    const review = qs.map(q => {
+      const a = Number(ans[q.question_id]), c = 'abcd'.indexOf(String(q.correct));
+      const pick = Number.isInteger(a) && a >= 0 && a < 4 ? a : -1;
+      if (pick >= 0) chosen[q.question_id] = pick;
+      if (pick === c) score++;
+      return { question_id: q.question_id, chosen: pick, correct: c, ok: pick === c };
+    });
+    const total = qs.length, stars = total ? Math.round(QUIZ_STARS * score / total) : 0;
+    let first = false, best = null;
+    // المعلمة تجرّب الاختبار بدون تسجيل نتيجة أو نجوم
+    if (kid) {
+      const lock = LockService.getScriptLock(); lock.waitLock(20000);
+      try {
+        const prev = rows_('Results').find(r => r.quiz_id === z.quiz_id && r.user_id === me.user_id);
+        if (prev) best = { score: Number(prev.score), total: Number(prev.total), stars: Number(prev.stars) || 0 };
+        else {
+          append_('Results', { quiz_id: z.quiz_id, user_id: me.user_id, score, total, at: now_(), answers: JSON.stringify(chosen), stars });
+          if (stars) addPoints_(me.user_id, stars, 'اختبار: ' + String(z.title).slice(0, 60));
+          first = true;
+        }
+      } finally { lock.releaseLock(); }
+    }
+    return { score, total, stars: first ? stars : 0, first, best, review };
+  },
+
+  // نتائج اختبار: كل طفل وإجاباته، ونسبة الصواب في كل سؤال
+  quizResults: (p, me) => {
+    const z = ownQuiz_(me, p);
+    const qs = quizQuestions_(z.quiz_id);
+    const res = rows_('Results').filter(r => r.quiz_id === z.quiz_id);
+    const per = qs.map(() => ({ right: 0, answered: 0 }));
+    const kids = rows_('Users').filter(u => u.class_id === z.class_id && u.role === 'student' && !inactive_(u)).map(k => {
+      const r = res.find(x => x.user_id === k.user_id);
+      const o = { user_id: k.user_id, name: k.name, avatar: k.avatar, done: !!r };
+      if (!r) return o;
+      let a = {}; try { a = JSON.parse(r.answers || '{}') || {}; } catch (e) {}
+      o.answers = qs.map((q, i) => {
+        const v = a[q.question_id] === undefined ? -1 : Number(a[q.question_id]);
+        if (v >= 0) { per[i].answered++; if (v === 'abcd'.indexOf(String(q.correct))) per[i].right++; }
+        return v;
+      });
+      return Object.assign(o, { score: Number(r.score), total: Number(r.total), stars: Number(r.stars) || 0, at: r.at });
+    }).sort((a, b) => (b.done - a.done) || ((b.score || 0) - (a.score || 0)));
+    return { quiz: quizOut_(z), questions: qs.map(q => questionOut_(q, true)), kids, per };
+  },
+
+  // الواجبات: المعلمة تنشرها مباشرة، والطفل يضع «أنجزت»، والمعلمة تعتمد فيأخذ نجومًا (مرة واحدة)
+  assignments: (p, me) => {
+    const isT = RANK[me.role] >= RANK.teacher;
+    const subs = rows_('Submissions');
+    const pid = p.prophet_id ? prophetRef_(p.prophet_id) : '';
+    const kids = isT ? rows_('Users').filter(u => u.class_id === cls_(me, p) && u.role === 'student' && !inactive_(u)).length : 0;
+    return rows_('Assignments').filter(a => a.class_id === cls_(me, p) && (!pid || a.prophet_id === pid)).sort(byNewest_).map(a => {
+      const o = assignmentOut_(a), mine = subs.filter(s => s.assignment_id === a.assignment_id);
+      if (isT) Object.assign(o, { kids, done: mine.filter(s => s.status === 'done').length, approved: mine.filter(s => s.status === 'approved').length });
+      else { const s = mine.find(x => x.user_id === me.user_id); o.status = s ? s.status : ''; }
+      return o;
+    });
+  },
+
+  saveAssignment: (p, me) => {
+    const f = { title: String(p.title || '').trim().slice(0, 120), details: String(p.details || '').slice(0, 1500),
+      due: String(p.due || ''), prophet_id: p.prophet_id ? prophetRef_(p.prophet_id) : '', lecture_id: p.lecture_id ? ownLecture_(me, p).lecture_id : '' };
+    if (!f.title) throw new Error('اكتبي عنوان الواجب');
+    if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) throw new Error('تاريخ غير صحيح');
+    if (p.assignment_id) { const a = ownAssignment_(me, p); update_('Assignments', 'assignment_id', a.assignment_id, f); return a.assignment_id; }
+    const id = id_('W');
+    append_('Assignments', Object.assign(f, { assignment_id: id, class_id: cls_(me, p), created_by: me.user_id, created_at: now_() }));
+    return id;
+  },
+
+  deleteAssignment: (p, me) => {
+    const a = ownAssignment_(me, p);
+    remove_('Submissions', 'assignment_id', a.assignment_id);
+    remove_('Assignments', 'assignment_id', a.assignment_id);
+    return true;
+  },
+
+  markAssignment: (p, me) => {
+    if (me.role !== 'student') throw new Error('للأطفال فقط');
+    const a = ownAssignment_(me, p);
+    rate_('mark:' + me.user_id, 60, 600); // تبديل «أنجزت» بلا حد = كتابات لا نهائية على الشيت
+    const key = a.assignment_id + ':' + me.user_id;
+    // قفل مع reviewAssignment: بدونه يكتب الطفل «done» (أو يحذف الصف) فوق «approved» بين قراءة المعلمة وكتابتها، فتعتمد مرة ثانية بنجوم جديدة
+    return withLock_(() => {
+      const s = rows_('Submissions').find(x => x.sub_id === key);
+      if (s && s.status === 'approved') throw new Error('اعتمدته المعلمة بالفعل');
+      if (p.done === false) { if (s) remove_('Submissions', 'sub_id', key); return ''; }
+      if (s) update_('Submissions', 'sub_id', key, { status: 'done', at: now_() });
+      else append_('Submissions', { sub_id: key, assignment_id: a.assignment_id, user_id: me.user_id, status: 'done', at: now_() });
+      return 'done';
+    });
+  },
+
+  assignmentStatus: (p, me) => {
+    const a = ownAssignment_(me, p);
+    const subs = rows_('Submissions').filter(s => s.assignment_id === a.assignment_id);
+    const kids = rows_('Users').filter(u => u.class_id === a.class_id && u.role === 'student' && !inactive_(u)).map(k => {
+      const s = subs.find(x => x.user_id === k.user_id);
+      return { user_id: k.user_id, name: k.name, avatar: k.avatar, status: s ? s.status : '', at: s ? s.at : '' };
+    });
+    return { assignment: assignmentOut_(a), kids };
+  },
+
+  // approve=true يعتمد (ولو لم يضع الطفل «أنجزت»)، وfalse يرجعه للطفل ليعيده (ويسحب النجوم لو كان معتمدًا)
+  reviewAssignment: (p, me) => {
+    const a = ownAssignment_(me, p);
+    const kid = rows_('Users').find(u => u.user_id === p.user_id && u.role === 'student' && u.class_id === a.class_id);
+    if (!kid) throw new Error('الطالب غير موجود');
+    const key = a.assignment_id + ':' + kid.user_id;
+    const status = p.approve === true || p.approve === 'true' ? 'approved' : 'returned';
+    // القراءة والكتابة والنجوم تحت قفل واحد: ضغطتا «اعتماد» متزامنتان كانتا تعطيان النجوم مرتين
+    return withLock_(() => {
+      const s = rows_('Submissions').find(x => x.sub_id === key);
+      const was = s ? s.status : '';
+      if (was === status) return status;
+      const patch = { status, reviewed_by: me.user_id, reviewed_at: now_() };
+      if (s) update_('Submissions', 'sub_id', key, patch);
+      else append_('Submissions', Object.assign(patch, { sub_id: key, assignment_id: a.assignment_id, user_id: kid.user_id, at: now_() }));
+      const reason = 'واجب: ' + String(a.title).slice(0, 60);
+      if (status === 'approved') addPoints_(kid.user_id, ASSIGN_STARS, reason);
+      else if (was === 'approved') addPoints_(kid.user_id, -ASSIGN_STARS, 'إلغاء اعتماد ' + reason);
+      return status;
+    });
+  },
+
   // ===== سجل العمليات (المعلمة الأدمن تقرأ، والمطوّر) =====
   // الأدمن ترى عمليات فصلها فقط (منفّذها أو هدفها من فصلها)، والمطوّر يرى الكل
   auditLog: (p, me) => {
@@ -982,7 +1204,59 @@ function classSuggestions_(me) {
   const cls = {}; rows_('Users').forEach(u => cls[u.user_id] = String(u.class_id));
   return all.filter(s => cls[s.from_user] === String(me.class_id));
 }
+// قسم حرج على الشيت (قراءة ثم كتابة) لا يتداخل مع طلب آخر
+function withLock_(fn) {
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try { return fn(); } finally { lock.releaseLock(); }
+}
 function addPoints_(user_id, points, reason) { append_('Points', { user_id, points, reason, at: now_() }); }
+
+// ===== أدوات الاختبارات والواجبات =====
+const QUIZ_STARS = 20, ASSIGN_STARS = 15; // أقصى نجوم الاختبار (حسب الدرجة)، ونجوم الواجب المعتمد
+function byNewest_(a, b) { return String(b.created_at).localeCompare(String(a.created_at)); }
+// معرّف نبي (لا نشترط وجوده في الجدول: الرحلة قد تعمل ببياناتها الاحتياطية)
+function prophetRef_(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30); }
+// اختبار/واجب من فصل المستخدم (والمطوّر أي فصل)
+function ownQuiz_(me, p) {
+  const z = rows_('Quizzes').find(x => x.quiz_id === String(p.quiz_id || '') && (me.role === 'superadmin' || x.class_id === me.class_id));
+  if (!z) throw new Error('الاختبار غير موجود');
+  return z;
+}
+function ownAssignment_(me, p) {
+  const a = rows_('Assignments').find(x => x.assignment_id === String(p.assignment_id || '') && (me.role === 'superadmin' || x.class_id === me.class_id));
+  if (!a) throw new Error('الواجب غير موجود');
+  return a;
+}
+function quizQuestions_(id) { return rows_('Questions').filter(q => q.quiz_id === id).sort(bySort_); }
+function quizOut_(z) { return { quiz_id: z.quiz_id, title: z.title, status: z.status, prophet_id: z.prophet_id || '', lecture_id: z.lecture_id || '', created_at: z.created_at }; }
+function assignmentOut_(a) { return { assignment_id: a.assignment_id, title: a.title, details: a.details, due: a.due ? day_(a.due) : '', prophet_id: a.prophet_id || '', lecture_id: a.lecture_id || '', created_at: a.created_at }; }
+// السؤال للطفل بدون الإجابة الصحيحة، وللمعلمة معها
+function questionOut_(q, withAnswer) {
+  const o = { question_id: q.question_id, text: q.text, image_file_id: q.image_file_id || '',
+    options: [q.opt_a, q.opt_b, q.opt_c, q.opt_d].map(x => String(x === undefined || x === null ? '' : x)).filter(Boolean) };
+  if (withAnswer) o.correct = 'abcd'.indexOf(String(q.correct));
+  return o;
+}
+// سؤال من المعلمة: options (2–4 نصوص) و correct رقم الإجابة الصحيحة فيها، وصورة اختيارية من ملفات المنصة
+function cleanQuestion_(q, i, oldQs) {
+  const n = 'السؤال ' + (i + 1) + ': ';
+  q = q || {};
+  const text = String(q.text || '').trim().slice(0, 300);
+  if (!text) throw new Error(n + 'اكتبي نص السؤال');
+  const ci = Number(q.correct), opts = [];
+  let correct = '';
+  (Array.isArray(q.options) ? q.options.slice(0, 4) : []).forEach((o, k) => {
+    const v = String(o === undefined || o === null ? '' : o).trim().slice(0, 120);
+    if (!v) return;
+    if (k === ci) correct = 'abcd'[opts.length];
+    opts.push(v);
+  });
+  if (opts.length < 2) throw new Error(n + 'اكتبي اختيارين على الأقل');
+  if (!correct) throw new Error(n + 'اختاري الإجابة الصحيحة');
+  const image = String(q.image_file_id || '');
+  if (image && !oldQs.some(o => String(o.image_file_id) === image)) { platformFile_(image); share_(image); }
+  return { text, opt_a: opts[0], opt_b: opts[1], opt_c: opts[2] || '', opt_d: opts[3] || '', correct, points: 1, image_file_id: image, sort: i };
+}
 function share_(fileId) { try { DriveApp.getFileById(fileId).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {} }
 
 /* ============ 5) بوت تيليجرام للمعلمات ============ */

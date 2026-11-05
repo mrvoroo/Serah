@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { ArrowLeft, Play } from "lucide-react";
-import { session, fmtDate, type Lecture, type Me } from "@/lib/api";
+import { session, fmtDate, type Assignment, type Lecture, type Me, type Quiz } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { Zaid } from "@/components/zaid";
 import { Icon3D, type Icon3DName } from "@/components/icon3d";
@@ -28,6 +28,9 @@ export default function KidHome() {
   const latest = lectures.data?.[0];
   const heard = new Set(me.data?.attended ?? []);
   const newOnes = (lectures.data ?? []).filter((l) => !heard.has(l.lecture_id)).length;
+  const quizzes = useApi<Quiz[]>("quizzes");
+  const hw = useApi<Assignment[]>("assignments");
+  const todo = (quizzes.data ?? []).filter((z) => !z.mine).length + (hw.data ?? []).filter((a) => !a.status || a.status === "returned").length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -73,6 +76,18 @@ export default function KidHome() {
         ) : (
           <div className="rounded-[28px] border bg-card p-6 text-center text-muted-foreground">لا توجد محاضرات بعد، قريبًا إن شاء الله</div>
         )}
+      </BlurFade>
+
+      <BlurFade delay={0.15}>
+        <Link href="/kid/tasks/" className="relative flex items-center gap-3 overflow-hidden rounded-[28px] bg-gradient-to-br from-[#FF7A59] to-[#D94A7A] p-4 text-white shadow-soft transition-transform active:scale-[0.98]">
+          {todo > 0 && <ShineBorder shineColor={["#FFC24D", "#FFFFFF"]} borderWidth={2} />}
+          <Icon3D name="thinking" size={56} float />
+          <div className="flex-1">
+            <p className="font-heading text-lg font-extrabold">اختبر نفسك</p>
+            <p className="text-sm text-white/90">{todo > 0 ? `عندك ${todo.toLocaleString("ar-EG")} ${todo === 1 ? "حاجة جديدة" : "حاجات جديدة"} تستناك` : "اختبارات وواجبات تكسب منها نجوم"}</p>
+          </div>
+          <ArrowLeft className="size-6" />
+        </Link>
       </BlurFade>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

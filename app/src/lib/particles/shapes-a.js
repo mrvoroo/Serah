@@ -62,6 +62,16 @@ const brick = (k, x, y, w = 0.5, h = 0.28, d = 0.32, z = 0) => k.box(x - w / 2, 
 // أحد عشر كوكبًا: نقاط مضيئة مستديرة (ليست نجومًا خماسية ولا كواكب بحلقات)
 const eleven = (k, pos, R) => k.many(pos.map(([x, y]) => k.mix([[0.7, k.sphere(x, y, R, 0, 0.006)], [0.3, k.glow(x, y, R * 0.6)]])));
 
+// سبع قباب سماوية متتالية فوق خط الأرض، والقبة رقم n (١ = الدنيا) مضيئة وفوقها نقطة نور (لا نجمة خماسية: الكواكب زينة السماء الدنيا)
+function skyLayers(k, n) {
+  const at = n - 1;
+  const ry = (i) => 0.9 + i * 0.56;
+  const layer = (i) => { const rx = 0.75 + i * 0.29; return () => { const a = k.r() * Math.PI; return [Math.cos(a) * rx + k.J(0.012), -2.25 + Math.sin(a) * ry(i) + k.J(0.012), (i - 3) * 0.12 + Math.sin(a * 2) * 0.05]; }; };
+  const others = k.many([0, 1, 2, 3, 4, 5, 6].filter((i) => i !== at).map(layer));
+  const top = -2.25 + ry(at);
+  return [[0.42, others], [0.26, layer(at)], [0.12, k.glow(0, top + 0.22, 0.24)], [0.06, k.glow(0, top, 0.14)], [0.08, k.seg([-2.4, -2.25, 0], [2.4, -2.25, 0], 0.012)], [0.06, k.dust(4.3)]];
+}
+
 export const SHAPES_A = {
   // ======== آدم ========
   // الطين: كومة طين بخطوط كنتور + كتل صغيرة حولها
@@ -128,13 +138,11 @@ export const SHAPES_A = {
     [0.1, k.ellipse(0, -2.25, 1.8, 0.4, 0, TAU, 0.015)],
     [0.08, k.dust(4.3)],
   ],
-  // السماء الرابعة: سبع قباب سماوية متتالية، والرابعة مضيئة وعليها نجمة
-  sky_layers: (k) => {
-    const layer = (i) => { const rx = 0.75 + i * 0.29, ry = 0.95 + i * 0.6; return () => { const a = k.r() * Math.PI; return [Math.cos(a) * rx + k.J(0.012), -2.25 + Math.sin(a) * ry + k.J(0.012), (i - 3) * 0.12 + Math.sin(a * 2) * 0.05]; }; };
-    const others = k.many([0, 1, 2, 4, 5, 6].map(layer));
-    const fourth = layer(3);
-    return [[0.42, others], [0.26, fourth], [0.12, k.star(0, -2.25 + 0.95 + 3 * 0.6 + 0.2, 0.32, 0.01)], [0.06, k.glow(0, -2.25 + 0.95 + 3 * 0.6, 0.2)], [0.08, k.seg([-2.4, -2.25, 0], [2.4, -2.25, 0], 0.012)], [0.06, k.dust(4.3)]];
-  },
+  // السماء الرابعة (إدريس): سبع قباب سماوية متتالية، والرابعة مضيئة وعليها نجمة
+  sky_layers: (k) => skyLayers(k, 4),
+  // سماء كل نبي لقيه النبي ﷺ ليلة المعراج (صحيح البخاري ٣٢٠٧، صحيح مسلم ١٦٢): القبة رقم n مضيئة وعليها النجمة
+  sky_1: (k) => skyLayers(k, 1), sky_2: (k) => skyLayers(k, 2), sky_3: (k) => skyLayers(k, 3), sky_4: (k) => skyLayers(k, 4),
+  sky_5: (k) => skyLayers(k, 5), sky_6: (k) => skyLayers(k, 6), sky_7: (k) => skyLayers(k, 7),
   // ======== نوح ========
   // الألواح والمسامير: ألواح خشب مكدّسة ولوح مائل عليها
   planks: (k) => {

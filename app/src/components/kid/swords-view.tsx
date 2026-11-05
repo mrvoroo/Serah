@@ -5,6 +5,7 @@ import { ArrowRight, Info, ChevronDown } from "lucide-react";
 import data from "@/content/swords.json";
 import { SymbolStage } from "@/components/prophet/symbol-stage";
 import { cn } from "@/lib/utils";
+import { RT } from "@/components/religious-text";
 
 // سيوف النبي ﷺ (مراجَعة شرعيًا — content/swords.json): رسم تقريبي على صفة السيف العربي في ذلك الزمان مع تنبيه للطفل،
 // ثم بطاقة لكل سيف بما ثبت عنه ودرجته ومراجعه. لم يثبت وصف دقيق لشكل أي سيف، ولم يثبت أن طرف ذي الفقار مشقوق أو مائل.
@@ -29,13 +30,13 @@ function SwordCard({ s }: { s: Sword }) {
       </button>
       <ul className="mt-2 flex flex-col gap-2">
         {(open ? s.facts : s.facts.slice(0, 1)).map((f, k) => (
-          <li key={k} className="flex gap-2 text-base leading-8"><span aria-hidden className="mt-3 size-1.5 shrink-0 rounded-full bg-gold" />{f}</li>
+          <li key={k} className="flex gap-2 text-base leading-8"><span aria-hidden className="mt-3 size-1.5 shrink-0 rounded-full bg-gold" /><span><RT text={f} /></span></li>
         ))}
       </ul>
       {open && (
         <div className="mt-3 flex flex-col gap-1 text-xs leading-6 text-muted-foreground">
           <p><b>درجة الخبر:</b> {s.grade}</p>
-          <p><b>المراجع:</b> {s.refs.join(" · ")}</p>
+          <p><b>المراجع:</b> {s.refs.map((r, i) => <span key={i}>{i > 0 && " · "}<RT text={r} /></span>)}</p>
         </div>
       )}
     </li>
@@ -62,7 +63,7 @@ export function SwordsView() {
           <h2 id="sw-facts" className="mb-3 font-heading text-xl font-extrabold">ما ثبت في الأحاديث</h2>
           <ul className="flex flex-col gap-3">
             {SOUND.map((f, k) => (
-              <li key={k} className="text-base leading-8">{f.text}<span className="block text-xs text-muted-foreground">{f.ref} — {f.grade}</span></li>
+              <li key={k} className="text-base leading-8"><RT text={f.text} /><span className="block text-xs text-muted-foreground"><RT text={f.ref} /> — {f.grade}</span></li>
             ))}
           </ul>
         </section>

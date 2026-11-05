@@ -52,7 +52,7 @@ export default function TeacherLogin() {
         <div className="flex flex-col items-center text-center">
           <BrandLogo size={64} glow className="mb-3" />
           <h1 className="font-heading text-3xl font-extrabold">أهلًا وسهلًا بكِ</h1>
-          <p className="mt-2 text-sm leading-7 text-muted-foreground">يسعدنا تشريفكِ منصةَ «المُنْتَهَى»، تفضّلي بتسجيل الدخول</p>
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">يسعدنا تشريفكِ منصةَ «<span className="font-ruqaa text-[1.25em] text-foreground">المنتهى</span>»، تفضّلي بتسجيل الدخول</p>
         </div>
         <form onSubmit={submit} className="flex w-full flex-col gap-3 rounded-[28px] border bg-card/90 p-5 shadow-soft backdrop-blur-md">
           <Label htmlFor="tn">الاسم</Label>

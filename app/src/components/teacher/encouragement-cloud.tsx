@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
 import data from "@/content/teacher-encouragement.json";
 import { useMotionAllowed } from "@/lib/tier";
+import { RT } from "@/components/religious-text";
 
 // سحابة تشجيع للمعلمات: كل فترة تظهر سحابة لطيفة فيها حديث صحيح أو قول عالم عن فضل تعليم الدين، مع مرجعه
 // (المحتوى مراجَع شرعيًا: content/teacher-encouragement.json). تُغلق بضغطة، ولا تتكرر نفس العبارة قريبًا.
@@ -60,8 +61,8 @@ export function EncouragementCloud() {
             <div className="relative rounded-[32px] border bg-card p-5 pt-6 shadow-soft">
               <button type="button" onClick={() => setItem(null)} aria-label="إغلاق" className="absolute end-3 top-3 grid size-9 place-items-center rounded-full bg-secondary"><X className="size-4" /></button>
               <p className="mb-2 text-xs font-bold text-gold">{item.kind === "قول عالم" ? "من أقوال العلماء" : "من هدي النبي ﷺ"}</p>
-              <p className="font-heading text-lg font-extrabold leading-9">«{item.text}»</p>
-              <p className="mt-2 text-xs text-muted-foreground">{item.source}{item.grade ? ` — ${item.grade}` : ""}</p>
+              <p className="font-heading text-lg font-extrabold leading-9">«<RT text={item.text} />»</p>
+              <p className="mt-2 text-xs text-muted-foreground"><RT text={item.source} />{item.grade ? ` — ${item.grade}` : ""}</p>
               {item.note && <p className="mt-3 rounded-2xl bg-secondary px-3 py-2 text-sm font-bold">{item.note}</p>}
             </div>
           </div>
