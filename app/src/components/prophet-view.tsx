@@ -44,7 +44,8 @@ function Item({ it }: { it: ContentItem }) {
   );
 }
 
-export function ProphetView({ prophet, items, lectures }: { prophet: ProphetRow; items: ContentItem[]; lectures?: Lecture[] }) {
+// lectureHref: رابط المحاضرة (الطفل يفتح مشغّله، والمعلمة صفحة المحاضرات عندها)
+export function ProphetView({ prophet, items, lectures, lectureHref = (id) => `/kid/lecture/?id=${id}` }: { prophet: ProphetRow; items: ContentItem[]; lectures?: Lecture[]; lectureHref?: (id: string) => string }) {
   const name = prophet.name.replace(/\s*(ﷺ|عليه السلام)\s*$/, "");
   // اللقب الواجب بعد الاسم: «ﷺ» لنبينا محمد، و«عليه السلام» لباقي الأنبياء
   const honored = `${name} ${prophet.prophet_id === "muhammad" ? "ﷺ" : "عليه السلام"}`;
@@ -61,7 +62,7 @@ export function ProphetView({ prophet, items, lectures }: { prophet: ProphetRow;
         <p className="mt-3 text-base leading-8 text-white/85">{prophet.text}</p>
       </header>
 
-      {steps.length > 0 && <SymbolStage steps={steps} name={name} />}
+      {steps.length > 0 && <SymbolStage steps={steps} title={`رمز سيدنا ${honored}`} />}
       {content && <ProphetBio content={content} />}
 
       {items.map((it) => it.kind !== "image" ? <Item key={it.item_id} it={it} />
@@ -76,7 +77,7 @@ export function ProphetView({ prophet, items, lectures }: { prophet: ProphetRow;
           <ul className="grid gap-2">
             {related.map((l) => (
               <li key={l.lecture_id}>
-                <Link href={`/kid/lecture/?id=${l.lecture_id}`} className="flex items-center gap-3 rounded-2xl bg-secondary p-3 font-bold text-secondary-foreground">
+                <Link href={lectureHref(l.lecture_id)} className="flex items-center gap-3 rounded-2xl bg-secondary p-3 font-bold text-secondary-foreground">
                   <PlayCircle className="size-6 shrink-0 text-gold" /> <span className="truncate">{l.title}</span>
                 </Link>
               </li>

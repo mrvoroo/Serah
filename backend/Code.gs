@@ -1056,6 +1056,8 @@ function prophetKb_(list, other) {
   return kb_(rows);
 }
 // اسم النبي مع اللقب الواجب: «ﷺ» لنبينا محمد، و«عليه السلام» لباقي الأنبياء
+// «أ.» (أستاذة) قبل اسم المعلمة احترامًا، إلا لو بدأ الاسم بلقب أو كان الحساب للمطوّر
+function teacherTitle_(u) { const n = String(u.name || '').trim(); return !n || u.role === 'superadmin' || /^(أ|د|م)\s*[./]/.test(n) ? n : 'أ. ' + n; }
 function honored_(p) { const n = String(p.name).replace(/\s*(ﷺ|عليه السلام)\s*$/, ''); return p.prophet_id === 'muhammad' ? n + ' ﷺ' : n + ' عليه السلام'; }
 function suggestTitle_(p) { return p.prophet_id === 'muhammad' ? 'من سيرة سيدنا محمد ﷺ' : 'قصة سيدنا ' + honored_(p); }
 // SITE_ORIGIN قد يُكتب بالمسار (https://mrvoroo.github.io/Serah) كما في README: نفصل الأصل عن رابط الموقع
@@ -1263,7 +1265,7 @@ function submitLecture_(chat, t, d) {
   // إشعار الأدمن: محاضرة تنتظر المراجعة، مع زر يفتح صفحة المحاضرات
   rows_('Users').filter(u => RANK[u.role] >= RANK.admin && u.active !== false && u.telegram_id && String(u.telegram_id) !== String(chat)).forEach(a => {
     try {
-      say_(a.telegram_id, '🆕 محاضرة جديدة بانتظار مراجعتكِ الكريمة\n«' + l.title + '»\nمن: ' + t.name,
+      say_(a.telegram_id, '🆕 محاضرة جديدة بانتظار مراجعتكِ الكريمة\n«' + l.title + '»\nمن: ' + teacherTitle_(t),
         { reply_markup: { inline_keyboard: [[{ text: 'فتح للمراجعة', url: siteUrl_() + '/teacher/lectures/' }]] } });
     } catch (e) { console.error(e); }
   });
@@ -1328,7 +1330,7 @@ function linkChat_(chat, u) {
   update_('Users', 'user_id', u.user_id, { telegram_id: chat });
   setState_(chat, 'idle', {});
   audit_(u, 'bot.link', 'Users', u.user_id);
-  return say_(chat, 'أهلًا وسهلًا بكِ ' + u.name + ' 🌷\nيسعدنا انضمامكِ، وقد رُبط حسابكِ بالبوت بنجاح.\nلرفع محاضرة اضغطي «' + BTN.NEW + '» ثم أرسلي التسجيل.', menuKb_(u));
+  return say_(chat, 'أهلًا وسهلًا بكِ ' + teacherTitle_(u) + ' 🌷\nيسعدنا انضمامكِ، وقد رُبط حسابكِ بالبوت بنجاح.\nلرفع محاضرة اضغطي «' + BTN.NEW + '» ثم أرسلي التسجيل.', menuKb_(u));
 }
 const PIN_PAD = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], [BTN.DEL, '0', BTN.OK]];
 function linkFlow_(chat, m, text, st) {

@@ -18,7 +18,7 @@ const NAV = [
   { href: "/kid/stars/", label: "النجوم", icon: Trophy },
 ];
 // المعلمات والأدمن والمطوّر يفتحن الرحلة وصفحات الأنبياء والقرآن كما يراها الطفل، مع زر رجوع للوحة بدل تنقل الطفل
-const STAFF_PATHS = /^\/kid\/(journey|prophet|quran)(\/|$)/;
+const STAFF_PATHS = /^\/kid\/(journey|prophet|quran|swords)(\/|$)/;
 const STAFF_NAV = [
   { href: "/kid/journey/", label: "الرحلة", icon: Map },
   { href: "/kid/quran/", label: "القرآن", icon: BookOpen },
@@ -48,6 +48,10 @@ export function KidShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const animate = useMotionAllowed();
   const logout = () => { if (viewAsInfo()) return stopViewAs(); session.clear(); router.replace(staff ? "/teacher/login/" : "/"); };
+  // التخطيط يبقى مركّبًا بين صفحات /kid، وفحص الدور يجري مرة واحدة: لو خرجت المعلمة من الرحلة/النبي/القرآن
+  // (مثل رابط محاضرة في صفحة النبي) لصفحات الطفل فقط نرجعها للوحتها ولا نعرض الصفحة (حتى لا تُسجَّل لها حضور ونقاط)
+  const staffBlocked = staff && !STAFF_PATHS.test(path);
+  useEffect(() => { if (staffBlocked && user) router.replace(homeOf(user.role)); }, [staffBlocked, user, router]);
 
   const content = (
     <div className="relative min-h-svh pb-28">
@@ -65,7 +69,7 @@ export function KidShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-4 pt-4">{user ? children : null}</main>
+      <main className="mx-auto max-w-3xl px-4 pt-4">{user && !staffBlocked ? children : null}</main>
       <nav aria-label="التنقل الرئيسي" className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-md pb-safe">
         <div className="flex items-center justify-between rounded-[28px] border bg-card/90 p-2 shadow-soft backdrop-blur-md">
           {nav.map((n) => {

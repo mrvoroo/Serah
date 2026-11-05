@@ -29,13 +29,13 @@ test("الكمبيوتر: الضغط على اسم النبي ينزل لقسم�
   await open(page);
   const menu = page.getByRole("navigation", { name: "محطات الرحلة" });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("button", { name: "من آدم إلى إبراهيم" })).toHaveAttribute("aria-expanded", "false");
+  await expect(menu.getByRole("button", { name: "من سيدنا آدم إلى سيدنا إبراهيم" })).toHaveAttribute("aria-expanded", "false");
 
-  await menu.getByRole("button", { name: "من أيوب إلى سليمان" }).click();
-  await menu.getByRole("button", { name: "موسى", exact: true }).click();
+  await menu.getByRole("button", { name: "من سيدنا أيوب إلى سيدنا سليمان" }).click();
+  await menu.getByRole("button", { name: "سيدنا موسى", exact: true }).click();
   await expect.poll(() => centerStation(page), { timeout: 8000 }).toBe("musa");
-  await expect(menu.getByRole("button", { name: "موسى", exact: true })).toHaveAttribute("aria-current", "true");
-  await expect(menu.getByRole("button", { name: "من أيوب إلى سليمان" })).toHaveAttribute("aria-expanded", "true");
+  await expect(menu.getByRole("button", { name: "سيدنا موسى", exact: true })).toHaveAttribute("aria-current", "true");
+  await expect(menu.getByRole("button", { name: "من سيدنا أيوب إلى سيدنا سليمان" })).toHaveAttribute("aria-expanded", "true");
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/menu-desktop-musa.png` });
 
   // سكرول عادي لقسم آخر: القائمة تفتح قسمه وتعلّم النبي
@@ -45,17 +45,17 @@ test("الكمبيوتر: الضغط على اسم النبي ينزل لقسم�
     const l = (window as unknown as { __lenis?: { scrollTo: (y: number, o: object) => void } }).__lenis;
     if (l) l.scrollTo(y, { immediate: true }); else window.scrollTo(0, y);
   });
-  await expect(menu.getByRole("button", { name: "يونس", exact: true })).toHaveAttribute("aria-current", "true");
-  await expect(menu.getByRole("button", { name: "من إلياس إلى محمد ﷺ" })).toHaveAttribute("aria-expanded", "true");
-  await expect(menu.getByRole("button", { name: "من أيوب إلى سليمان" })).toHaveAttribute("aria-expanded", "false");
+  await expect(menu.getByRole("button", { name: "سيدنا يونس", exact: true })).toHaveAttribute("aria-current", "true");
+  await expect(menu.getByRole("button", { name: "من سيدنا إلياس إلى سيدنا محمد ﷺ" })).toHaveAttribute("aria-expanded", "true");
+  await expect(menu.getByRole("button", { name: "من سيدنا أيوب إلى سيدنا سليمان" })).toHaveAttribute("aria-expanded", "false");
 
   // الرجوع للبداية
   await menu.getByRole("button", { name: "البداية" }).click();
   await expect.poll(() => centerStation(page), { timeout: 8000 }).toBe("start");
 
   // البطاقة لا تختفي تحت القائمة
-  await menu.getByRole("button", { name: "من آدم إلى إبراهيم" }).click();
-  await menu.getByRole("button", { name: "آدم", exact: true }).click();
+  await menu.getByRole("button", { name: "من سيدنا آدم إلى سيدنا إبراهيم" }).click();
+  await menu.getByRole("button", { name: "سيدنا آدم", exact: true }).click();
   await expect.poll(() => centerStation(page), { timeout: 8000 }).toBe("adam");
   const box = await page.getByTestId("journey-menu").boundingBox();
   const card = await page.locator("#station-adam [data-card]").boundingBox();
@@ -68,9 +68,9 @@ test("الموبايل: زر المحطات يفتح القائمة والاخت
   await open(page);
   await page.getByRole("button", { name: /^المحطات/ }).click();
   const sheet = page.getByRole("dialog");
-  await sheet.getByRole("button", { name: "من آدم إلى إبراهيم" }).click();
+  await sheet.getByRole("button", { name: "من سيدنا آدم إلى سيدنا إبراهيم" }).click();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/menu-mobile.png` });
-  await sheet.getByRole("button", { name: "نوح", exact: true }).click();
+  await sheet.getByRole("button", { name: "سيدنا نوح", exact: true }).click();
   await expect(sheet).toBeHidden();
   await expect.poll(() => centerStation(page), { timeout: 8000 }).toBe("noah");
 });
@@ -90,7 +90,7 @@ test("سهم القائمة: يحوّلها لنقاط ويرجعها، ويُح
   await page.reload();
   await expect(page.getByRole("button", { name: "إظهار قائمة المحطات" })).toBeVisible();
   await page.getByRole("button", { name: "إظهار قائمة المحطات" }).click();
-  await expect(panel.getByRole("button", { name: "يوسف", exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "سيدنا يوسف", exact: true })).toBeVisible();
 });
 
 // مكان المجسم على الشاشة (بالبكسل) من هدفه في المشهد: نفس معادلة الكاميرا في journey.tsx
@@ -135,3 +135,19 @@ for (const [menu, width] of [["full", 1440], ["dots", 1440], ["full", 1100]] as 
     }
   });
 }
+
+test("القائمة: فتح قسم يقفل الباقي، و«سيدنا» قبل كل نبي", async ({ page, isMobile }) => {
+  test.skip(isMobile, "القائمة الجانبية للشاشات الكبيرة");
+  await open(page);
+  const menu = page.getByRole("navigation", { name: "محطات الرحلة" });
+  const first = menu.getByRole("button", { name: "من سيدنا آدم إلى سيدنا إبراهيم" });
+  const second = menu.getByRole("button", { name: /^من سيدنا لوط إلى/ });
+  await first.click();
+  await expect(first).toHaveAttribute("aria-expanded", "true");
+  await expect(menu.getByRole("button", { name: "سيدنا نوح", exact: true })).toBeVisible();
+  await second.click();
+  await expect(second).toHaveAttribute("aria-expanded", "true");
+  await expect(first).toHaveAttribute("aria-expanded", "false");
+  const names = await menu.getByRole("button", { name: /^سيدنا / }).allTextContents();
+  expect(names.length).toBeGreaterThan(0);
+});

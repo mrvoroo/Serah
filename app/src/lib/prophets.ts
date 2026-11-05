@@ -68,7 +68,8 @@ export function toStations(rows: ProphetRow[] | undefined): Station[] {
 export const stationsKey = (list: Station[]) => list.map((s) => [s.id, s.label, s.symbol ?? "", s.title, s.text].join("|")).join("~");
 
 // اسم النبي كما يظهر في القائمة: «نوح»، «محمد ﷺ»
-export const menuName = (s: Station) => (s.id === "muhammad" ? "محمد ﷺ" : s.label.replace(/^سيدنا /, ""));
+// «سيدنا» قبل كل نبي احترامًا، و«ﷺ» لنبينا محمد
+export const menuName = (s: Station) => (s.id === "muhammad" ? "سيدنا محمد ﷺ" : !isProphet(s) ? s.label : `سيدنا ${s.label.replace(/^سيدنا /, "")}`);
 
 // نفس قاعدة الخلفية: معرّف الفيديو من رابط watch / youtu.be / shorts / embed / live أو المعرّف نفسه
 export function youtubeId(u: string) {

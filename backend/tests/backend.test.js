@@ -312,6 +312,18 @@ test('الرحلة: إخفاء وترتيب وتعديل وإضافة وحذف �
   assert.ok(!t.call('saveProphet', { prophet_id: 'adam', name: 'x' }, tok.teacher).ok, 'teacher cannot edit');
 });
 
+test('أمن: رموز الأنبياء الجديدة مقبولة، وأي قيمة خارج القائمة (أو حقن) تُسقط', () => {
+  const { t, tok } = journeySetup();
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  const sym = (symbol) => { t.call('saveProphet', { prophet_id: 'adam', name: 'آدم', symbol }, tok.admin);
+    return t.call('journeyAdmin', {}, tok.admin).data.find(p => p.prophet_id === 'adam').symbol; };
+  assert.strictEqual(sym('camel'), 'camel');
+  assert.strictEqual(sym('planets11_sun_moon'), 'planets11_sun_moon');
+  for (const bad of ['__proto__', 'constructor', 'toString', '=HYPERLINK("x")', 'camel ', 'CAMEL', { toString: () => 'x' }])
+    assert.strictEqual(sym(bad), '', 'rejected: ' + String(bad));
+  assert.ok(!t.call('saveProphet', { prophet_id: 'adam', name: 'آدم', symbol: 'camel' }, tok.teacher).ok, 'teacher cannot set symbol');
+});
+
 test('صفحة النبي: العناصر الجديدة تنتظر الاعتماد، والطفل يرى المعتمد الظاهر فقط', () => {
   const { t, tok } = journeySetup();
   t.call('seedProphets', { list: SEED }, tok.admin);
@@ -421,7 +433,7 @@ test('البوت: كود الفصل لم يعد يربط الحساب (ثغرة)
   assert.match(url, /^https:\/\/t\.me\/Serah_2026_bot\?start=[a-f0-9]{24}$/);
   send(77, '/start ' + url.split('=')[1]);
   assert.strictEqual(String(t.g.rows_('Users').find(u => u.user_id === 'T2').telegram_id), '77');
-  assert.match(last(77).text, /أهلًا وسهلًا بكِ معلمة ثانية/);
+  assert.match(last(77).text, /أهلًا وسهلًا بكِ أ. معلمة ثانية/);
   // الرمز لمرة واحدة
   send(78, '/start ' + url.split('=')[1]);
   assert.ok(!t.g.rows_('Users').some(u => String(u.telegram_id) === '78'));

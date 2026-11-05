@@ -64,7 +64,8 @@ export function BranchedMenu({
     return () => ro.disconnect();
   }, [activeSection, markerShown, items, rowHeight]);
 
-  const toggle = (i: number) => setOpen((prev) => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next; });
+  // قسم واحد مفتوح فقط: فتح قسم يقفل الباقي
+  const toggle = (i: number) => setOpen((prev) => (prev.has(i) ? new Set<number>() : new Set([i])));
 
   const r = Math.min(radius, rowHeight / 2 - 2);
   const endX = indent - 8;

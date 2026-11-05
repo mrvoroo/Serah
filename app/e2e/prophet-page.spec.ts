@@ -24,7 +24,7 @@ const shape = (page: Page) => page.evaluate(() => (window as unknown as { __symb
 
 test("موسى: الضغط على الرمز يحوّله عصا ← حيّة تسعى ← عصا ← انفلاق البحر ثم يرجع للأول", async ({ page }, info) => {
   await open(page, "musa");
-  const stage = page.getByRole("region", { name: "رمز سيدنا موسى" });
+  const stage = page.getByRole("region", { name: "رمز سيدنا موسى عليه السلام" });
   await expect(stage).toBeVisible();
   await expect.poll(() => shape(page), { timeout: 30_000 }).toBe("s0");
   const labels = ["العصا", "حيّة تسعى", "عادت عصا", "انفلق البحر"];
@@ -124,4 +124,18 @@ test("كل الأنبياء الخمسة والعشرين: الرمز يمر ع�
     }
   }
   expect(errors).toEqual([]);
+});
+
+test("صفحة النبي تفتح من أولها حتى لو كانت الصفحة السابقة مفتوحة على آخرها", async ({ page }) => {
+  await open(page, "noah");
+  await expect(page.getByRole("heading", { name: /تعرّف على سيدنا/ })).toBeVisible();
+  await page.evaluate(() => { const l = (window as unknown as { __lenis?: { scrollTo: (y: number, o: object) => void } }).__lenis; const y = document.body.scrollHeight; if (l) l.scrollTo(y, { immediate: true }); else window.scrollTo(0, y); });
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(200);
+  await page.getByRole("link", { name: /رجوع للرحلة/ }).click();
+  await expect(page).toHaveURL(/kid\/journey/);
+  // تنقل داخل التطبيق (بدون إعادة تحميل) — هنا كانت الصفحة تفتح على آخرها
+  await page.locator("#station-musa").getByRole("link", { name: "ادخل الصفحة" }).click();
+  await expect(page).toHaveURL(/kid\/prophet\/\?id=musa/);
+  await expect(page.getByRole("heading", { name: /تعرّف على سيدنا/ })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(5);
 });

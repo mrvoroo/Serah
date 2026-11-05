@@ -35,7 +35,7 @@ test("الموبايل: الشريط العلوي يعرض «٣ من ٢٥ — س
   const bar = page.getByRole("button", { name: /^المحطات:/ });
   await expect(bar).toHaveText("رحلة مع الأنبياء");
   await scrollTo(page, "noah");
-  await expect(bar).toHaveText("٣ من ٢٥ — سيدنا نوح");
+  await expect(bar).toHaveText("٣ من ٢٥ — سيدنا نوح عليه السلام");
   await scrollTo(page, "muhammad");
   await expect(bar).toHaveText("٢٥ من ٢٥ — سيدنا محمد ﷺ");
   // الشريط لا يغطي البطاقة

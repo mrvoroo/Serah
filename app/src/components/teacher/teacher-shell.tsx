@@ -9,7 +9,8 @@ import { ROLE_LABEL, stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useRequireRole } from "@/components/kid/kid-shell";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
+import { cn, teacherTitle } from "@/lib/utils";
+import { EncouragementCloud } from "@/components/teacher/encouragement-cloud";
 
 const RANK: Record<Role, number> = { student: 0, teacher: 1, admin: 2, superadmin: 3 };
 
@@ -75,7 +76,7 @@ export function TeacherShell({ children, roles = ["teacher", "admin", "superadmi
         <Brand role={role} />
         <NavList id="side" role={role} />
         <div className="mt-auto flex items-center justify-between rounded-2xl bg-secondary/60 p-3">
-          <div className="min-w-0"><p className="truncate font-bold">{user?.name}</p><p className="text-xs text-muted-foreground">{role ? ROLE_LABEL[role] : ""}</p></div>
+          <div className="min-w-0"><p className="truncate font-bold">{teacherTitle(user?.name, user?.role)}</p><p className="text-xs text-muted-foreground">{role ? ROLE_LABEL[role] : ""}</p></div>
           <button type="button" onClick={logout} aria-label="خروج" className="grid size-10 place-items-center rounded-xl hover:bg-secondary"><LogOut className="size-5" /></button>
         </div>
       </aside>
@@ -91,11 +92,12 @@ export function TeacherShell({ children, roles = ["teacher", "admin", "superadmi
               </SheetContent>
             </Sheet>
             <div className="lg:hidden"><Brand role={role} /></div>
-            <p className="hidden font-heading text-lg font-extrabold lg:block">أهلًا {user?.name}</p>
+            <p className="hidden font-heading text-lg font-extrabold lg:block">أهلًا {teacherTitle(user?.name, user?.role)}</p>
           </div>
           <ThemeToggle />
         </header>
         <main className="mx-auto max-w-6xl p-4 lg:p-6">{user ? children : null}</main>
+        {user && user.role !== "superadmin" && <EncouragementCloud />}
       </div>
     </div>
   );

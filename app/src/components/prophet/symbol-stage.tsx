@@ -14,7 +14,8 @@ type World = { morph: (id: string, o?: Record<string, number>) => void; setTheme
 const sid = (i: number) => `s${i}`;
 const SCALE = 1.2;
 
-export function SymbolStage({ steps, name }: { steps: ShapeStep[]; name: string }) {
+// title: اسم المنطقة لقارئ الشاشة (مثل «رمز سيدنا موسى عليه السلام»)
+export function SymbolStage({ steps, title }: { steps: ShapeStep[]; title: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const world = useRef<World | null>(null);
   const [i, setI] = useState(0);
@@ -34,7 +35,8 @@ export function SymbolStage({ steps, name }: { steps: ShapeStep[]; name: string 
       if (!w) { setFailed(true); return; }
       world.current = w;
       w.morph(sid(iRef.current), { scale: SCALE });
-      (window as unknown as { __symbol?: unknown }).__symbol = { debug: () => world.current?.debug() ?? null };
+      // للاختبارات فقط (خادم التطوير)
+      if (process.env.NODE_ENV !== "production") (window as unknown as { __symbol?: unknown }).__symbol = { debug: () => world.current?.debug() ?? null };
     });
     return () => { disposed = true; world.current?.dispose(); world.current = null; };
   }, [steps, tier]);
@@ -49,7 +51,7 @@ export function SymbolStage({ steps, name }: { steps: ShapeStep[]; name: string 
   const step = steps[i];
 
   return (
-    <section aria-label={`رمز سيدنا ${name}`} className="overflow-hidden rounded-[32px] border bg-[radial-gradient(ellipse_at_center,#2a1f63_0%,#120d33_70%)] text-white shadow-soft">
+    <section aria-label={title} className="overflow-hidden rounded-[32px] border bg-[radial-gradient(ellipse_at_center,#2a1f63_0%,#120d33_70%)] text-white shadow-soft">
       <button type="button" onClick={() => go(i + 1)} aria-label={`${step.label} — اضغط للشكل التالي`}
         className="relative block h-[300px] w-full cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/60 sm:h-[360px]">
         <canvas ref={canvas} aria-hidden className="absolute inset-0 size-full" />
@@ -64,7 +66,7 @@ export function SymbolStage({ steps, name }: { steps: ShapeStep[]; name: string 
       <div className="flex flex-col gap-2 p-4 text-center">
         <p className="font-heading text-xl font-extrabold text-gold">{step.label}</p>
         <p aria-live="polite" className="text-base leading-8 text-white/90">{step.caption}</p>
-        {step.ref && <p className="text-xs text-white/60">{step.ref}</p>}
+        {step.ref && <p className="text-xs text-white/60">المرجع: {step.ref}</p>}
         <div role="tablist" aria-label="الأشكال" className="flex justify-center gap-1">
           {steps.map((s, k) => (
             <button key={k} type="button" role="tab" aria-selected={k === i} aria-label={s.label} onClick={() => go(k)}

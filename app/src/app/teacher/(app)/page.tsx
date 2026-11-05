@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedCircularProgressBar } from "@/components/ui/animated-circular-progress-bar";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { KidAvatar } from "@/components/kid/kid-avatar";
+import { teacherTitle } from "@/lib/utils";
 
 const QUICK: { href: string; label: string; icon: Icon3DName; hint: string }[] = [
   { href: "/teacher/upload/", label: "رفع تسجيل", icon: "mic", hint: "محاضرة جديدة" },
@@ -54,7 +55,7 @@ export default function TeacherHome() {
           <Murshida mood={!data ? "helping" : data.drafts ? "thinking" : "happy"} size={96} />
           <div className="min-w-0 flex-1">
             <p className="text-white/80">السلام عليكم ورحمة الله وبركاته</p>
-            <h1 className="font-heading text-2xl font-extrabold lg:text-3xl">مرحبًا بكِ، {user?.name}</h1>
+            <h1 className="font-heading text-2xl font-extrabold lg:text-3xl">مرحبًا بكِ، {teacherTitle(user?.name, user?.role)}</h1>
             <p className="mt-1 text-white/85">{data?.drafts ? `لديكِ ${data.drafts.toLocaleString("ar-EG")} محاضرة بانتظار مراجعتكِ الكريمة قبل النشر` : "الحمد لله، جميع المحاضرات منشورة"}</p>
           </div>
         </div>

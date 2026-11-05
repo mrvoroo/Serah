@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon3D } from "@/components/icon3d";
-import { cn } from "@/lib/utils";
+import { cn, teacherTitle } from "@/lib/utils";
 
 type Staff = { user_id: string; role: Role; name: string; class_id: string; class_name: string; active: boolean; last_login_at: string; telegram: boolean };
 type ClassRow = { class_id: string; name: string };
@@ -61,7 +61,7 @@ export default function TeamPage() {
             <li key={u.user_id} data-testid="staff-row" className={cn("flex flex-col gap-3 rounded-[24px] border bg-card p-4 shadow-soft", !u.active && "opacity-60")}>
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-heading text-lg font-extrabold">{u.name} <span className="ms-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-bold text-secondary-foreground">{ROLE_LABEL[u.role]}</span></p>
+                  <p className="truncate font-heading text-lg font-extrabold">{teacherTitle(u.name, u.role)} <span className="ms-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-bold text-secondary-foreground">{ROLE_LABEL[u.role]}</span></p>
                   <p className="truncate text-xs text-muted-foreground">{isSuper && `${u.class_name || "—"} · `}آخر دخول: {fmt(u.last_login_at)}</p>
                 </div>
                 {u.telegram && <span title="مربوطة بتيليجرام" className="flex items-center gap-1 rounded-full bg-[#229ED9]/15 px-2 py-1 text-xs font-bold text-[#229ED9]"><Send className="size-3.5" /> تيليجرام</span>}

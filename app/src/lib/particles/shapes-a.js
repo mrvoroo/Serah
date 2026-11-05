@@ -66,11 +66,14 @@ export const SHAPES_A = {
   // ======== آدم ========
   // الطين: كومة طين بخطوط كنتور + كتل صغيرة حولها
   clay: (k) => {
-    const H = (y) => Math.sqrt(Math.max(0, 1 - ((y + 2.1) / 2.6) ** 2)) * 2.1;
-    const contours = () => { const i = Math.floor(k.r() * 7), y = -2.1 + i * 0.36, a = k.r() * TAU, R = H(y) * (1 + 0.09 * Math.sin(a * 3 + i * 1.7) + 0.05 * Math.sin(a * 7 + i)); return [Math.cos(a) * R + k.J(0.015), y + 0.04 * Math.sin(a * 2 + i) + k.J(0.012), Math.sin(a) * R * 0.6]; };
-    const ridges = () => { const a = k.r() * TAU, q = Math.sqrt(k.r()), y = -2.1 + (1 - q * q) * 2.45, R = H(y) * q; return [Math.cos(a) * R, y + k.J(0.03), Math.sin(a) * R * 0.6]; };
-    const lumps = k.many([k.sphere(-2.0, -1.95, 0.2), k.sphere(1.95, -2.0, 0.17), k.sphere(1.5, -2.15, 0.12), k.sphere(-1.45, -2.2, 0.13)]);
-    return [[0.5, contours], [0.2, ridges], [0.12, lumps], [0.1, k.ground(-2.2, 2.4)], [0.08, k.dust(4.2)]];
+    // كومة طين منخفضة مستديرة (قبة عريضة بلا قمة)، بطبقات طين لينة أفقية
+    const H = (ax) => -2.15 + 1.45 * Math.max(0, 1 - (ax / 2.3) ** 2) ** 0.75; // ارتفاع السطح عند بُعد ax من المركز
+    const skin = () => { const a = k.r() * TAU, q = Math.sqrt(k.r()) * 2.3, x = Math.cos(a) * q, z = Math.sin(a) * q * 0.55; return [x, H(Math.hypot(x, z / 0.55)) + k.J(0.02), z]; };
+    const rim = () => { const a = k.r() * TAU; return [Math.cos(a) * 2.3 + k.J(0.02), -2.15 + k.J(0.015), Math.sin(a) * 2.3 * 0.55]; };
+    const profile = () => { const x = (k.r() * 2 - 1) * 2.3; return [x, H(Math.abs(x)) + k.J(0.012), 0.02]; };
+    // طبقات: حلقات أفقية متموجة قليلًا على سطح القبة
+    const strata = () => { const i = 1 + Math.floor(k.r() * 4), ax = 2.3 * (1 - i * 0.2), y = H(ax), a = k.r() * TAU; return [Math.cos(a) * ax * (1 + 0.03 * Math.sin(a * 6 + i)), y + 0.03 * Math.sin(a * 4 + i * 2) + k.J(0.01), Math.sin(a) * ax * 0.55]; };
+    return [[0.4, skin], [0.18, profile], [0.12, rim], [0.14, strata], [0.08, k.ground(-2.2, 2.6)], [0.08, k.dust(4.2)]];
   },
   // الشجرة
   tree: (k) => [...treeParts(k), [0.08, k.dust(4.2)]],
@@ -85,7 +88,8 @@ export const SHAPES_A = {
   // التوبة: نور يصعد من الأرض إلى السماء في عمود لطيف مع حلقات
   light_rising: (k) => [
     [0.3, () => { const v = k.r(), th = k.r() * TAU, q = Math.sqrt(k.r()) * (0.25 + v * 0.55); return [Math.cos(th) * q, -2.0 + v * 4.0, Math.sin(th) * q * 0.6]; }, 3],
-    [0.25, () => { const i = Math.floor(k.r() * 4), y = -1.9 + i * 1.1, R = 0.55 + i * 0.28, a = k.r() * TAU; return [Math.cos(a) * R + k.J(0.012), y + k.J(0.012), Math.sin(a) * R * 0.45]; }],
+    // حلقات نور مائلة قليلًا (تظهر حلقات مفتوحة لا خطوطًا أفقية تقطع عمود النور)
+    [0.25, () => { const i = Math.floor(k.r() * 4), y = -1.9 + i * 1.1, R = 0.55 + i * 0.28, a = k.r() * TAU; return [Math.cos(a) * R + k.J(0.012), y + Math.sin(a) * R * 0.28 + k.J(0.012), Math.sin(a) * R * 0.45]; }],
     [0.15, k.ellipse(0, -2.05, 1.9, 0.5, 0, TAU, 0.015)],
     [0.12, () => { const side = k.r() < 0.5 ? -1 : 1, i = Math.floor(k.r() * 4), v = k.r() * 0.35; return [side * (1.3 + i * 0.25), -1.4 + i * 0.85 + v, k.J(0.02)]; }],
     [0.1, k.glow(0, 1.7, 0.3)],
@@ -104,13 +108,15 @@ export const SHAPES_A = {
   hourglass: (k) => {
     const prof = (y) => 0.12 + 1.15 * Math.pow(Math.abs(y) / 1.75, 1.6); // نصف قطر الزجاج عند الارتفاع y
     const glass = () => { const y = (k.r() * 2 - 1) * 1.75, a = Math.floor(k.r() * 10) * TAU / 10 + (k.r() < 0.4 ? k.r() * TAU : 0), R = prof(y); return [Math.cos(a) * R + k.J(0.01), y + k.J(0.01), Math.sin(a) * R]; };
-    const rings = () => { const y = [-1.75, 1.75, 0][Math.floor(k.r() * 3)], R = prof(y), a = k.r() * TAU; return [Math.cos(a) * R, y + k.J(0.01), Math.sin(a) * R]; };
+    // حلقتا الطرفين فقط (لا حلقة عند العنق حتى لا يتقاطع خط أفقي مع خيط الرمل)
+    const rings = () => { const y = k.r() < 0.5 ? -1.75 : 1.75, R = prof(y), a = k.r() * TAU; return [Math.cos(a) * R, y + k.J(0.01), Math.sin(a) * R]; };
     const plates = () => { const y = k.r() < 0.5 ? -2.0 : 2.0, a = k.r() * TAU; return k.r() < 0.65 ? [Math.cos(a) * 1.6, y + k.J(0.015), Math.sin(a) * 1.6] : [Math.cos(a) * 1.6, y + (y > 0 ? 0.14 : -0.14), Math.sin(a) * 1.6]; };
     const posts = k.many([0, 1, 2, 3].map((i) => { const a = i * TAU / 4 + TAU / 8; return k.seg([Math.cos(a) * 1.45, -2.0, Math.sin(a) * 1.45], [Math.cos(a) * 1.45, 2.0, Math.sin(a) * 1.45], 0.012); }));
     const sandBottom = () => { const v = Math.pow(k.r(), 0.7), y = -1.72 + v * 0.75, R = prof(y) * (1 - v) * 0.95, a = k.r() * TAU, q = R * Math.sqrt(k.r()); return [Math.cos(a) * q, y, Math.sin(a) * q]; };
     const sandTop = () => { const y = 0.25 + k.r() * 0.7, R = prof(y) * 0.92, a = k.r() * TAU, q = R * Math.sqrt(k.r()); return [Math.cos(a) * q, y, Math.sin(a) * q]; };
-    const stream = k.seg([0, 0.2, 0], [0, -1.0, 0], 0.02);
-    return [[0.3, glass], [0.06, rings], [0.14, plates], [0.1, posts], [0.16, sandBottom], [0.1, sandTop], [0.06, stream], [0.05, k.dust(4.3)]];
+    // الرمل النازل: حبات متفرقة فقط
+    const grains = () => { const i = Math.floor(k.r() * 9); return [k.J(0.03), 0.15 - i * 0.14 + k.J(0.02), k.J(0.03)]; };
+    return [[0.32, glass], [0.05, rings], [0.14, plates], [0.1, posts], [0.17, sandBottom], [0.11, sandTop], [0.04, grains], [0.05, k.dust(4.3)]];
   },
   // المكان العليّ: نجم عالٍ مضيء ودرب من النور يصعد إليه
   star_high: (k) => [
@@ -221,13 +227,22 @@ export const SHAPES_A = {
   },
   // قسمة الماء: حوض ماء مقسوم نصفين، وفوق كل نصف شمس (يوم لها ويوم لهم)
   water_share: (k) => {
-    const rim = k.ellipse(0, -1.2, 2.2, 0.75, 0, TAU, 0.015);
-    const rimLow = k.ellipse(0, -1.75, 2.2, 0.75, 0, Math.PI * 2, 0.015);
-    const ripples = () => { const i = Math.floor(k.r() * 3), side = k.r() < 0.5 ? -1 : 1, a = k.r() * TAU; return [side * 1.1 + Math.cos(a) * (0.25 + i * 0.22), -1.2 + Math.sin(a) * (0.08 + i * 0.07), 0]; };
-    const water = () => { const a = k.r() * TAU, q = Math.sqrt(k.r()); return [Math.cos(a) * 2.1 * q, -1.2 + Math.sin(a) * 0.7 * q, 0]; };
-    const divider = k.seg([0, -1.95, 0.75], [0, -0.45, -0.75], 0.012);
-    const suns = k.many([sun(k, -1.15, 0.95, 0.42, 10), sun(k, 1.15, 0.95, 0.42, 10)]);
-    return [[0.22, rim], [0.08, rimLow], [0.14, ripples, 1], [0.12, water], [0.1, divider], [0.28, suns], [0.06, k.dust(4.2)]];
+    // بئر على اليسار يُصب منه في حوضين متجاورين على اليمين: «لها شِرب ولكم شِرب يوم معلوم» (بلا تناظر يشبه وجهًا)
+    const WX = -1.45, WR = 0.75;
+    const wellTop = () => { const a = k.r() * TAU; return [WX + Math.cos(a) * WR + k.J(0.012), -0.55 + k.J(0.012), Math.sin(a) * WR * 0.6]; };
+    const wellWall = () => { const a = Math.floor(k.r() * 14) * TAU / 14, y = -2.1 + k.r() * 1.55; return [WX + Math.cos(a) * WR, y, Math.sin(a) * WR * 0.6]; };
+    const wellBase = () => { const a = k.r() * TAU; return [WX + Math.cos(a) * WR, -2.1 + k.J(0.012), Math.sin(a) * WR * 0.6]; };
+    const water = () => { const a = k.r() * TAU, q = Math.sqrt(k.r()) * WR * 0.85; return [WX + Math.cos(a) * q, -0.62, Math.sin(a) * q * 0.6]; };
+    const trough = (x0, x1, h) => k.box(x0, x1, -2.1, -2.1 + h, -0.45, 0.45, 0.01);
+    const troughWater = (x0, x1, h) => () => [x0 + 0.08 + k.r() * (x1 - x0 - 0.16), -2.1 + h * 0.75 + k.J(0.01), (k.r() * 2 - 1) * 0.38];
+    const pour = k.curve((u) => [WX + 0.6 + u * 1.7, -0.45 + Math.sin(u * Math.PI) * 0.55 - u * 0.9, 0], 0.03);
+    const dateLine = k.seg([-2.4, -2.2, 0], [2.4, -2.2, 0], 0.012);
+    return [
+      [0.12, wellTop], [0.13, wellWall], [0.06, wellBase], [0.06, water, 1],
+      [0.12, trough(0.0, 1.05, 0.65)], [0.12, trough(1.3, 2.35, 0.65)],
+      [0.05, troughWater(0.0, 1.05, 0.65)], [0.05, troughWater(1.3, 2.35, 0.65)],
+      [0.08, pour], [0.06, sun(k, 1.85, 1.45, 0.35, 10)], [0.05, dateLine], [0.05, k.dust(4.2)],
+    ];
   },
   // ======== إبراهيم ========
   // الكوكب: نجمة كبيرة بعمق
@@ -368,22 +383,28 @@ export const SHAPES_A = {
   },
   // الشكوى إلى الله: كفّان مرفوعتان بالدعاء (محيط فقط) ونور يصعد بينهما
   hands_dua: (k) => {
-    // محيط كف مفتوحة (اليمنى ثم نعكسها): الرسغ في الأسفل، أربع أصابع للأعلى، والإبهام نحو الوسط
-    const hand = (side) => {
-      const pts = [[1.8, -2.2], [1.98, -0.9], [2.05, 0.3]];
-      const fingers = [[2.05, 1.78, 0.95], [1.78, 1.5, 1.3], [1.5, 1.22, 1.42], [1.22, 0.95, 1.22]];
-      fingers.forEach(([xo, xi, top]) => {
-        const w = (xo - xi) / 2, c = (xo + xi) / 2;
-        pts.push([xo, top - w]);
-        for (let s2 = 0; s2 <= 8; s2++) { const a = Math.PI * (s2 / 8); pts.push([c + Math.cos(a) * w, top - w + Math.sin(a) * w]); }
-        pts.push([xi, 0.3]);
-      });
-      pts.push([0.95, 0.15], [0.72, 0.0], [0.5, 0.28], [0.36, 0.3], [0.33, 0.15], [0.55, -0.35], [0.8, -1.0], [0.95, -2.2]);
-      return k.poly(pts.map(([x, y]) => [side * x, y, 0]), false, 0.01);
+    // كفّان مبسوطتان متجاورتان مرفوعتان للدعاء (🤲): الرسغان متقاربان في الأسفل، والكفّان مائلتان للخارج
+    // ومستلقيتان للخلف نحو السماء (باطنهما إلى أعلى)، ونور يصعد بينهما
+    const pts = [[1.8, -2.2], [1.98, -0.9], [2.05, 0.3]];
+    [[2.05, 1.78, 0.95], [1.78, 1.5, 1.3], [1.5, 1.22, 1.42], [1.22, 0.95, 1.22]].forEach(([xo, xi, top]) => {
+      const w = (xo - xi) / 2, c = (xo + xi) / 2;
+      pts.push([xo, top - w]);
+      for (let s2 = 0; s2 <= 8; s2++) { const a = Math.PI * (s2 / 8); pts.push([c + Math.cos(a) * w, top - w + Math.sin(a) * w]); }
+      pts.push([xi, 0.3]);
+    });
+    pts.push([0.95, 0.15], [0.72, 0.0], [0.5, 0.28], [0.36, 0.3], [0.33, 0.15], [0.55, -0.35], [0.8, -1.0], [0.95, -2.2]);
+    // تحويل الكف: تقريبها من المركز، ميلها للخارج، واستلقاؤها للخلف (الأعلى أبعد)
+    const place = (sd, [x, y]) => {
+      // الميل في إحداثيات الكف اليمنى ثم نعكس اليسرى، فتتجه الأصابع للخارج ولا تتقاطع الكفّان
+      const lx = x - 1.38, ly = y + 2.2, rot = -0.32, c = Math.cos(rot), s = Math.sin(rot);
+      const rx = lx * c - ly * s, ry = lx * s + ly * c;
+      return [sd * (rx + 0.85), -2.1 + ry * 0.9, -ry * 0.45];
     };
-    const palm = (side) => k.curve((u) => [side * (1.25 + Math.sin(u * Math.PI) * 0.12), -1.6 + u * 1.3, 0.05], 0.01);
-    const light = () => { const v = k.r(); return [k.J(0.12 + v * 0.25), -1.6 + v * 3.6, k.J(0.15)]; };
-    return [[0.33, hand(-1)], [0.33, hand(1)], [0.06, palm(-1)], [0.06, palm(1)], [0.14, light, 3], [0.08, k.dust(4.2)]];
+    const hand = (sd) => k.poly(pts.map((p) => place(sd, [p[0], p[1]])), false, 0.01);
+    const crease = (sd) => k.curve((u) => place(sd, [1.15 + Math.sin(u * Math.PI) * 0.18, -1.6 + u * 1.2]), 0.008);
+    const palm = (sd) => () => { const x = 0.95 + k.r() * 1.0, y = -1.8 + k.r() * 1.9; return place(sd, [x, y]); };
+    const light = () => { const v = k.r(); return [k.J(0.15 + v * 0.3), -0.6 + v * 2.7, -0.4 + k.J(0.2)]; };
+    return [[0.3, hand(-1)], [0.3, hand(1)], [0.04, crease(-1)], [0.04, crease(1)], [0.05, palm(-1)], [0.05, palm(1)], [0.14, light, 3], [0.08, k.dust(4.2)]];
   },
   // القميص: قميص بأكمام وياقة، ونور يصعد منه
   shirt: (k) => {
@@ -397,12 +418,13 @@ export const SHAPES_A = {
   },
   // عاد بصيرًا: عين مضيئة بأشعة نور
   eye_light: (k) => {
-    const lid = (sgn, z) => k.curve((u) => { const x = -2.1 + u * 4.2; return [x, sgn * 0.95 * (1 - (x / 2.1) ** 2), z]; }, 0.012);
-    const iris = k.arc(0, 0, 0.72, 0, TAU, 0.012, 0.1);
-    const pupil = k.disc(0, 0, 0.3, 0.12, 0.03);
-    const shine = k.glow(0.28, 0.28, 0.1, 0.2);
-    const rays = () => { const a = Math.floor(k.r() * 16) * TAU / 16, q = 1.5 + k.r() * 0.75; const x = Math.cos(a) * q * 1.35, y = Math.sin(a) * q * 0.95; return [x, y, k.J(0.02)]; };
-    return [[0.18, lid(1, 0.1)], [0.18, lid(-1, 0.1)], [0.06, lid(1, -0.12)], [0.06, lid(-1, -0.12)], [0.18, iris], [0.08, pupil], [0.04, shine], [0.16, rays], [0.06, k.dust(4.3)]];
+    // عاد بصيرًا: نور فجر يعود ويغمر المكان (بلا عين ولا أي عضو من وجه)
+    const horizon = k.seg([-2.5, -1.2, 0], [2.5, -1.2, 0], 0.014);
+    const dawn = k.arc(0, -1.2, 1.05, 0, Math.PI, 0.016);
+    const glowDisc = () => { const a = k.r() * Math.PI, q = Math.sqrt(k.r()) * 1.0; return [Math.cos(a) * q, -1.2 + Math.sin(a) * q, k.J(0.05)]; };
+    const rays = () => { const a = (0.08 + Math.floor(k.r() * 9) * 0.105) * Math.PI, q = 1.3 + k.r() * 1.1; return [Math.cos(a) * q, -1.2 + Math.sin(a) * q, k.J(0.02)]; };
+    const reflect = () => { const row = Math.floor(k.r() * 4); const w = 1.6 - row * 0.32; return [(k.r() * 2 - 1) * w, -1.45 - row * 0.25, k.J(0.02)]; };
+    return [[0.1, horizon], [0.2, dawn], [0.16, glowDisc], [0.28, rays], [0.1, reflect], [0.08, () => { const v = k.r(); return [k.J(0.6), -1.0 + v * 3.0, k.J(0.3)]; }, 3], [0.08, k.dust(4.3)]];
   },
   // ======== يوسف ========
   // الرؤيا: الشمس والقمر وأحد عشر كوكبًا (نقاط مضيئة مستديرة) في قوس فوقهما
@@ -412,9 +434,13 @@ export const SHAPES_A = {
   },
   // تحققت الرؤيا: الشمس والقمر في الأعلى، والأحد عشر كوكبًا منخفضة ساجدة في قوس أسفلهما بنور أقوى
   planets11_sun_moon_glow: (k) => {
-    const pos = Array.from({ length: 11 }, (_, i) => { const a = Math.PI * (1.08 + i * 0.084); return [Math.cos(a) * 2.25, -0.3 + Math.sin(a) * 1.7]; });
+    // تحققت الرؤيا: الشمس والقمر مائلان (لا تناظر)، والأحد عشر كوكبًا قوس محدّب فوقهما بنور ينزل نحوهما
+    // (لا قوس مقعّر تحت الجسمين، ولا شيء يشبه وجهًا)
+    const SX = -0.45, SY = -1.25, MX = 1.6, MY = -0.35;
+    const pos = Array.from({ length: 11 }, (_, i) => { const a = Math.PI * (0.12 + i * 0.076); return [0.1 + Math.cos(a) * 2.3, 0.3 + Math.sin(a) * 1.55]; });
     const halos = k.many(pos.map(([x, y]) => k.arc(x, y, 0.26, 0, TAU, 0.01)));
-    return [[0.22, sun(k, -1.0, 1.15, 0.6, 12)], [0.16, crescent(k, 1.15, 1.15, 0.66)], [0.05, crescentFill(k, 1.15, 1.15, 0.66)], [0.34, eleven(k, pos, 0.16)], [0.1, halos], [0.07, () => { const [x, y] = pos[Math.floor(k.r() * 11)]; const v = k.r(); return [x + k.J(0.05), y + v * 0.7, k.J(0.05)]; }, 3], [0.06, k.dust(4.2)]];
+    const beams = () => { const [x, y] = pos[Math.floor(k.r() * 11)], v = k.r(); return [x + (SX - x) * v * 0.3 + k.J(0.03), y + (SY - y) * v * 0.3, k.J(0.04)]; };
+    return [[0.24, sun(k, SX, SY, 0.75, 12)], [0.13, crescent(k, MX, MY, 0.55)], [0.04, crescentFill(k, MX, MY, 0.55)], [0.32, eleven(k, pos, 0.16)], [0.1, halos], [0.1, beams], [0.07, k.dust(4.2)]];
   },
   // البئر: بئر حجري بسقف وبكرة ودلو، ونور داخله (والله معه)
   well: (k) => {

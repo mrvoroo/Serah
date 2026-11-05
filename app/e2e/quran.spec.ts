@@ -45,7 +45,7 @@ test("المصحف المعلّم (المنشاوي): البسملة ثم الآ
   await expect(page.getByRole("button", { name: "آية 1" })).toHaveText(/^قُلْ هُوَ/);
   await page.getByRole("button", { name: "تشغيل" }).click();
   await expect(page.getByRole("button", { name: "آية 2" })).toHaveAttribute("aria-current", "true", { timeout: 15000 });
-  await expect(page.getByText(/وصلتَ إلى آخر سورة/)).toBeVisible({ timeout: 20000 });
+  await expect(page.getByText(/وصلنا إلى آخر سورة/)).toBeVisible({ timeout: 20000 });
   // بعد الختم: المرة القادمة تبدأ من أول السورة بدون «نكمل من…»
   await page.reload();
   await expect(page.getByRole("button", { name: "آية 1", exact: true })).toBeVisible();

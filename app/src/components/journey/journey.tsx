@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { ArrowLeft, BookOpen, ChevronsLeft, ChevronsRight, Headphones, ListTree } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronsLeft, ChevronsRight, Headphones, ListTree, Swords } from "lucide-react";
 import { useTier } from "@/lib/tier";
 import { ruqaaFont } from "@/lib/particles/font";
 import { BlurFade } from "@/components/ui/blur-fade";
@@ -185,7 +185,7 @@ export function Journey({ stations }: { stations: Station[] }) {
   const menuItems = useMemo(() => buildMenu(stations), [stations]);
   const ci = stations.findIndex((s) => s.id === current), pi = prophets.findIndex((s) => s.id === current);
   // الأنبياء محطات ١..عددهم، والبداية والسيرة والقرآن بأسمائها فقط
-  const pos = pi >= 0 ? `${(pi + 1).toLocaleString("ar-EG")} من ${prophets.length.toLocaleString("ar-EG")} — ${stations[ci].label}${stations[ci].id === "muhammad" ? " ﷺ" : ""}` : stations[ci].label;
+  const pos = pi >= 0 ? `${(pi + 1).toLocaleString("ar-EG")} من ${prophets.length.toLocaleString("ar-EG")} — ${stations[ci].label}${stations[ci].id === "muhammad" ? " ﷺ" : isProphet(stations[ci]) ? " عليه السلام" : ""}` : stations[ci].label;
 
   // إبقاء المحطة الحالية ظاهرة داخل لوحة القائمة (بعد انتهاء طيّ وفتح الأقسام)
   useEffect(() => {
@@ -295,6 +295,10 @@ export function Journey({ stations }: { stations: Station[] }) {
                   ) : s.id === "quran" ? (
                     <Link href="/kid/quran/" className={buttonVariants({ variant: "gold", size: "lg2" })}>
                       <BookOpen /> اسمع واقرأ القرآن
+                    </Link>
+                  ) : s.id === "sira" ? (
+                    <Link href="/kid/swords/" className={buttonVariants({ variant: "gold", size: "lg2" })}>
+                      <Swords /> تعرّف على سيوف النبي ﷺ
                     </Link>
                   ) : (
                     <Link href="/kid/lectures/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>

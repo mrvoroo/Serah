@@ -264,7 +264,7 @@ export function QuranReader() {
         )}
       </article>
 
-      {phase === "done" && <p role="status" className="rounded-[24px] bg-gold/15 p-4 text-center font-heading text-xl font-extrabold">ما شاء الله تبارك الله! وصلتَ إلى آخر سورة {surahName} 🌟</p>}
+      {phase === "done" && <p role="status" className="rounded-[24px] bg-gold/15 p-4 text-center font-heading text-xl font-extrabold">ما شاء الله تبارك الله! وصلنا إلى آخر سورة {surahName} 🌟</p>}
 
       {/* شريط التشغيل فوق شريط التنقل */}
       <div className="fixed inset-x-3 bottom-24 z-30 mx-auto flex max-w-md items-center gap-3 rounded-[28px] border bg-card/95 p-3 shadow-soft backdrop-blur">
