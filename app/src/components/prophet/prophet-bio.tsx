@@ -4,6 +4,7 @@ import { BookOpenText, ChevronDown } from "lucide-react";
 import type { ProphetContent } from "@/content/prophets";
 import { cn } from "@/lib/utils";
 import { RT } from "@/components/religious-text";
+import { g } from "@/lib/kid-text";
 
 // نبذة عن النبي (مراجَعة شرعيًا): فقرة قصيرة ثم «اقرأ المزيد» للنقاط التفصيلية والمراجع
 export function ProphetBio({ content }: { content: ProphetContent }) {
@@ -28,7 +29,7 @@ export function ProphetBio({ content }: { content: ProphetContent }) {
       {content.more.length > 0 && (
         <button type="button" aria-expanded={open} aria-controls="bio-more" onClick={() => setOpen((v) => !v)}
           className="mt-4 flex h-11 items-center gap-1 rounded-full bg-secondary px-5 text-sm font-bold">
-          {open ? "إخفاء" : "اقرأ المزيد"} <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
+          {open ? "إخفاء" : g("اقرأ المزيد", "اقرئي المزيد")} <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
         </button>
       )}
     </section>

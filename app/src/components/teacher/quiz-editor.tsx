@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { cn } from "@/lib/utils";
 
 type Draft = { key: string; text: string; options: string[]; correct: number; image_file_id: string };
-export type QuizDraft = { quiz_id?: string; title: string; prophet_id: string; questions: Question[] };
+// locked: حلّه أطفال، فالمسموح تصحيح الأسئلة فقط (بدون إضافة أو حذف أو ترتيب) ثم يُعاد تصحيح نتائجهم
+export type QuizDraft = { quiz_id?: string; title: string; prophet_id: string; questions: Question[]; locked?: boolean };
 const LETTERS = ["أ", "ب", "ج", "د"];
 let seq = 0;
 const blank = (): Draft => ({ key: `n${++seq}`, text: "", options: ["", "", "", ""], correct: -1, image_file_id: "" });
@@ -59,7 +60,7 @@ function Inner({ draft, onClose, onSaved, onDirty }: { draft: QuizDraft; onClose
     try {
       await api("saveQuiz", { quiz_id: draft.quiz_id, title, prophet_id: prophet,
         questions: qs.map((q) => ({ text: q.text, options: q.options, correct: q.correct, image_file_id: q.image_file_id })) });
-      toast.success(draft.quiz_id ? "تم حفظ الاختبار" : "تم إنشاء الاختبار — ينتظر المراجعة والنشر");
+      toast.success(draft.locked ? "تم التصحيح — أُعيد تصحيح نتائج الأطفال ووصلهم إشعار" : draft.quiz_id ? "تم حفظ الاختبار" : "تم إنشاء الاختبار — ينتظر المراجعة والنشر");
       onSaved(); onClose();
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
@@ -71,6 +72,7 @@ function Inner({ draft, onClose, onSaved, onDirty }: { draft: QuizDraft; onClose
         <DialogDescription>اختاري الإجابة الصحيحة بالضغط على الدائرة بجانبها. اكتبي «سيدنا … عليه السلام» و«ﷺ» مع أسماء الأنبياء، واكتبي الآيات بنصها كاملة، ولا تستخدمي صورًا فيها وجوه للأنبياء أو الصحابة. يظهر الاختبار للأطفال بعد مراجعة الأدمن ونشره.</DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
+        {draft.locked && <p role="note" className="rounded-2xl bg-gold/20 p-3 text-sm font-bold">حلّ الأطفال هذا الاختبار: يمكنكِ تصحيح نص سؤال أو اختياراته أو الإجابة الصحيحة فقط. بعد الحفظ يُعاد تصحيح نتائجهم (وتتغير نجومهم بالفرق) ويصل لكل طفل إشعار بالتعديل.</p>}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-1.5"><Label htmlFor="qz-title">عنوان الاختبار</Label><Input id="qz-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder="مثلًا: قصة سيدنا نوح عليه السلام" className="h-12 rounded-xl text-base" /></div>
           <div className="grid gap-1.5"><Label htmlFor="qz-prophet">عن أي نبي؟</Label><ProphetSelect id="qz-prophet" value={prophet} onChange={setProphet} /></div>
@@ -82,9 +84,9 @@ function Inner({ draft, onClose, onSaved, onDirty }: { draft: QuizDraft; onClose
               <div className="flex items-center gap-1">
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-hero text-sm font-extrabold text-white">{(i + 1).toLocaleString("ar-EG")}</span>
                 <span className="flex-1 font-bold">السؤال {(i + 1).toLocaleString("ar-EG")}</span>
-                <Button variant="ghost" size="icon-lg" aria-label={`تقديم السؤال ${i + 1}`} disabled={i === 0} onClick={() => move(i, i - 1)}><ArrowUp /></Button>
-                <Button variant="ghost" size="icon-lg" aria-label={`تأخير السؤال ${i + 1}`} disabled={i === qs.length - 1} onClick={() => move(i, i + 1)}><ArrowDown /></Button>
-                <Button variant="ghost" size="icon-lg" className="text-destructive" aria-label={`حذف السؤال ${i + 1}`} disabled={qs.length === 1} onClick={() => setQs((l) => l.filter((_, k) => k !== i))}><Trash2 /></Button>
+                <Button variant="ghost" size="icon-lg" aria-label={`تقديم السؤال ${i + 1}`} disabled={i === 0 || draft.locked} onClick={() => move(i, i - 1)}><ArrowUp /></Button>
+                <Button variant="ghost" size="icon-lg" aria-label={`تأخير السؤال ${i + 1}`} disabled={i === qs.length - 1 || draft.locked} onClick={() => move(i, i + 1)}><ArrowDown /></Button>
+                <Button variant="ghost" size="icon-lg" className="text-destructive" aria-label={`حذف السؤال ${i + 1}`} disabled={qs.length === 1 || draft.locked} onClick={() => setQs((l) => l.filter((_, k) => k !== i))}><Trash2 /></Button>
               </div>
               <Textarea aria-label={`نص السؤال ${i + 1}`} value={q.text} onChange={(e) => patch(i, { text: e.target.value })} maxLength={300} rows={2} placeholder="اكتبي السؤال" className="min-h-12 rounded-xl text-base" />
               <div className="grid gap-2 sm:grid-cols-2">
@@ -94,7 +96,7 @@ function Inner({ draft, onClose, onSaved, onDirty }: { draft: QuizDraft; onClose
                       disabled={!o.trim()} title={o.trim() ? undefined : "اكتبي الاختيار أولًا"} onClick={() => patch(i, { correct: k })} className="grid size-9 shrink-0 place-items-center rounded-lg text-muted-foreground disabled:opacity-40">
                       {q.correct === k ? <CheckCircle2 className="size-6 text-emerald-600" /> : <Circle className="size-6" />}
                     </button>
-                    <Input aria-label={`السؤال ${i + 1} الاختيار ${LETTERS[k]}`} value={o} maxLength={120} placeholder={`الاختيار ${LETTERS[k]}${k > 1 ? " (اختياري)" : ""}`}
+                    <Input aria-label={`السؤال ${i + 1} الاختيار ${LETTERS[k]}`} value={o} maxLength={120} required={draft.locked && !!draft.questions[i]?.options[k]} disabled={draft.locked && !draft.questions[i]?.options[k]} placeholder={`الاختيار ${LETTERS[k]}${k > 1 ? " (اختياري)" : ""}`}
                       onChange={(e) => patch(i, { options: q.options.map((x, j) => (j === k ? e.target.value : x)) })} className="h-10 border-0 bg-transparent text-base shadow-none focus-visible:ring-0 dark:bg-transparent" />
                   </div>
                 ))}
@@ -117,10 +119,10 @@ function Inner({ draft, onClose, onSaved, onDirty }: { draft: QuizDraft; onClose
             </li>
           ))}
         </ol>
-        <Button variant="secondary" size="lg2" disabled={qs.length >= 30} onClick={() => setQs((l) => [...l, blank()])}><Plus /> إضافة سؤال</Button>
+        {!draft.locked && <Button variant="secondary" size="lg2" disabled={qs.length >= 30} onClick={() => setQs((l) => [...l, blank()])}><Plus /> إضافة سؤال</Button>}
       </div>
       <DialogFooter>
-        <Button variant="hero" size="lg2" disabled={!title.trim() || !!busy} onClick={save}>{busy === "save" && <Loader2 className="animate-spin" />} حفظ الاختبار</Button>
+        <Button variant="hero" size="lg2" disabled={!title.trim() || !!busy} onClick={save}>{busy === "save" && <Loader2 className="animate-spin" />} {draft.locked ? "حفظ التصحيح" : "حفظ الاختبار"}</Button>
       </DialogFooter>
     </>
   );

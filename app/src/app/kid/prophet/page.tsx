@@ -9,6 +9,7 @@ import { Icon3D } from "@/components/icon3d";
 import type { ContentItem, ProphetRow } from "@/lib/prophets";
 import { ProphetView } from "@/components/prophet-view";
 import { Skeleton } from "@/components/ui/skeleton";
+import { g } from "@/lib/kid-text";
 
 function Inner() {
   const id = useSearchParams().get("id") ?? "";
@@ -37,7 +38,7 @@ function Inner() {
           {quizzes.map((z) => (
             <Link key={z.quiz_id} href={`/kid/quiz/?id=${z.quiz_id}`} className="flex min-h-14 items-center justify-between gap-2 rounded-2xl bg-hero px-4 py-2 font-bold text-white transition-transform active:scale-[0.98]">
               <span className="line-clamp-2 leading-snug">{z.title}</span>
-              <span className="shrink-0 text-sm text-white/85">{z.mine ? `${z.mine.score.toLocaleString("ar-EG")} من ${z.mine.total.toLocaleString("ar-EG")}` : "ابدأ"}</span>
+              <span className="shrink-0 text-sm text-white/85">{z.mine ? `${z.mine.score.toLocaleString("ar-EG")} من ${z.mine.total.toLocaleString("ar-EG")}` : g("ابدأ", "ابدئي")}</span>
             </Link>
           ))}
         </section>

@@ -6,6 +6,7 @@ import data from "@/content/swords.json";
 import { SymbolStage } from "@/components/prophet/symbol-stage";
 import { cn } from "@/lib/utils";
 import { RT } from "@/components/religious-text";
+import { g } from "@/lib/kid-text";
 
 // سيوف النبي ﷺ (مراجَعة شرعيًا — content/swords.json): رسم تقريبي على صفة السيف العربي في ذلك الزمان مع تنبيه للطفل،
 // ثم بطاقة لكل سيف بما ثبت عنه ودرجته ومراجعه. لم يثبت وصف دقيق لشكل أي سيف، ولم يثبت أن طرف ذي الفقار مشقوق أو مائل.
@@ -56,7 +57,7 @@ export function SwordsView() {
       </header>
       <SymbolStage steps={STEPS} title="رسم سيف ذي الفقار" />
       <p role="note" className="flex gap-2 rounded-[24px] border border-gold/40 bg-gold/10 p-4 text-sm font-bold leading-7">
-        <Info className="mt-1 size-5 shrink-0 text-gold" /> {D.note}
+        <Info className="mt-1 size-5 shrink-0 text-gold" /> {g(D.note, D.note.replace("يا بطل!", "يا بطلة!"))}
       </p>
       {SOUND.length ? (
         <section aria-labelledby="sw-facts" className="rounded-[28px] border bg-card p-5 shadow-soft">

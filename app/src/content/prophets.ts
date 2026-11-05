@@ -7,7 +7,8 @@ import data from "./prophets-content.json";
 export type ShapeStep = { shape: string; label: string; caption: string; ref: string };
 export type ProphetContent = {
   id: string; name: string;
-  symbol: { main: string; label: string };
+  // unified: نبي ذكر القرآن اسمه فقط، فله الرمز الموحد دائمًا (قرار والدة م. أحمد)
+  symbol: { main: string; label: string; unified?: boolean };
   sequence: ShapeStep[];
   summary: string; more: string[]; refs: string[]; notes?: string;
 };
@@ -24,4 +25,4 @@ export const shapeSequence = (id: string): ShapeStep[] =>
   (BY_ID.get(id)?.sequence ?? []).map((s) => ({ ...s, shape: ALIAS[s.shape] ?? s.shape }));
 
 // الرموز الأساسية (لاختيار الأدمن في شاشة رحلة الأنبياء)
-export const MAIN_SYMBOLS = LIST.map((p) => ({ value: p.symbol.main, label: p.symbol.label }));
+export const MAIN_SYMBOLS = [...new Map(LIST.map((p) => [p.symbol.main, { value: p.symbol.main, label: p.symbol.label }])).values()];

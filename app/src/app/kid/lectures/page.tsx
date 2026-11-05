@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Icon3D } from "@/components/icon3d";
 import { Zaid } from "@/components/zaid";
+import { g } from "@/lib/kid-text";
 
 export default function LecturesPage() {
   const { data, loading, error, reload } = useApi<Lecture[]>("lectures");
@@ -21,7 +22,7 @@ export default function LecturesPage() {
           <Icon3D name="headphone" size={56} float />
           <div>
             <h1 className="font-heading text-3xl font-extrabold">المحاضرات</h1>
-            <p className="text-muted-foreground">اسمع واكسب ١٠ نجوم لكل محاضرة</p>
+            <p className="text-muted-foreground">{g("اسمع واكسب", "اسمعي واكسبي")} ١٠ نجوم لكل محاضرة</p>
           </div>
         </div>
       </BlurFade>
@@ -31,7 +32,7 @@ export default function LecturesPage() {
         <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">
           <Zaid mood="surprised" size={100} />
           <p>{error}</p>
-          <button className="font-bold text-primary" onClick={reload}>حاول تاني</button>
+          <button className="font-bold text-primary" onClick={reload}>{g("حاول تاني", "حاولي تاني")}</button>
         </div>
       )}
       {data?.length === 0 && (

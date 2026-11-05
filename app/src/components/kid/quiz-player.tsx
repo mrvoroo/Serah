@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { buttonVariants } from "@/components/ui/button";
 import { cn, questionCount } from "@/lib/utils";
 import { RT } from "@/components/religious-text";
+import { g } from "@/lib/kid-text";
 
 const n = (v: number) => v.toLocaleString("ar-EG");
 const LETTERS = ["أ", "ب", "ج", "د"];
@@ -62,7 +63,7 @@ export function QuizPlayer({ id }: { id: string }) {
       <div className="flex flex-col gap-4">
         <section className="flex flex-col items-center gap-2 rounded-[32px] bg-hero p-5 text-center text-white shadow-soft" aria-live="polite">
           <Zaid mood={mood} size={130} />
-          <h1 ref={heading} tabIndex={-1} className="font-heading text-3xl font-extrabold outline-none">{pct === 1 ? "ما شاء الله! كله صح" : pct >= 0.5 ? "شاطر! برافو عليك" : "ولا يهمك، المرة الجاية أحسن إن شاء الله"}</h1>
+          <h1 ref={heading} tabIndex={-1} className="font-heading text-3xl font-extrabold outline-none">{pct === 1 ? "ما شاء الله! كله صح" : pct >= 0.5 ? g("شاطر! أحسنت، بارك الله فيك", "شاطرة! أحسنتِ، بارك الله فيكِ") : "ولا يهمك، المرة الجاية أحسن إن شاء الله"}</h1>
           <p className="text-xl font-bold">جاوبت {n(result.score)} من {n(result.total)} صح</p>
           <p className="text-sm text-white/85">نتعلم قصص الأنبياء عشان نقتدي بيهم ونرضي ربنا</p>
           {result.first ? (
@@ -88,7 +89,7 @@ export function QuizPlayer({ id }: { id: string }) {
           })}
         </ol>
         <div className="grid grid-cols-2 gap-3">
-          <button type="button" onClick={restart} className={buttonVariants({ variant: "secondary", size: "xl" })}><RotateCcw /> حاول تاني</button>
+          <button type="button" onClick={restart} className={buttonVariants({ variant: "secondary", size: "xl" })}><RotateCcw /> {g("حاول تاني", "حاولي تاني")}</button>
           <button type="button" onClick={() => (window.history.length > 1 ? router.back() : router.push("/kid/tasks/"))} className={buttonVariants({ variant: "hero", size: "xl" })}>تمام</button>
         </div>
       </div>
@@ -100,10 +101,10 @@ export function QuizPlayer({ id }: { id: string }) {
       <div className="flex flex-col items-center gap-3 rounded-[32px] border bg-card p-6 text-center shadow-soft">
         <Zaid mood="thinking" size={140} />
         <h1 className="font-heading text-3xl font-extrabold">{data.quiz.title}</h1>
-        <p className="text-lg text-muted-foreground">{questionCount(qs.length)} · اختار الإجابة الصح في كل سؤال</p>
+        <p className="text-lg text-muted-foreground">{questionCount(qs.length)} · {g("اختار", "اختاري")} الإجابة الصح في كل سؤال</p>
         {data.mine ? (
-          <p className="rounded-2xl bg-secondary px-4 py-2 font-bold">حليته قبل كده: {n(data.mine.score)} من {n(data.mine.total)} — تقدر تتدرب تاني</p>
-        ) : <p className="flex items-center gap-1 rounded-2xl bg-gold/20 px-4 py-2 font-bold"><Star className="size-5 fill-gold text-gold" /> تكسب لحد ٢٠ نجمة</p>}
+          <p className="rounded-2xl bg-secondary px-4 py-2 font-bold">حليته قبل كده: {n(data.mine.score)} من {n(data.mine.total)} — {g("تقدر تتدرب", "تقدري تتدربي")} تاني</p>
+        ) : <p className="flex items-center gap-1 rounded-2xl bg-gold/20 px-4 py-2 font-bold"><Star className="size-5 fill-gold text-gold" /> {g("تكسب", "تكسبي")} لحد ٢٠ نجمة</p>}
         <button type="button" onClick={() => setStep(0)} className={cn(buttonVariants({ variant: "hero", size: "xl" }), "mt-2 w-full max-w-xs")}>يلا نبدأ <ArrowLeft /></button>
       </div>
     );
@@ -148,7 +149,7 @@ export function QuizPlayer({ id }: { id: string }) {
         <button type="button" aria-label="السؤال السابق" onClick={() => setStep(step - 1)} disabled={step === 0} className={buttonVariants({ variant: "secondary", size: "xl" })}><ArrowRight /></button>
         {last ? (
           <button type="button" disabled={!answeredAll || sending} onClick={submit} className={buttonVariants({ variant: "hero", size: "xl" })}>
-            {sending && <Loader2 className="animate-spin" />} {answeredAll ? "سلّم الإجابات" : "جاوب كل الأسئلة الأول"}
+            {sending && <Loader2 className="animate-spin" />} {answeredAll ? "سلّم الإجابات" : g("جاوب كل الأسئلة الأول", "جاوبي كل الأسئلة الأول")}
           </button>
         ) : (
           <button type="button" disabled={chosen === undefined} onClick={() => setStep(step + 1)} className={buttonVariants({ variant: "hero", size: "xl" })}>التالي <ArrowLeft /></button>
@@ -163,7 +164,7 @@ function Empty({ text, retry }: { text: string; retry?: () => void }) {
     <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">
       <Zaid mood="surprised" size={100} />
       <p className="font-bold">{text}</p>
-      {retry && <button type="button" className={buttonVariants({ variant: "hero", size: "lg2" })} onClick={retry}>حاول تاني</button>}
+      {retry && <button type="button" className={buttonVariants({ variant: "hero", size: "lg2" })} onClick={retry}>{g("حاول تاني", "حاولي تاني")}</button>}
       <Link href="/kid/tasks/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>رجوع للاختبارات</Link>
     </div>
   );

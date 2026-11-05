@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { isProphet, menuName } from "@/lib/prophets";
 import type { Station } from "./stations";
 import { RT } from "@/components/religious-text";
+import { g } from "@/lib/kid-text";
 
 // قائمة المحطات: الأنبياء مقسّمون لمجموعات بالترتيب (حتى 7 في المجموعة، أو عند إبراهيم ويوسف وسليمان)، وكل نبي برقم محطته
 const BREAKS = new Set(["ibrahim", "yusuf", "sulayman"]);
@@ -299,7 +300,7 @@ export function Journey({ stations }: { stations: Station[] }) {
                   {i === 0 && <Zaid mood="helping" size={84} />}
                   {i === stations.length - 1 && <Zaid mood="happy" size={84} />}
                   <div>
-                    <span className="inline-block rounded-full bg-secondary px-3 py-1 text-xs font-bold text-secondary-foreground">{s.tag}</span>
+                    <span className="inline-block rounded-full bg-secondary px-3 py-1 text-xs font-bold text-secondary-foreground">{s.id === "start" ? g(s.tag, s.tag.replace("يا بطل", "يا بطلة")) : s.tag}</span>
                     {i === 0 ? (
                       <SplitText text={s.title} tag="h1" className="mt-2 text-4xl font-extrabold leading-tight text-foreground md:text-5xl" splitType="words" effect="rise" trigger="load" textAlign="right" />
                     ) : (
@@ -307,7 +308,7 @@ export function Journey({ stations }: { stations: Station[] }) {
                     )}
                   </div>
                 </div>
-                <p className="mt-3 text-base leading-8 text-muted-foreground"><RT text={s.text} /></p>
+                <p className="mt-3 text-base leading-8 text-muted-foreground"><RT text={s.id === "start" ? g(s.text, s.text.replace("انزل معانا", "انزلي معانا")) : s.id === "sira" ? g(s.text, s.text.replace("تعالَ نتعرّف", "تعالي نتعرّف")) : s.text} /></p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {i === 0 ? (
                     <button type="button" onClick={() => go(1)} className={buttonVariants({ variant: "gold", size: "lg2" })}>
@@ -315,11 +316,11 @@ export function Journey({ stations }: { stations: Station[] }) {
                     </button>
                   ) : isProphet(s) ? (
                     <Link href={`/kid/prophet/?id=${s.id}`} onClick={() => rememberStation(s.id)} className={buttonVariants({ variant: "gold", size: "lg2" })}>
-                      <BookOpen /> ادخل الصفحة
+                      <BookOpen /> {g("ادخل الصفحة", "ادخلي الصفحة")}
                     </Link>
                   ) : s.id === "quran" ? (
                     <Link href="/kid/quran/" className={buttonVariants({ variant: "gold", size: "lg2" })}>
-                      <BookOpen /> اسمع واقرأ القرآن
+                      <BookOpen /> {g("اسمع واقرأ القرآن", "اسمعي واقرئي القرآن")}
                     </Link>
                   ) : s.id === "sira" ? (
                     <Link href="/kid/swords/" className={buttonVariants({ variant: "gold", size: "lg2" })}>
@@ -327,7 +328,7 @@ export function Journey({ stations }: { stations: Station[] }) {
                     </Link>
                   ) : (
                     <Link href="/kid/lectures/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>
-                      <Headphones /> استمع للمحاضرات
+                      <Headphones /> {g("استمع للمحاضرات", "استمعي للمحاضرات")}
                     </Link>
                   )}
                 </div>

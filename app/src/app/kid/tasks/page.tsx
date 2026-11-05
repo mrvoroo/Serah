@@ -12,6 +12,7 @@ import { Icon3D } from "@/components/icon3d";
 import { Zaid } from "@/components/zaid";
 import { cn, questionCount } from "@/lib/utils";
 import { RT } from "@/components/religious-text";
+import { g } from "@/lib/kid-text";
 
 const n = (v: number) => v.toLocaleString("ar-EG");
 
@@ -38,7 +39,7 @@ export default function KidTasks() {
           <Icon3D name="clipboard" size={56} float />
           <div>
             <h1 className="font-heading text-3xl font-extrabold">اختبر نفسك</h1>
-            <p className="text-muted-foreground">اختبارات وواجبات تكسب منها نجوم</p>
+            <p className="text-muted-foreground">{g("اختبارات وواجبات تكسب منها نجوم", "اختبارات وواجبات تكسبي منها نجوم")}</p>
           </div>
         </div>
       </BlurFade>
@@ -46,7 +47,7 @@ export default function KidTasks() {
       <section className="flex flex-col gap-3" aria-labelledby="h-quizzes">
         <h2 id="h-quizzes" className="font-heading text-xl font-extrabold">الاختبارات</h2>
         {quizzes.loading && !quizzes.data && <Skeleton className="h-24 rounded-[28px]" />}
-        {quizzes.error && !quizzes.data && <p className="rounded-[28px] border bg-card p-4 text-center">{quizzes.error} <button className="font-bold text-primary" onClick={quizzes.reload}>حاول تاني</button></p>}
+        {quizzes.error && !quizzes.data && <p className="rounded-[28px] border bg-card p-4 text-center">{quizzes.error} <button className="font-bold text-primary" onClick={quizzes.reload}>{g("حاول تاني", "حاولي تاني")}</button></p>}
         {quizzes.data?.length === 0 && (
           <div className="flex items-center gap-3 rounded-[28px] border bg-card p-4"><Zaid mood="thinking" size={80} /><p className="font-bold">لسه مفيش اختبارات، قريبًا إن شاء الله</p></div>
         )}
@@ -74,7 +75,7 @@ export default function KidTasks() {
       <section className="flex flex-col gap-3" aria-labelledby="h-hw">
         <h2 id="h-hw" className="font-heading text-xl font-extrabold">الواجبات</h2>
         {hw.loading && !hw.data && <Skeleton className="h-24 rounded-[28px]" />}
-        {hw.error && !hw.data && <p className="rounded-[28px] border bg-card p-4 text-center">{hw.error} <button className="font-bold text-primary" onClick={hw.reload}>حاول تاني</button></p>}
+        {hw.error && !hw.data && <p className="rounded-[28px] border bg-card p-4 text-center">{hw.error} <button className="font-bold text-primary" onClick={hw.reload}>{g("حاول تاني", "حاولي تاني")}</button></p>}
         {hw.data?.length === 0 && <p className="rounded-[28px] border bg-card p-4 text-center font-bold text-muted-foreground">مفيش واجبات دلوقتي</p>}
         <ul className="flex flex-col gap-3">
           {hw.data?.map((a, i) => {
@@ -86,7 +87,7 @@ export default function KidTasks() {
                     <Icon3D name={approved ? "medal1" : "memo"} size={48} />
                     <div className="min-w-0 flex-1">
                       <p className="font-heading text-lg font-extrabold leading-snug">{a.title}</p>
-                      {a.due && <p className={cn("flex items-center gap-1 text-sm", !approved && !done && a.due < today ? "font-bold text-destructive" : "text-muted-foreground")}><CalendarClock className="size-4" /> التسليم {fmtDate(a.due)}{!approved && !done && a.due < today && " — فات الموعد، خلّصه بسرعة"}</p>}
+                      {a.due && <p className={cn("flex items-center gap-1 text-sm", !approved && !done && a.due < today ? "font-bold text-destructive" : "text-muted-foreground")}><CalendarClock className="size-4" /> التسليم {fmtDate(a.due)}{!approved && !done && a.due < today && g(" — فات الموعد، خلّصه بسرعة", " — فات الموعد، خلّصيه بسرعة")}</p>}
                       {a.details && <p className="mt-1 whitespace-pre-wrap leading-relaxed"><RT text={a.details} /></p>}
                     </div>
                   </div>
@@ -94,11 +95,11 @@ export default function KidTasks() {
                     <p className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500/15 p-3 font-bold text-emerald-700 dark:text-emerald-300"><Star className="size-5 fill-gold text-gold" /> المعلمة اعتمدته — أخدت ١٥ نجمة</p>
                   ) : (
                     <>
-                      {a.status === "returned" && <p className="rounded-2xl bg-gold/20 p-3 text-sm font-bold">المعلمة طلبت تعيده تاني، ولما تخلّصه اضغط «أنجزت» وترجع لك نجومك إن شاء الله</p>}
+                      {a.status === "returned" && <p className="rounded-2xl bg-gold/20 p-3 text-sm font-bold">{g("المعلمة طلبت تعيده تاني، ولما تخلّصه اضغط «أنجزت» وترجع لك نجومك إن شاء الله", "المعلمة طلبت تعيديه تاني، ولما تخلّصيه اضغطي «أنجزت» وترجع لكِ نجومك إن شاء الله")}</p>}
                       {done ? (
                         <div className="flex flex-col items-center gap-1">
-                          <p className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 text-lg font-extrabold text-white"><CheckCircle2 className="size-6" /> أنجزت — مستني المعلمة</p>
-                          <button type="button" disabled={busy === a.assignment_id} onClick={() => mark(a, false)} className="p-2 text-sm font-bold text-muted-foreground underline">لسه مخلصتش؟ شيل العلامة</button>
+                          <p className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 text-lg font-extrabold text-white"><CheckCircle2 className="size-6" /> {g("أنجزت — مستني المعلمة", "أنجزت — مستنية المعلمة")}</p>
+                          <button type="button" disabled={busy === a.assignment_id} onClick={() => mark(a, false)} className="p-2 text-sm font-bold text-muted-foreground underline">{g("لسه مخلصتش؟ شيل العلامة", "لسه مخلصتيش؟ شيلي العلامة")}</button>
                         </div>
                       ) : (
                         <button type="button" disabled={busy === a.assignment_id} onClick={() => mark(a, true)}

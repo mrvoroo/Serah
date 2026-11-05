@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Home, Headphones, Map, Trophy, LogOut, BookOpen, LayoutDashboard } from "lucide-react";
-import { session, type User } from "@/lib/api";
+import { api, session, type Me, type User } from "@/lib/api";
 import { stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useMotionAllowed } from "@/lib/tier";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -52,6 +52,17 @@ export function KidShell({ children }: { children: ReactNode }) {
   // التخطيط يبقى مركّبًا بين صفحات /kid، وفحص الدور يجري مرة واحدة: لو خرجت المعلمة من الرحلة/النبي/القرآن
   // (مثل رابط محاضرة في صفحة النبي) لصفحات الطفل فقط نرجعها للوحتها ولا نعرض الصفحة (حتى لا تُسجَّل لها حضور ونقاط)
   const staffBlocked = staff && !STAFF_PATHS.test(path);
+  // جنس الطفل قد تغيّره المعلمة بعد دخوله: نحدّثه من الخلفية مرة مع كل فتح، ونعيد رسم الصفحة لو تغيّر
+  const [gKey, setGKey] = useState("");
+  useEffect(() => {
+    if (!user || user.role !== "student") return;
+    api<Me>("me").then((m) => {
+      const cur = session.user(), tok = session.token();
+      if (!cur || !tok || !m.gender || (cur.gender ?? "m") === m.gender) return;
+      session.save({ token: tok, user: { ...cur, gender: m.gender } });
+      setGKey(m.gender);
+    }).catch(() => {});
+  }, [user]);
   useEffect(() => { if (staffBlocked && user) router.replace(homeOf(user.role)); }, [staffBlocked, user, router]);
 
   const content = (
@@ -67,7 +78,7 @@ export function KidShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-4 pt-4">{user && !staffBlocked ? children : null}</main>
+      <main key={gKey} className="mx-auto max-w-3xl px-4 pt-4">{user && !staffBlocked ? children : null}</main>
       <nav aria-label="التنقل الرئيسي" className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-md pb-safe">
         <div className="flex items-center justify-between rounded-[28px] border bg-card/90 p-2 shadow-soft backdrop-blur-md">
           {nav.map((n) => {

@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { Icon3D, type Icon3DName } from "@/components/icon3d";
 import { cn } from "@/lib/utils";
+import { Muhandis } from "@/components/muhandis";
 
 export type AdminUser = { user_id: string; role: Role; name: string; class_id: string; class_name: string; avatar: string; active: boolean; last_login_at: string; created_at: string };
 type Health = {
@@ -83,7 +84,7 @@ export default function AdminHome() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><Icon3D name="gear" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">لوحة المطوّر</h1>
+        <div className="flex items-center gap-3"><Muhandis size={96} look={!h ? "coding" : botOk === false && h.bot ? "debugging" : "proud"} /><div><h1 className="font-heading text-2xl font-extrabold">لوحة المطوّر</h1>
           <p className="text-sm text-muted-foreground">{h ? `الخلفية: النسخة ${h.version}` : "جاري التحميل…"}</p></div></div>
         <Button variant="secondary" size="lg2" onClick={refresh} aria-label="تحديث"><RefreshCw /> تحديث</Button>
       </div>
@@ -138,7 +139,7 @@ export default function AdminHome() {
                 {h.bot?.pending ? <span className="text-muted-foreground">({h.bot.pending} رسالة منتظرة)</span> : null}
               </div>
               {h.bot?.webhook !== undefined && <p className="text-muted-foreground">الويب هوك: <span dir="ltr">{h.bot.webhook || "غير مضبوط (يعمل بالاستعلام الدوري)"}</span></p>}
-              <p><span className="font-bold">المشغّلات:</span> <span dir="ltr">{h.triggers.join("، ") || "لا يوجد"}</span></p>
+              <p><span className="font-bold">المشغّلات:</span> <span dir="ltr">{(h.triggers ?? []).join("، ") || "لا يوجد"}</span></p>
               <ul className="grid grid-cols-2 gap-1">
                 {(h.settings ?? []).map((s) => (
                   <li key={s.key} className="flex items-center gap-1.5" dir="ltr">
@@ -153,7 +154,7 @@ export default function AdminHome() {
           <h2 id="tables-h" className="mb-3 font-heading text-lg font-extrabold">الجداول</h2>
           {!h ? <Skeleton className="h-40 rounded-2xl" /> : (
             <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-              {h.tables.map((t) => (
+              {(h.tables ?? []).map((t) => (
                 <li key={t.name} className="flex justify-between border-b py-1" dir="ltr"><span className="font-mono text-xs">{t.name}</span><span className={cn("font-bold", t.rows < 0 && "text-destructive")}>{t.rows < 0 ? "ناقص" : t.rows}</span></li>
               ))}
             </ul>

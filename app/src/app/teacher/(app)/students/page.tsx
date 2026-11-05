@@ -22,6 +22,8 @@ export default function StudentsPage() {
   const [name, setName] = useState("");
   const [pin, setPin] = useState("");
   const [avatar, setAvatar] = useState<string>(`3d:${AVATARS[0]}`);
+  // البنت تخاطبها المنصة بصيغة المؤنث
+  const [gender, setGender] = useState<"m" | "f">("m");
   const [busy, setBusy] = useState(false);
   const [pinFor, setPinFor] = useState<Kid | null>(null);
   const [delFor, setDelFor] = useState<Kid | null>(null);
@@ -37,7 +39,7 @@ export default function StudentsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3"><Icon3D name="cap" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">الطلاب</h1><p className="text-sm text-muted-foreground">{data?.length ?? 0} طفل في الفصل</p></div></div>
-        <Button variant="hero" size="lg2" onClick={() => { setName(""); setPin(""); setAdd(true); }}><Plus /> إضافة طفل</Button>
+        <Button variant="hero" size="lg2" onClick={() => { setName(""); setPin(""); setGender("m"); setAdd(true); }}><Plus /> إضافة طفل</Button>
       </div>
 
       {loading && !data ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 rounded-[24px]" />)}</div> : (
@@ -46,8 +48,8 @@ export default function StudentsPage() {
             <BlurFade key={k.user_id} delay={0.03 * Math.min(i, 10)}>
               <li className="flex items-center gap-3 rounded-[24px] border bg-card p-3 shadow-soft">
                 <KidAvatar value={k.avatar} size={44} />
-                <div className="min-w-0 flex-1"><p className="truncate font-bold">{k.name}</p><p className="text-sm text-muted-foreground">{k.points ?? 0} نجمة</p></div>
-                <Button variant="secondary" size="icon-xl" aria-label={`تعديل ${k.name}`} onClick={() => { setName(k.name); setAvatar(k.avatar || `3d:${AVATARS[0]}`); setEditFor(k); }}><Pencil /></Button>
+                <div className="min-w-0 flex-1"><p className="truncate font-bold">{k.name}</p><p className="text-sm text-muted-foreground">{k.gender === "f" ? "بنت" : "ولد"} · {k.points ?? 0} نجمة</p></div>
+                <Button variant="secondary" size="icon-xl" aria-label={`تعديل ${k.name}`} onClick={() => { setName(k.name); setAvatar(k.avatar || `3d:${AVATARS[0]}`); setGender(k.gender === "f" ? "f" : "m"); setEditFor(k); }}><Pencil /></Button>
                 <Button variant="secondary" size="icon-xl" aria-label={`تغيير رمز ${k.name}`} onClick={() => { setPin(""); setPinFor(k); }}><KeyRound /></Button>
                 <Button variant="ghost" size="icon-xl" aria-label={`حذف ${k.name}`} className="text-destructive" onClick={() => setDelFor(k)}><Trash2 /></Button>
               </li>
@@ -60,11 +62,18 @@ export default function StudentsPage() {
       <Dialog open={add} onOpenChange={setAdd}>
         <DialogContent className="rounded-[28px] sm:max-w-md">
           <DialogHeader><DialogTitle>إضافة طفل</DialogTitle><DialogDescription>الطفل يدخل بكود الفصل ثم يختار شكله ويكتب رمزه</DialogDescription></DialogHeader>
-          <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); run(() => api("addStudent", { name, pin, avatar }), "تمت إضافة الطفل", () => setAdd(false)); }}>
+          <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); run(() => api("addStudent", { name, pin, avatar, gender }), "تمت إضافة الطفل", () => setAdd(false)); }}>
             <Label htmlFor="sn">الاسم</Label>
             <Input id="sn" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required className="h-12 rounded-xl text-base" />
             <Label htmlFor="sp">الرمز السري (٤ أرقام)</Label>
             <Input id="sp" value={pin} onChange={(e) => setPin(pin4(e.target.value))} inputMode="numeric" required className="h-12 rounded-xl text-center font-heading text-2xl tracking-[0.5em]" />
+            <Label>ولد أم بنت؟</Label>
+            <div role="radiogroup" aria-label="ولد أم بنت" className="grid grid-cols-2 gap-2">
+              {([["m", "ولد 👦"], ["f", "بنت 👧"]] as const).map(([v, l]) => (
+                <button key={v} type="button" role="radio" aria-checked={gender === v} onClick={() => setGender(v)}
+                  className={cn("h-12 rounded-2xl bg-secondary/60 font-bold transition", gender === v && "bg-primary/20 ring-2 ring-primary")}>{l}</button>
+              ))}
+            </div>
             <Label>الشكل</Label>
             <div className="grid grid-cols-6 gap-2">
               {AVATARS.map((a) => (
@@ -82,9 +91,16 @@ export default function StudentsPage() {
       <Dialog open={!!editFor} onOpenChange={(o) => !o && setEditFor(null)}>
         <DialogContent className="rounded-[28px] sm:max-w-md">
           <DialogHeader><DialogTitle>تعديل {editFor?.name}</DialogTitle></DialogHeader>
-          <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (editFor) run(() => api("updateStudent", { user_id: editFor.user_id, name, avatar }), "تم حفظ التعديل", () => setEditFor(null)); }}>
+          <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (editFor) run(() => api("updateStudent", { user_id: editFor.user_id, name, avatar, gender }), "تم حفظ التعديل", () => setEditFor(null)); }}>
             <Label htmlFor="en">الاسم</Label>
             <Input id="en" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required className="h-12 rounded-xl text-base" />
+            <Label>ولد أم بنت؟</Label>
+            <div role="radiogroup" aria-label="ولد أم بنت" className="grid grid-cols-2 gap-2">
+              {([["m", "ولد 👦"], ["f", "بنت 👧"]] as const).map(([v, l]) => (
+                <button key={v} type="button" role="radio" aria-checked={gender === v} onClick={() => setGender(v)}
+                  className={cn("h-12 rounded-2xl bg-secondary/60 font-bold transition", gender === v && "bg-primary/20 ring-2 ring-primary")}>{l}</button>
+              ))}
+            </div>
             <Label>الشكل</Label>
             <div className="grid grid-cols-6 gap-2">
               {AVATARS.map((a) => (

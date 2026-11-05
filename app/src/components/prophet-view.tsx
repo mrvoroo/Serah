@@ -52,13 +52,14 @@ export function ProphetView({ prophet, items, lectures, lectureHref = (id) => `/
   const honored = `${name} ${prophet.prophet_id === "muhammad" ? "ﷺ" : "عليه السلام"}`;
   const related = (lectures ?? []).filter((l) => l.prophet_id === prophet.prophet_id || String(l.title).includes(name));
   const content = prophetContent(prophet.prophet_id);
+  const symbolName = content?.symbol.unified ? content.symbol.label : prophet.symbol_name;
   const steps = shapeSequence(prophet.prophet_id);
   const images = items.filter((it) => it.kind === "image");
   const firstImage = images[0]?.item_id;
   return (
     <div className="flex flex-col gap-4">
       <header className="relative overflow-hidden rounded-[32px] bg-hero p-6 text-white shadow-soft">
-        {prophet.symbol_name && <span className="inline-block rounded-full bg-white/15 px-3 py-1 text-xs font-bold">{prophet.symbol_name}</span>}
+        {symbolName && <span className="inline-block rounded-full bg-white/15 px-3 py-1 text-xs font-bold">{symbolName}</span>}
         <h1 className="mt-2 font-heading text-3xl font-extrabold leading-tight md:text-4xl">{prophet.title || `سيدنا ${honored}`}</h1>
         <p className="mt-3 text-base leading-8 text-white/85"><RT text={prophet.text} /></p>
       </header>

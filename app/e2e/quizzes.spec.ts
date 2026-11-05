@@ -43,7 +43,7 @@ async function mock(page: Page, user: typeof KID) {
         qs: (b.questions as { text: string; options: string[]; correct: number }[]).map((q, i) => ({ question_id: `n${i}`, text: q.text, options: q.options.filter(Boolean), image_file_id: "", correct: q.correct })) }); return ok("Z2"); }
       case "setQuizStatus": { if (z) z.status = String(b.status); return ok(true); }
       case "quizResults": return ok({ quiz: z, questions: z!.qs, per: [{ right: 1, answered: 1 }, { right: 0, answered: 1 }],
-        kids: [{ user_id: "S1", name: "يوسف", avatar: "🌟", done: true, score: 1, total: 2, stars: 10, answers: [0, 2] }, { user_id: "S2", name: "مريم", avatar: "🌙", done: false }] });
+        kids: [{ user_id: "S1", name: "يوسف", avatar: "🌟", done: true, score: 1, total: 2, stars: 10, answers: [0, 2] }, { user_id: "S2", name: "مريم", avatar: "3d:gem", done: false }] });
       case "assignments": return ok(hw.map((a) => (isT ? { ...a, status: undefined, kids: 2, done: 1, approved: 0 } : a)));
       case "markAssignment": { hw[0].status = b.done ? "done" : ""; return ok(hw[0].status); }
       case "saveAssignment": return ok("W2");
@@ -153,6 +153,9 @@ test("الأدمن: تنشر الاختبار، وترى النتائج لكل �
   await expect(d.getByTestId("result-kid").first()).toContainText("١ / ٢");
   await expect(d.getByLabel("سؤال 2 خطأ")).toBeVisible();
   await expect(d.getByTestId("result-kid").nth(1)).toContainText("لم يحل بعد");
+  // شكل الطفل يظهر صورة/إيموجي لا نص «3d:gem»
+  await expect(d).not.toContainText("3d:");
+  await expect(d.getByTestId("result-kid").nth(1).locator("img")).toHaveCount(1);
 });
 
 test("المعلمة: الواجبات — إنشاء ومتابعة واعتماد", async ({ page }) => {
@@ -168,6 +171,8 @@ test("المعلمة: الواجبات — إنشاء ومتابعة واعتم�
   await page.getByRole("button", { name: /متابعة احفظ سورة الفاتحة/ }).click();
   const s = page.getByRole("dialog");
   await expect(s.getByTestId("homework-kid").first()).toContainText("أنجز — ينتظر الاعتماد");
+  // الاعتماد يظهر لمن ضغط «أنجزت» فقط
+  await expect(s.getByRole("button", { name: "اعتماد مريم" })).toHaveCount(0);
   await s.getByRole("button", { name: "اعتماد يوسف" }).click();
   await expect.poll(() => calls.find((c) => c.action === "reviewAssignment")).toMatchObject({ assignment_id: "W1", user_id: "S1", approve: true });
 });

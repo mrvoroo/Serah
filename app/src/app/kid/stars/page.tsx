@@ -10,6 +10,7 @@ import { Icon3D } from "@/components/icon3d";
 import { KidAvatar } from "@/components/kid/kid-avatar";
 import { useMotionAllowed } from "@/lib/tier";
 import { cn } from "@/lib/utils";
+import { g } from "@/lib/kid-text";
 
 const PODIUM = [
   { place: 2, h: "h-24", medal: "medal2" as const, tone: "from-slate-300 to-slate-400" },
@@ -33,7 +34,7 @@ export default function StarsPage() {
       </BlurFade>
 
       {loading && !data ? <Skeleton className="h-64 rounded-[32px]" /> : top.length === 0 ? (
-        <p className="rounded-[28px] border bg-card p-6 text-center text-muted-foreground">لسه مفيش نجوم، اسمع أول محاضرة!</p>
+        <p className="rounded-[28px] border bg-card p-6 text-center text-muted-foreground">{g("لسه مفيش نجوم، اسمع أول محاضرة!", "لسه مفيش نجوم، اسمعي أول محاضرة!")}</p>
       ) : (
         <>
           <div className="grid grid-cols-3 items-end gap-2 rounded-[32px] border bg-card p-4 pt-6 shadow-soft">

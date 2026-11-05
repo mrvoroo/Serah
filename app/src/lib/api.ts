@@ -4,8 +4,9 @@ export const API_URL =
   "https://script.google.com/macros/s/AKfycbz5QzGujgyndr_k1QpuFkPBQTjgA-KkxQoP9WOBV66-6pi5X-o4Q4JWLiJauDR2Xt39/exec";
 
 export type Role = "student" | "teacher" | "admin" | "superadmin";
-export type User = { user_id: string; name: string; role: Role; class_id: string; avatar: string };
-export type Kid = { user_id: string; name: string; avatar: string; points?: number };
+export type Gender = "m" | "f";
+export type User = { user_id: string; name: string; role: Role; class_id: string; avatar: string; gender?: Gender };
+export type Kid = { user_id: string; name: string; avatar: string; points?: number; gender?: Gender };
 export type Lecture = {
   lecture_id: string; class_id: string; title: string; date: string; audio_file_id: string;
   duration_sec: number | string; status: "draft" | "published"; images: string[];
@@ -86,7 +87,7 @@ export const driveImage = (id: string, w = 1200) => `https://drive.google.com/th
 
 export const withBase = (p: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${p}`;
 
-export type Me = { points: number; attended: string[]; rank: number; total: number };
+export type Me = { points: number; attended: string[]; rank: number; total: number; gender?: Gender };
 export type Dashboard = {
   kids: number; lectures: number; published: number; drafts: number; attendanceRate: number; totalPoints: number;
   perLecture: { title: string; date: string; count: number }[];
@@ -112,5 +113,7 @@ export type QuizResults = {
   kids: { user_id: string; name: string; avatar: string; done: boolean; score?: number; total?: number; stars?: number; at?: string; answers?: number[] }[];
 };
 export type SubStatus = "" | "done" | "approved" | "returned";
-export type Assignment = { assignment_id: string; title: string; details: string; due: string; prophet_id: string; lecture_id: string; created_at: string; status?: SubStatus; kids?: number; done?: number; approved?: number };
+export type Assignment = { assignment_id: string; title: string; details: string; due: string; prophet_id: string; lecture_id: string; created_at: string; status?: SubStatus; kids?: number; done?: number; approved?: number;
+  can_manage?: boolean; helpers?: string[]; created_by?: string; created_by_name?: string };
+export type Notice = { notice_id: string; text: string; at: string };
 export type AssignmentStatus = { assignment: Assignment; kids: { user_id: string; name: string; avatar: string; status: SubStatus; at: string }[] };

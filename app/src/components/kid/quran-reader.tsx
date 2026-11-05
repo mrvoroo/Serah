@@ -9,6 +9,7 @@ import {
 } from "@/lib/quran";
 import { cn } from "@/lib/utils";
 import { SurahName } from "@/components/religious-text";
+import { g } from "@/lib/kid-text";
 
 // القرآن للأطفال: المصحف المعلّم (الشيخ يقرأ والأطفال يرددون) أو «دورك تقرأ» (الشيخ يقرأ ثم سكوت يقرأ فيه الطفل)
 // السورة الطويلة تُعرض صفحة صفحة كما في مصحف المدينة، والآية التي يقرؤها الشيخ مظللة وباقي الصفحة أخفت حتى لا يتشتت الطفل،
@@ -165,7 +166,7 @@ export function QuranReader() {
 
       <div className="flex items-center gap-3">
         <Icon3D name="open-book" size={44} float />
-        <div><h1 className="font-heading text-2xl font-extrabold">القرآن الكريم</h1><p className="text-sm text-muted-foreground">استمع واقرأ مع الشيخ</p></div>
+        <div><h1 className="font-heading text-2xl font-extrabold">القرآن الكريم</h1><p className="text-sm text-muted-foreground">{g("استمع واقرأ مع الشيخ", "استمعي واقرئي مع الشيخ")}</p></div>
       </div>
 
       <section aria-label="الاختيارات" className="flex flex-col gap-3 rounded-[28px] border bg-card p-3 shadow-soft">
@@ -184,7 +185,7 @@ export function QuranReader() {
         </div>
         {!showSettings && (
           <p className="text-xs text-muted-foreground">
-            {reciter.short} · {prefs.mode === "teacher" ? "المصحف المعلّم" : "دورك تقرأ"}{prefs.repeat > 1 ? ` · تكرار ${arNum(prefs.repeat)}×` : ""}
+            {reciter.short} · {prefs.mode === "teacher" ? "المصحف المعلّم" : g("دورك تقرأ", "دورك تقرئي")}{prefs.repeat > 1 ? ` · تكرار ${arNum(prefs.repeat)}×` : ""}
           </p>
         )}
         {showSettings && (
@@ -195,7 +196,7 @@ export function QuranReader() {
             </div>
             <div role="group" aria-label="الوضع" className="flex flex-wrap gap-2">
               <Chip on={prefs.mode === "teacher"} onClick={() => change({ mode: "teacher" })}>📖 المصحف المعلّم</Chip>
-              <Chip on={prefs.mode === "turn"} onClick={() => change({ mode: "turn" })}>🎤 دورك تقرأ</Chip>
+              <Chip on={prefs.mode === "turn"} onClick={() => change({ mode: "turn" })}>🎤 {g("دورك تقرأ", "دورك تقرئي")}</Chip>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm font-bold">
               <span className="text-muted-foreground">تكرار الآية:</span>
@@ -224,7 +225,7 @@ export function QuranReader() {
           {error}
           {(textError || (listError && !list)) && (
             <button type="button" onClick={() => { setTextError(""); setListError(""); setRetry((n) => n + 1); }}
-              className="flex h-10 items-center gap-1 rounded-full bg-secondary px-4 text-foreground"><RotateCw className="size-4" /> حاول مرة أخرى</button>
+              className="flex h-10 items-center gap-1 rounded-full bg-secondary px-4 text-foreground"><RotateCw className="size-4" /> {g("حاول مرة أخرى", "حاولي مرة أخرى")}</button>
           )}
         </div>
       )}
@@ -277,13 +278,13 @@ export function QuranReader() {
         <button type="button" aria-label="الآية التالية" disabled={!ayahs || current >= total} onClick={() => play(Math.min(total, current + 1))} className="grid size-11 place-items-center rounded-full bg-secondary disabled:opacity-40"><SkipBack className="size-5" /></button>
         <div className="min-w-0 flex-1 text-sm">
           {phase === "turn" ? (
-            <p role="status" className="flex items-center gap-1 font-heading text-base font-extrabold text-gold"><Mic className="size-5" /> دورك يا بطل! {arNum(left)}</p>
+            <p role="status" className="flex items-center gap-1 font-heading text-base font-extrabold text-gold"><Mic className="size-5" /> {g("دورك يا بطل!", "دورك يا بطلة!")} {arNum(left)}</p>
           ) : (
             <><p className="truncate font-bold">{reciter.name}</p><p className="text-muted-foreground">{ayahs ? label : "…"}</p></>
           )}
         </div>
       </div>
-      <audio ref={audio} preload="auto" onEnded={onEnded} onError={() => { if (phase !== "idle") { setPhase("paused"); setAudioError("تعذّر تحميل الآية، تأكد من الإنترنت ثم اضغط تشغيل"); } }} onPlaying={() => setAudioError("")} />
+      <audio ref={audio} preload="auto" onEnded={onEnded} onError={() => { if (phase !== "idle") { setPhase("paused"); setAudioError(g("تعذّر تحميل الآية، تأكد من الإنترنت ثم اضغط تشغيل", "تعذّر تحميل الآية، تأكدي من الإنترنت ثم اضغطي تشغيل")); } }} onPlaying={() => setAudioError("")} />
     </div>
   );
 }

@@ -10,7 +10,7 @@ const VERSION = 19;
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
   Classes:      ['class_id', 'name', 'teacher_id', 'join_code', 'created_at'],
-  Users:        ['user_id', 'role', 'name', 'class_id', 'avatar', 'pin_hash', 'city', 'country', 'telegram_id', 'active', 'created_at', 'last_login_at'],
+  Users:        ['user_id', 'role', 'name', 'class_id', 'avatar', 'pin_hash', 'city', 'country', 'telegram_id', 'active', 'created_at', 'last_login_at', 'gender'],
   Lectures:     ['lecture_id', 'class_id', 'title', 'date', 'audio_file_id', 'duration_sec', 'status', 'notes', 'created_by', 'created_at', 'prophet_id'],
   LectureImages:['image_id', 'lecture_id', 'sort', 'file_id'],
   Attendance:   ['lecture_id', 'user_id', 'at'],
@@ -18,8 +18,10 @@ const SCHEMA = {
   Quizzes:      ['quiz_id', 'class_id', 'lecture_id', 'title', 'status', 'created_at', 'prophet_id', 'created_by', 'updated_at'],
   Questions:    ['question_id', 'quiz_id', 'text', 'opt_a', 'opt_b', 'opt_c', 'opt_d', 'correct', 'points', 'image_file_id', 'sort'],
   Results:      ['quiz_id', 'user_id', 'score', 'total', 'at', 'answers', 'stars'],
-  Assignments:  ['assignment_id', 'class_id', 'lecture_id', 'title', 'details', 'due', 'created_at', 'prophet_id', 'created_by'],
+  Assignments:  ['assignment_id', 'class_id', 'lecture_id', 'title', 'details', 'due', 'created_at', 'prophet_id', 'created_by', 'helpers'],
   Submissions:  ['sub_id', 'assignment_id', 'user_id', 'status', 'at', 'reviewed_by', 'reviewed_at'],
+  // إشعارات داخل المنصة للطفل (مثل: تصحيح سؤال في اختبار حلّه)
+  Notices:      ['notice_id', 'user_id', 'text', 'at', 'read'],
   Points:       ['user_id', 'points', 'reason', 'at'],
   Suggestions:  ['id', 'from_user', 'role', 'text', 'audio_file_id', 'status', 'at'],
   BotState:     ['chat_id', 'state', 'data', 'at'],
@@ -272,7 +274,8 @@ const POLICY = {
   saveAssignment: { min: 'teacher', write: 1, audit: 1 },
   deleteAssignment: { min: 'teacher', write: 1, audit: 1 },
   markAssignment: { min: 'student', write: 1 },
-  assignmentStatus: { min: 'teacher' },
+  assignmentStatus: { min: 'teacher' }, classTeachers: { min: 'teacher' },
+  notices: { min: 'student' }, readNotice: { min: 'student', write: 1 },
   reviewAssignment: { min: 'teacher', write: 1, audit: 1 }
 };
 const SECRET_PARAMS = { pin: 1, oldPin: 1, newPin: 1, token: 1, action: 1 };
@@ -343,7 +346,7 @@ const ACTIONS = {
     }
     clearAttempts_(key, a);
     update_('Users', 'user_id', u.user_id, { last_login_at: now_() });
-    return { token: makeToken_(u), user: { user_id: u.user_id, name: u.name, role: u.role, class_id: u.class_id, avatar: u.avatar } };
+    return { token: makeToken_(u), user: { user_id: u.user_id, name: u.name, role: u.role, class_id: u.class_id, avatar: u.avatar, gender: genderOf_(u) } };
   },
 
   // المحاضرات: الطفل يرى المنشور فقط، والمعلمة ترى الكل
@@ -396,7 +399,8 @@ const ACTIONS = {
     const kids = rows_('Users').filter(u => u.class_id === cls_(me, p) && u.role === 'student' && u.active !== false)
       .map(u => ({ id: u.user_id, p: pts[u.user_id] || 0 })).sort((a, b) => b.p - a.p);
     const attended = rows_('Attendance').filter(a => a.user_id === me.user_id).map(a => a.lecture_id);
-    return { points: pts[me.user_id] || 0, attended, rank: kids.findIndex(k => k.id === me.user_id) + 1, total: kids.length };
+    const self = rows_('Users').find(u => u.user_id === me.user_id);
+    return { points: pts[me.user_id] || 0, attended, rank: kids.findIndex(k => k.id === me.user_id) + 1, total: kids.length, gender: genderOf_(self) };
   },
 
   // لوحة المعلمة: إحصائيات وتحليلات الفصل
@@ -615,6 +619,7 @@ const ACTIONS = {
     const patch = {};
     if (p.name !== undefined) { const n = String(p.name).trim().slice(0, 40); if (!n) throw new Error('اكتبي اسم الطفل'); patch.name = n; }
     if (p.avatar !== undefined) patch.avatar = String(p.avatar || '🌟').slice(0, 8);
+    if (p.gender !== undefined) patch.gender = cleanGender_(p.gender);
     update_('Users', 'user_id', u.user_id, patch);
     return true;
   },
@@ -744,7 +749,7 @@ const ACTIONS = {
     const pts = {};
     rows_('Points').forEach(r => pts[r.user_id] = (pts[r.user_id] || 0) + Number(r.points));
     return rows_('Users').filter(u => u.class_id === cls_(me, p) && u.role === 'student' && u.active !== false)
-      .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar, points: pts[u.user_id] || 0 }));
+      .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar, gender: genderOf_(u), points: pts[u.user_id] || 0 }));
   },
 
   addStudent: (p, me) => {
@@ -754,7 +759,7 @@ const ACTIONS = {
     if (!name) throw new Error('اكتبي اسم الطفل');
     if (!/^\d{4}$/.test(pin)) throw new Error('الرمز السري 4 أرقام');
     const u = append_('Users', { user_id: id_('U'), role: 'student', name, class_id: cls_(me, p), avatar: String(p.avatar || '🌟').slice(0, 8),
-      pin_hash: hashPin_(pin), city: String(p.city || '').slice(0, 60), country: String(p.country || '').slice(0, 60), active: true, created_at: now_() });
+      pin_hash: hashPin_(pin), city: String(p.city || '').slice(0, 60), country: String(p.country || '').slice(0, 60), gender: cleanGender_(p.gender), active: true, created_at: now_() });
     return { user_id: u.user_id };
   },
 
@@ -833,22 +838,44 @@ const ACTIONS = {
     if (!list.length) throw new Error('أضيفي سؤالًا واحدًا على الأقل');
     if (list.length > 30) throw new Error('الحد الأقصى 30 سؤالًا');
     const old = p.quiz_id ? ownQuiz_(me, p) : null;
+    let solved = false;
     if (old) {
       if (old.status === 'published' && RANK[me.role] < RANK.admin) throw new Error('الاختبار منشور — تعديله للأدمن فقط');
-      if (rows_('Results').some(r => r.quiz_id === old.quiz_id)) throw new Error('حلّه أطفال بالفعل، فلا تتغير أسئلته — أنشئي اختبارًا جديدًا');
+      solved = rows_('Results').some(r => r.quiz_id === old.quiz_id);
+      // بعد أن حلّه أطفال: الأدمن فقط تصحّح الأسئلة (نفس عددها)، ثم يُعاد تصحيح نتائجهم ويصلهم إشعار
+      if (solved && RANK[me.role] < RANK.admin) throw new Error('حلّه أطفال بالفعل — تصحيح الأسئلة للأدمن فقط');
     }
     const oldQs = old ? quizQuestions_(old.quiz_id) : [];
+    if (solved && list.length !== oldQs.length) throw new Error('حلّه أطفال بالفعل: يمكن تصحيح الأسئلة فقط، بدون إضافة أو حذف أسئلة');
     const clean = list.map((q, i) => cleanQuestion_(q, i, oldQs));
     const f = { title, prophet_id: p.prophet_id ? prophetRef_(p.prophet_id) : '', lecture_id: p.lecture_id ? ownLecture_(me, p).lecture_id : '', updated_at: now_() };
-    let id;
-    if (old) {
-      id = old.quiz_id;
-      update_('Quizzes', 'quiz_id', id, f);
-      remove_('Questions', 'quiz_id', id);
-    } else {
-      id = id_('Z');
-      append_('Quizzes', Object.assign(f, { quiz_id: id, class_id: cls_(me, p), status: 'draft', created_by: me.user_id, created_at: now_() }));
-    }
+    // اختبار موجود: الفحص والتعديل وإعادة التصحيح كلها تحت نفس قفل submitQuiz، حتى لا يحل طفل
+    // بالأسئلة القديمة بين الفحص والتعديل (فتضيع إجاباته أو يحتفظ بنجوم المفتاح الخاطئ)
+    if (old) return withLock_(() => {
+      const nowSolved = rows_('Results').some(r => r.quiz_id === old.quiz_id);
+      if (nowSolved) {
+        if (RANK[me.role] < RANK.admin) throw new Error('حلّه أطفال بالفعل — تصحيح الأسئلة للأدمن فقط');
+        const cur = quizQuestions_(old.quiz_id);
+        if (cur.length !== clean.length) throw new Error('حلّه أطفال بالفعل: يمكن تصحيح الأسئلة فقط، بدون إضافة أو حذف أسئلة');
+        const nOpts = (q) => ['opt_a', 'opt_b', 'opt_c', 'opt_d'].filter(k => String(q[k] === undefined ? '' : q[k]).trim()).length;
+        clean.forEach((q, i) => { if (nOpts(q) !== nOpts(cur[i])) throw new Error('السؤال ' + (i + 1) + ': حلّه أطفال، فلا يُضاف اختيار ولا يُحذف — صحّحي نص الاختيار فقط'); });
+        // نفس معرّفات الأسئلة (إجابات الأطفال محفوظة بها)، ثم إعادة التصحيح والإشعار
+        // لا تغيير في الأسئلة نفسها (العنوان فقط مثلًا): لا إعادة تصحيح ولا إشعارات
+        const KEYS = ['text', 'opt_a', 'opt_b', 'opt_c', 'opt_d', 'correct', 'image_file_id'];
+        const changed = clean.some((q, i) => KEYS.some(k => String(q[k] === undefined ? '' : q[k]) !== String(cur[i][k] === undefined ? '' : cur[i][k])));
+        update_('Quizzes', 'quiz_id', old.quiz_id, f);
+        if (!changed) return old.quiz_id;
+        clean.forEach((q, i) => update_('Questions', 'question_id', cur[i].question_id, q));
+        regradeQuiz_(old.quiz_id, title);
+        return old.quiz_id;
+      }
+      update_('Quizzes', 'quiz_id', old.quiz_id, f);
+      remove_('Questions', 'quiz_id', old.quiz_id);
+      clean.forEach(q => append_('Questions', Object.assign(q, { question_id: id_('q'), quiz_id: old.quiz_id })));
+      return old.quiz_id;
+    });
+    const id = id_('Z');
+    append_('Quizzes', Object.assign(f, { quiz_id: id, class_id: cls_(me, p), status: 'draft', created_by: me.user_id, created_at: now_() }));
     clean.forEach(q => append_('Questions', Object.assign(q, { question_id: id_('q'), quiz_id: id })));
     return id;
   },
@@ -876,23 +903,28 @@ const ACTIONS = {
     const kid = me.role === 'student';
     if (kid && z.status !== 'published') throw new Error('الاختبار غير موجود');
     rate_('quiz:' + me.user_id, 30, 600);
-    const qs = quizQuestions_(z.quiz_id);
     const ans = p.answers && typeof p.answers === 'object' ? p.answers : {};
     const chosen = {};
-    let score = 0;
-    const review = qs.map(q => {
-      const a = Number(ans[q.question_id]), c = 'abcd'.indexOf(String(q.correct));
-      const pick = Number.isInteger(a) && a >= 0 && a < 4 ? a : -1;
-      if (pick >= 0) chosen[q.question_id] = pick;
-      if (pick === c) score++;
-      return { question_id: q.question_id, chosen: pick, correct: c, ok: pick === c };
-    });
-    const total = qs.length, stars = total ? Math.round(QUIZ_STARS * score / total) : 0;
+    let score = 0, review = [], total = 0, stars = 0;
+    const grade = () => {
+      const qs = quizQuestions_(z.quiz_id);
+      review = qs.map(q => {
+        const a = Number(ans[q.question_id]), c = 'abcd'.indexOf(String(q.correct));
+        const pick = Number.isInteger(a) && a >= 0 && a < 4 ? a : -1;
+        if (pick >= 0) chosen[q.question_id] = pick;
+        if (pick === c) score++;
+        return { question_id: q.question_id, chosen: pick, correct: c, ok: pick === c };
+      });
+      total = qs.length; stars = total ? Math.round(QUIZ_STARS * score / total) : 0;
+    };
     let first = false, best = null;
     // المعلمة تجرّب الاختبار بدون تسجيل نتيجة أو نجوم
-    if (kid) {
+    if (!kid) grade();
+    else {
+      // التصحيح داخل القفل: لو عدّلت الأدمن الأسئلة (saveQuiz بعد الحل) في نفس اللحظة لا تُحسب النتيجة بالمفتاح القديم بعد إعادة التصحيح
       const lock = LockService.getScriptLock(); lock.waitLock(20000);
       try {
+        grade();
         const prev = rows_('Results').find(r => r.quiz_id === z.quiz_id && r.user_id === me.user_id);
         if (prev) best = { score: Number(prev.score), total: Number(prev.total), stars: Number(prev.stars) || 0 };
         else {
@@ -931,10 +963,13 @@ const ACTIONS = {
     const isT = RANK[me.role] >= RANK.teacher;
     const subs = rows_('Submissions');
     const pid = p.prophet_id ? prophetRef_(p.prophet_id) : '';
-    const kids = isT ? rows_('Users').filter(u => u.class_id === cls_(me, p) && u.role === 'student' && !inactive_(u)).length : 0;
+    const users = isT ? rows_('Users') : [];
+    const kids = users.filter(u => u.class_id === cls_(me, p) && u.role === 'student' && !inactive_(u)).length;
+    const names = {}; users.forEach(u => names[u.user_id] = u.name);
     return rows_('Assignments').filter(a => a.class_id === cls_(me, p) && (!pid || a.prophet_id === pid)).sort(byNewest_).map(a => {
       const o = assignmentOut_(a), mine = subs.filter(s => s.assignment_id === a.assignment_id);
-      if (isT) Object.assign(o, { kids, done: mine.filter(s => s.status === 'done').length, approved: mine.filter(s => s.status === 'approved').length });
+      if (isT) Object.assign(o, { kids, done: mine.filter(s => s.status === 'done').length, approved: mine.filter(s => s.status === 'approved').length,
+        can_manage: canManageHw_(me, a), helpers: helpersOf_(a), created_by: a.created_by || '', created_by_name: names[a.created_by] || '' });
       else { const s = mine.find(x => x.user_id === me.user_id); o.status = s ? s.status : ''; }
       return o;
     });
@@ -945,14 +980,21 @@ const ACTIONS = {
       due: String(p.due || ''), prophet_id: p.prophet_id ? prophetRef_(p.prophet_id) : '', lecture_id: p.lecture_id ? ownLecture_(me, p).lecture_id : '' };
     if (!f.title) throw new Error('اكتبي عنوان الواجب');
     if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) throw new Error('تاريخ غير صحيح');
-    if (p.assignment_id) { const a = ownAssignment_(me, p); update_('Assignments', 'assignment_id', a.assignment_id, f); return a.assignment_id; }
-    const id = id_('W');
-    append_('Assignments', Object.assign(f, { assignment_id: id, class_id: cls_(me, p), created_by: me.user_id, created_at: now_() }));
+    if (p.assignment_id) {
+      const a = manageAssignment_(me, p);
+      // المشاركة تغيّرها صاحبة الواجب أو الأدمن فقط (لا المعلمة المشارَكة)
+      if (p.helpers !== undefined && (a.created_by === me.user_id || RANK[me.role] >= RANK.admin)) f.helpers = cleanHelpers_(p.helpers, a.class_id, a.created_by);
+      update_('Assignments', 'assignment_id', a.assignment_id, f); return a.assignment_id;
+    }
+    const id = id_('W'), cls = cls_(me, p);
+    append_('Assignments', Object.assign(f, { assignment_id: id, class_id: cls, created_by: me.user_id, created_at: now_(), helpers: cleanHelpers_(p.helpers, cls, me.user_id) }));
     return id;
   },
 
+  // الحذف لصاحبة الواجب والأدمن فقط (المعلمة المشارَكة تتابع وتعتمد ولا تحذف)
   deleteAssignment: (p, me) => {
-    const a = ownAssignment_(me, p);
+    const a = manageAssignment_(me, p);
+    if (a.created_by && a.created_by !== me.user_id && RANK[me.role] < RANK.admin) throw new Error('حذف الواجب لصاحبته أو الأدمن فقط');
     remove_('Submissions', 'assignment_id', a.assignment_id);
     remove_('Assignments', 'assignment_id', a.assignment_id);
     return true;
@@ -974,8 +1016,23 @@ const ACTIONS = {
     });
   },
 
+  // إشعارات الطفل غير المقروءة (أحدثها أولًا)
+  notices: (p, me) => rows_('Notices').filter(n => n.user_id === me.user_id && !truthy_(n.read))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 20).map(n => ({ notice_id: n.notice_id, text: n.text, at: n.at })),
+
+  readNotice: (p, me) => {
+    const n = rows_('Notices').find(x => x.notice_id === String(p.notice_id || '') && x.user_id === me.user_id);
+    if (!n) throw new Error('الإشعار غير موجود');
+    update_('Notices', 'notice_id', n.notice_id, { read: true });
+    return true;
+  },
+
+  // معلمات الفصل (لمشاركة الواجب معهن)
+  classTeachers: (p, me) => rows_('Users').filter(u => (u.role === 'teacher' || u.role === 'admin') && u.class_id === cls_(me, p) && u.user_id !== me.user_id && !inactive_(u))
+    .map(u => ({ user_id: u.user_id, name: u.name, role: u.role })),
+
   assignmentStatus: (p, me) => {
-    const a = ownAssignment_(me, p);
+    const a = manageAssignment_(me, p);
     const subs = rows_('Submissions').filter(s => s.assignment_id === a.assignment_id);
     const kids = rows_('Users').filter(u => u.class_id === a.class_id && u.role === 'student' && !inactive_(u)).map(k => {
       const s = subs.find(x => x.user_id === k.user_id);
@@ -986,7 +1043,7 @@ const ACTIONS = {
 
   // approve=true يعتمد (ولو لم يضع الطفل «أنجزت»)، وfalse يرجعه للطفل ليعيده (ويسحب النجوم لو كان معتمدًا)
   reviewAssignment: (p, me) => {
-    const a = ownAssignment_(me, p);
+    const a = manageAssignment_(me, p);
     const kid = rows_('Users').find(u => u.user_id === p.user_id && u.role === 'student' && u.class_id === a.class_id);
     if (!kid) throw new Error('الطالب غير موجود');
     const key = a.assignment_id + ':' + kid.user_id;
@@ -1041,7 +1098,7 @@ const ACTIONS = {
   viewAs: (p, me) => {
     const u = targetUser_(me, p.user_id);
     if (u.active === false) throw new Error('الحساب معطّل');
-    return { token: makeToken_(u, 2 * 3600e3, me.user_id), user: { user_id: u.user_id, name: u.name, role: u.role, class_id: u.class_id, avatar: u.avatar } };
+    return { token: makeToken_(u, 2 * 3600e3, me.user_id), user: { user_id: u.user_id, name: u.name, role: u.role, class_id: u.class_id, avatar: u.avatar, gender: genderOf_(u) } };
   },
 
   setRole: (p, me) => {
@@ -1227,6 +1284,58 @@ function ownAssignment_(me, p) {
   if (!a) throw new Error('الواجب غير موجود');
   return a;
 }
+// صاحبة الواجب، ومن شاركته معها، وأدمن الفصل، والمطوّر (الواجبات القديمة بلا صاحبة: كل معلمات الفصل)
+function helpersOf_(a) { return String(a.helpers || '').split(',').map(x => x.trim()).filter(Boolean); }
+function canManageHw_(me, a) {
+  if (me.role === 'superadmin') return true;
+  if (RANK[me.role] < RANK.teacher || a.class_id !== me.class_id) return false;
+  return me.role === 'admin' || !a.created_by || a.created_by === me.user_id || helpersOf_(a).indexOf(me.user_id) >= 0;
+}
+function manageAssignment_(me, p) {
+  const a = ownAssignment_(me, p);
+  if (!canManageHw_(me, a)) throw new Error('هذا الواجب لمعلمة أخرى — اطلبي منها أن تشاركه معكِ');
+  return a;
+}
+// معلمات من نفس الفصل فقط (لا طلاب ولا فصل آخر)
+function cleanHelpers_(list, classId, owner) {
+  const ids = (Array.isArray(list) ? list : []).map(String);
+  const ok = {}; rows_('Users').forEach(u => { if ((u.role === 'teacher' || u.role === 'admin') && u.class_id === classId && u.user_id !== owner) ok[u.user_id] = 1; });
+  return ids.filter((id, i) => ok[id] && ids.indexOf(id) === i).slice(0, 20).join(',');
+}
+// يحدّث كل الصفوف التي تحقق الشرط (للجداول بلا مفتاح فريد مثل Results)
+function updateWhere_(name, pred, patchOf) {
+  const sh = ss_().getSheetByName(name);
+  const v = sh.getDataRange().getValues(), head = v[0];
+  for (let i = 1; i < v.length; i++) {
+    const o = {}; head.forEach((h, j) => o[h] = v[i][j]);
+    if (!pred(o)) continue;
+    const patch = patchOf(o); if (!patch) continue;
+    Object.keys(patch).forEach(k => { const ci = head.indexOf(k); if (ci >= 0) sh.getRange(i + 1, ci + 1).setValue(cell_(patch[k])); });
+  }
+}
+// بعد تصحيح سؤال في اختبار محلول: نعيد حساب درجة كل طفل ونجومه (الفرق فقط يُضاف أو يُخصم) ونرسل له إشعارًا
+function regradeQuiz_(quizId, title) {
+  const qs = quizQuestions_(quizId), total = qs.length;
+  const t = String(title).slice(0, 60);
+  const ar = (n) => String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d]);
+  const after = [];
+  updateWhere_('Results', r => r.quiz_id === quizId, r => {
+    let a = {}; try { a = JSON.parse(r.answers || '{}') || {}; } catch (e) {}
+    const score = qs.filter(q => a[q.question_id] !== undefined && Number(a[q.question_id]) === 'abcd'.indexOf(String(q.correct))).length;
+    const stars = total ? Math.round(QUIZ_STARS * score / total) : 0;
+    after.push({ user_id: r.user_id, score, diff: stars - (Number(r.stars) || 0) });
+    return { score, total, stars };
+  });
+  // النجوم والإشعارات بعد حفظ النتائج: لو توقف التنفيذ في المنتصف لا تُمنح نفس النجوم مرة ثانية عند الحفظ التالي
+  after.forEach(x => {
+    if (x.diff) addPoints_(x.user_id, x.diff, 'تصحيح اختبار: ' + t);
+    const more = x.diff > 0 ? '، وزادت نجومك بـ' + ar(x.diff) : x.diff < 0 ? '، وتغيّرت نجومك بـ' + ar(-x.diff) + ' بسبب التصحيح' : '';
+    append_('Notices', { notice_id: id_('N'), user_id: x.user_id, at: now_(), read: false,
+      text: 'تم تعديل سؤال في اختبار «' + t + '» لأنه كان فيه خطأ من عندنا، مش منك. نتيجتك الآن ' + ar(x.score) + ' من ' + ar(total) + more + '.' });
+  });
+}
+function cleanGender_(g) { return g === 'f' ? 'f' : 'm'; }
+function genderOf_(u) { return u && u.gender === 'f' ? 'f' : 'm'; }
 function quizQuestions_(id) { return rows_('Questions').filter(q => q.quiz_id === id).sort(bySort_); }
 function quizOut_(z) { return { quiz_id: z.quiz_id, title: z.title, status: z.status, prophet_id: z.prophet_id || '', lecture_id: z.lecture_id || '', created_at: z.created_at }; }
 function assignmentOut_(a) { return { assignment_id: a.assignment_id, title: a.title, details: a.details, due: a.due ? day_(a.due) : '', prophet_id: a.prophet_id || '', lecture_id: a.lecture_id || '', created_at: a.created_at }; }

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon3D } from "@/components/icon3d";
 import { cn, questionCount } from "@/lib/utils";
+import { KidAvatar } from "@/components/kid/kid-avatar";
 
 const n = (v: number) => v.toLocaleString("ar-EG");
 
@@ -34,7 +35,7 @@ export default function TeacherQuizzes() {
   };
   const edit = (z: Quiz) => run(`e${z.quiz_id}`, async () => {
     const full = await api<QuizFull>("quiz", { quiz_id: z.quiz_id });
-    setDraft({ quiz_id: z.quiz_id, title: z.title, prophet_id: z.prophet_id, questions: full.questions });
+    setDraft({ quiz_id: z.quiz_id, title: z.title, prophet_id: z.prophet_id, questions: full.questions, locked: !!z.results });
   });
   const toggle = (z: Quiz, on: boolean) => run(z.quiz_id, () => api("setQuizStatus", { quiz_id: z.quiz_id, status: on ? "published" : "draft" }), on ? "تم نشر الاختبار للأطفال" : "تم إخفاء الاختبار");
   const del = async () => { if (delFor && await run("del", () => api("deleteQuiz", { quiz_id: delFor.quiz_id }), "تم حذف الاختبار")) setDelFor(null); };
@@ -60,12 +61,12 @@ export default function TeacherQuizzes() {
                 </div>
                 <div className="flex gap-2">
                   <Button variant="secondary" size="lg2" className="flex-1" aria-label={`نتائج ${z.title}`} onClick={() => setResultsFor(z)}><BarChart3 /> النتائج</Button>
-                  {(z.status === "draft" || isAdmin) && !z.results && (
+                  {((z.status === "draft" && !z.results) || isAdmin) && (
                     <Button variant="secondary" size="icon-xl" aria-label={`تعديل ${z.title}`} disabled={!!pending} onClick={() => edit(z)}>{pending === `e${z.quiz_id}` ? <Loader2 className="animate-spin" /> : <Pencil />}</Button>
                   )}
                   {(z.status === "draft" || isAdmin) && <Button variant="ghost" size="icon-xl" className="text-destructive" aria-label={`حذف ${z.title}`} onClick={() => setDelFor(z)}><Trash2 /></Button>}
                 </div>
-                {!!z.results && <p className="text-xs text-muted-foreground">حلّه أطفال، فلا تتغير أسئلته — للتعديل أنشئي اختبارًا جديدًا</p>}
+                {!!z.results && <p className="text-xs text-muted-foreground">{isAdmin ? "حلّه أطفال — لو في سؤال غلط صحّحيه بالقلم، ويُعاد تصحيح نتائجهم ويصلهم إشعار" : "حلّه أطفال — تصحيح أسئلته للأدمن"}</p>}
                 {!isAdmin && z.status === "published" && !z.results && <p className="text-xs text-muted-foreground">منشور — التعديل والحذف للأدمن</p>}
                 {isAdmin ? (
                   <label className="flex items-center justify-between rounded-2xl bg-secondary/50 p-3 font-bold">
@@ -123,7 +124,7 @@ function ResultsDialog({ quiz, onClose }: { quiz: Quiz | null; onClose: () => vo
               <ul className="grid gap-2">
                 {data.kids.map((k) => (
                   <li key={k.user_id} data-testid="result-kid" className="flex flex-wrap items-center gap-2 rounded-2xl border p-3">
-                    <span className="text-xl" aria-hidden>{k.avatar || "🙂"}</span>
+                    <KidAvatar value={k.avatar} size={36} />
                     <span className="flex-1 font-bold">{k.name}</span>
                     {k.done ? (
                       <>

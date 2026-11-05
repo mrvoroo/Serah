@@ -28,7 +28,7 @@ export const SYMBOL_OPTIONS: { value: string; label: string }[] = [
 // رمز النبي في المجسم: ما اختارته الأدمن، أو الرمز المراجَع لو لم تختر (أو بقي رمز يوسف القديم)
 function symbolOf(r: ProphetRow) {
   const def = mainSymbol(r.prophet_id);
-  if (def && (!r.symbol || (r.prophet_id === "yusuf" && r.symbol === "yusuf_dream"))) return { symbol: def.main, name: r.symbol_name || def.label };
+  if (def && (def.unified || !r.symbol || (r.prophet_id === "yusuf" && r.symbol === "yusuf_dream"))) return { symbol: def.main, name: def.unified ? def.label : r.symbol_name || def.label };
   return { symbol: r.symbol || undefined, name: r.symbol_name || undefined };
 }
 

@@ -13,6 +13,7 @@ import { Icon3D } from "@/components/icon3d";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { g } from "@/lib/kid-text";
 
 const SPEEDS = [1, 1.25, 1.5, 0.75];
 const fmt = (s: number) => { if (!isFinite(s)) return "0:00"; const m = Math.floor(s / 60); const x = Math.floor(s % 60); return `${m}:${String(x).padStart(2, "0")}`; };
@@ -131,14 +132,14 @@ export function Player({ id }: { id: string }) {
           <button type="button" onClick={cycleSpeed} className="rounded-full bg-secondary px-4 py-1.5 text-sm font-bold">السرعة ×{SPEEDS[speed]}</button>
         </div>
         {source.loading && <p role="status" className="mt-3 text-center text-sm font-bold text-muted-foreground">جاري تجهيز التسجيل… {source.pct.toLocaleString("ar-EG")}٪</p>}
-        {(failed || source.error) && !source.loading && <p role="alert" className="mt-3 text-center text-sm font-bold text-destructive">تعذّر تشغيل الصوت، تأكد من الإنترنت وحاول تاني</p>}
+        {(failed || source.error) && !source.loading && <p role="alert" className="mt-3 text-center text-sm font-bold text-destructive">{g("تعذّر تشغيل الصوت، تأكد من الإنترنت وحاول تاني", "تعذّر تشغيل الصوت، تأكدي من الإنترنت وحاولي تاني")}</p>}
       </div>
 
       <AnimatePresence>
         {(done || already) && (
           <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="flex items-center gap-3 rounded-[28px] bg-gradient-to-l from-emerald-500 to-teal-600 p-4 text-white shadow-soft">
             <Icon3D name="party" size={56} float />
-            <div><p className="font-heading text-xl font-extrabold">{done && !already ? "برافو! كسبت ١٠ نجوم" : "سمعت المحاضرة دي قبل كده"}</p><p className="text-white/85">كمّل رحلتك مع الأنبياء</p></div>
+            <div><p className="font-heading text-xl font-extrabold">{done && !already ? "برافو! كسبت ١٠ نجوم" : "سمعت المحاضرة دي قبل كده"}</p><p className="text-white/85">{g("كمّل رحلتك مع الأنبياء", "كمّلي رحلتك مع الأنبياء")}</p></div>
           </motion.div>
         )}
       </AnimatePresence>
