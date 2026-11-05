@@ -4,3 +4,6 @@ secrets*
 node_modules/
 .clasp.json
 .DS_Store
+
+# اختبارات المختبِر الاستكشافية (مؤقتة)
+app/e2e/qa/
