@@ -140,7 +140,7 @@ export default function AdminHome() {
               {h.bot?.webhook !== undefined && <p className="text-muted-foreground">الويب هوك: <span dir="ltr">{h.bot.webhook || "غير مضبوط (يعمل بالاستعلام الدوري)"}</span></p>}
               <p><span className="font-bold">المشغّلات:</span> <span dir="ltr">{h.triggers.join("، ") || "لا يوجد"}</span></p>
               <ul className="grid grid-cols-2 gap-1">
-                {h.settings.map((s) => (
+                {(h.settings ?? []).map((s) => (
                   <li key={s.key} className="flex items-center gap-1.5" dir="ltr">
                     {s.set ? <CheckCircle2 className="size-4 text-emerald-500" aria-label="مضبوط" /> : <XCircle className="size-4 text-destructive" aria-label="غير مضبوط" />}<span className="font-mono text-xs">{s.key}</span>
                   </li>

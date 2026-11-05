@@ -1,3 +1,3 @@
 import { QuranPage } from "@/components/kid/quran-page";
-export const metadata = { title: "القرآن الكريم | رحلة مع الأنبياء" };
+export const metadata = { title: "القرآن الكريم | المُنْتَهَى" };
 export default function Page() { return <QuranPage />; }

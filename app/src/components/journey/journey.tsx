@@ -266,7 +266,7 @@ export function Journey({ stations }: { stations: Station[] }) {
             key={s.id}
             id={`station-${s.id}`}
             data-station={s.id}
-            className={cn("flex min-h-svh items-end px-4 pb-28 pt-24 md:items-center md:px-[6vw] md:pb-16 lg:pe-16", dots ? "lg:ps-[84px]" : "lg:ps-[250px]", i % 2 ? "md:justify-end" : "md:justify-start")}
+            className={cn("flex min-h-svh items-end px-4 pb-32 pt-24 md:items-center md:px-[6vw] md:pb-16 lg:pe-16", dots ? "lg:ps-[84px]" : "lg:ps-[250px]", i % 2 ? "md:justify-end" : "md:justify-start")}
           >
             <BlurFade inView inViewMargin="-20% 0px" className="w-full md:max-w-md">
               <div data-card className="rounded-[28px] border bg-card/90 p-5 shadow-soft backdrop-blur-md md:p-6">
@@ -278,7 +278,7 @@ export function Journey({ stations }: { stations: Station[] }) {
                     {i === 0 ? (
                       <SplitText text={s.title} tag="h1" className="mt-2 text-4xl font-extrabold leading-tight text-foreground md:text-5xl" splitType="words" effect="rise" trigger="load" textAlign="right" />
                     ) : (
-                      <h2 className="mt-2 text-3xl font-extrabold leading-tight md:text-4xl">{s.title}</h2>
+                      <h2 className="mt-2 text-2xl font-extrabold leading-tight sm:text-3xl md:text-4xl">{s.title}</h2>
                     )}
                   </div>
                 </div>

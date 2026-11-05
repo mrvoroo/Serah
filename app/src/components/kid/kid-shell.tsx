@@ -10,6 +10,7 @@ import { useMotionAllowed } from "@/lib/tier";
 import { ThemeToggle } from "@/components/theme-toggle";
 import ClickSpark from "@/components/ClickSpark";
 import { cn } from "@/lib/utils";
+import { BrandMark } from "@/components/brand-logo";
 
 const NAV = [
   { href: "/kid/", label: "الرئيسية", icon: Home },
@@ -57,11 +58,8 @@ export function KidShell({ children }: { children: ReactNode }) {
     <div className="relative min-h-svh pb-28">
       <header className="sticky top-0 z-30 px-3 pt-3">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 rounded-3xl border bg-card/85 px-3 py-2 shadow-soft backdrop-blur-md">
-          <Link href={staff ? "/kid/journey/" : "/kid/"} className="flex items-center gap-2 font-heading text-lg font-extrabold">
-            <span className="grid size-10 place-items-center rounded-2xl bg-hero text-white">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
-            </span>
-            رحلة مع الأنبياء
+          <Link href={staff ? "/kid/journey/" : "/kid/"} className="flex items-center gap-2" aria-label="المُنْتَهَى — الرئيسية">
+            <BrandMark />
           </Link>
           <div className="flex items-center gap-2">
             <ThemeToggle />

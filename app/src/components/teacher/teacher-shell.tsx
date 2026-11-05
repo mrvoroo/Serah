@@ -11,6 +11,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn, teacherTitle } from "@/lib/utils";
 import { EncouragementCloud } from "@/components/teacher/encouragement-cloud";
+import { BrandMark } from "@/components/brand-logo";
 
 const RANK: Record<Role, number> = { student: 0, teacher: 1, admin: 2, superadmin: 3 };
 
@@ -32,11 +33,8 @@ export const TEACHER_NAV: { href: string; label: string; icon: typeof Users; min
 
 function Brand({ role }: { role?: Role }) {
   return (
-    <Link href={role === "superadmin" ? "/admin/" : "/teacher/"} className="flex items-center gap-2 font-heading text-lg font-extrabold">
-      <span className="grid size-10 place-items-center rounded-2xl bg-hero text-white">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
-      </span>
-      رحلة مع الأنبياء
+    <Link href={role === "superadmin" ? "/admin/" : "/teacher/"} className="flex items-center gap-2" aria-label="المُنْتَهَى — الرئيسية">
+      <BrandMark />
     </Link>
   );
 }

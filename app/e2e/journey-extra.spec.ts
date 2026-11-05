@@ -42,7 +42,7 @@ test("الموبايل: الشريط العلوي يعرض «٣ من ٢٥ — س
   const b = (await bar.boundingBox())!, card = (await page.locator("#station-muhammad [data-card]").boundingBox())!;
   expect(b.y + b.height).toBeLessThan(card.y);
   await bar.click();
-  await expect(page.getByRole("dialog").getByRole("button", { name: "محمد ﷺ", exact: true })).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("dialog").getByRole("button", { name: "سيدنا محمد ﷺ", exact: true })).toHaveAttribute("aria-current", "true");
 });
 
 test("الكمبيوتر: اسم النبي على النقطة عند المرور عليها", async ({ page, isMobile }) => {
@@ -50,7 +50,7 @@ test("الكمبيوتر: اسم النبي على النقطة عند المر�
   await page.addInitScript(() => localStorage.setItem("serah_journey_menu", "dots"));
   await open(page);
   await page.getByRole("button", { name: "سيدنا نوح عليه السلام" }).hover();
-  await expect(page.getByText("٣ · نوح", { exact: true })).toBeVisible();
+  await expect(page.getByText("٣ · سيدنا نوح", { exact: true })).toBeVisible();
 });
 
 test("رمز يوسف (رؤيا الشمس والقمر والكواكب) ودوران الرمز مع السكرول", async ({ page, isMobile }) => {
@@ -97,5 +97,22 @@ test("صورة لكل محطة للمراجعة بالعين", async ({ page, is
     await expect.poll(async () => { const d = await dbg(page); return d.shape === id && d.progress >= 1; }, { timeout: 15_000 }).toBe(true);
     await page.waitForTimeout(900);
     await page.screenshot({ path: `${SHOTS}/station-${String(i).padStart(2, "0")}-${id}.png` });
+  }
+});
+
+test("الموبايل: زر «ادخل الصفحة» لا يختفي تحت الشريط السفلي في أي محطة", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "للموبايل");
+  await open(page);
+  const nav = await page.getByRole("navigation", { name: "التنقل الرئيسي" }).boundingBox();
+  for (const id of ["noah", "musa", "dhulkifl", "sulayman", "muhammad"]) {
+    // مثل القائمة: أعلى المحطة عند أعلى الشاشة (الموضع من الصفحة نفسها، لا من الحاوية)
+    await page.evaluate((id) => {
+      const el = document.getElementById(`station-${id}`)!, y = el.getBoundingClientRect().top + scrollY;
+      const l = (window as unknown as { __lenis?: { scrollTo: (y: number, o: object) => void } }).__lenis;
+      if (l) l.scrollTo(y, { immediate: true }); else window.scrollTo(0, y);
+    }, id);
+    await page.waitForTimeout(600);
+    const btn = await page.locator(`#station-${id}`).getByRole("link", { name: "ادخل الصفحة" }).boundingBox();
+    expect(btn!.y + btn!.height, id).toBeLessThanOrEqual(nav!.y + 2);
   }
 });

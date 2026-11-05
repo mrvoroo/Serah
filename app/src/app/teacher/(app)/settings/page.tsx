@@ -16,7 +16,7 @@ export default function SettingsPage() {
   const [newPin, setNew] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [tgUrl, setTgUrl] = useState("");
-  useEffect(() => { if (cc.data) setCode(cc.data.code); }, [cc.data]);
+  useEffect(() => { if (cc.data) setCode(cc.data.code ?? ""); }, [cc.data]);
 
   const saveCode = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy("code");

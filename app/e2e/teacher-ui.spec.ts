@@ -42,7 +42,7 @@ test("دخول المعلمة: المرشدة ترحّب، تتأمل مع ال�
   await expect(page).toHaveURL(/\/Serah\/teacher\/$/);
   // لوحة المعلمة: ترحيب وقور، والمرشدة تتأمل لأن فيه مسودة تنتظر المراجعة
   await expect(page.getByText("السلام عليكم ورحمة الله وبركاته")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "مرحبًا بكِ، المعلمة" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "مرحبًا بكِ، أ. المعلمة" })).toBeVisible();
   await expect(guide()).toHaveAccessibleName("المرشدة تتأمل");
   await expect(page.getByRole("img", { name: /^زيد/ })).toHaveCount(0);
 });

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { useHydrated } from "@/hooks/use-hydrated";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function TeacherLogin() {
   const router = useRouter();
@@ -48,9 +49,10 @@ export default function TeacherLogin() {
       </div>
       <main className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-4 px-4 pb-10">
         <BlurFade><Murshida mood={mood} size={140} /></BlurFade>
-        <div className="text-center">
+        <div className="flex flex-col items-center text-center">
+          <BrandLogo size={64} glow className="mb-3" />
           <h1 className="font-heading text-3xl font-extrabold">أهلًا وسهلًا بكِ</h1>
-          <p className="mt-2 text-sm leading-7 text-muted-foreground">يسعدنا تشريفكِ منصةَ «رحلة مع الأنبياء»، تفضّلي بتسجيل الدخول</p>
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">يسعدنا تشريفكِ منصةَ «المُنْتَهَى»، تفضّلي بتسجيل الدخول</p>
         </div>
         <form onSubmit={submit} className="flex w-full flex-col gap-3 rounded-[28px] border bg-card/90 p-5 shadow-soft backdrop-blur-md">
           <Label htmlFor="tn">الاسم</Label>

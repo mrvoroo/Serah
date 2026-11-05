@@ -17,6 +17,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useHydrated } from "@/hooks/use-hydrated";
+import { BrandLogo } from "@/components/brand-logo";
 
 type ClassInfo = { class_id: string; name: string; kids: Kid[] };
 
@@ -68,7 +69,11 @@ export default function Welcome() {
       </div>
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 pb-10">
         <Zaid mood={mood} size={170} />
-        <h1 className="text-center text-4xl font-extrabold leading-tight">رحلة مع الأنبياء</h1>
+        <div className="flex flex-col items-center gap-2">
+          <BrandLogo size={88} glow />
+          <h1 className="text-center font-heading text-4xl font-extrabold leading-tight">المُنْتَهَى</h1>
+          <p className="text-sm font-bold text-muted-foreground">رحلة مع الأنبياء والقرآن الكريم</p>
+        </div>
         <div className="w-full rounded-[32px] border bg-card/90 p-5 shadow-soft backdrop-blur-md">
           <AnimatePresence mode="wait">
             {step === "code" && (
