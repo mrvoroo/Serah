@@ -8,7 +8,7 @@ import { api, driveImage, fmtDate, type Lecture, type Me } from "@/lib/api";
 import { useAudioSource } from "@/hooks/use-media-key";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { useMotionAllowed } from "@/lib/tier";
-import { Zaid } from "@/components/zaid";
+import { KidBuddy } from "@/components/kid-buddy";
 import { Icon3D } from "@/components/icon3d";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buttonVariants } from "@/components/ui/button";
@@ -77,7 +77,7 @@ export function Player({ id }: { id: string }) {
   if (loading && !data) return <div className="flex flex-col gap-4"><Skeleton className="aspect-[4/3] rounded-[32px]" /><Skeleton className="h-40 rounded-[32px]" /></div>;
   if (!lecture) return (
     <div className="flex flex-col items-center gap-3 rounded-[28px] border bg-card p-6 text-center">
-      <Zaid mood="thinking" size={120} />
+      <KidBuddy mood="thinking" size={120} />
       <p className="font-bold">المحاضرة دي مش موجودة</p>
       <Link href="/kid/lectures/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>كل المحاضرات</Link>
     </div>
@@ -94,7 +94,7 @@ export function Player({ id }: { id: string }) {
               initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: animate ? 0.8 : 0 }}
               className="absolute inset-0 size-full object-cover" />
           ) : (
-            <motion.div key="ph" className="absolute inset-0 grid place-items-center"><Zaid mood={playing ? "happy" : "helping"} size={180} /></motion.div>
+            <motion.div key="ph" className="absolute inset-0 grid place-items-center"><KidBuddy mood={playing ? "happy" : "helping"} size={180} /></motion.div>
           )}
         </AnimatePresence>
         {images.length > 1 && (

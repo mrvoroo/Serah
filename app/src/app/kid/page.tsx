@@ -5,7 +5,7 @@ import { useState } from "react";
 import { api, session, fmtDate, type Assignment, type Lecture, type Me, type Notice, type Quiz } from "@/lib/api";
 import { RT } from "@/components/religious-text";
 import { invalidate, useApi } from "@/hooks/use-api";
-import { Zaid } from "@/components/zaid";
+import { KidBuddy } from "@/components/kid-buddy";
 import { Icon3D, type Icon3DName } from "@/components/icon3d";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { NumberTicker } from "@/components/ui/number-ticker";
@@ -45,7 +45,7 @@ export default function KidHome() {
       <BlurFade delay={0.05}>
         <section className="relative overflow-hidden rounded-[32px] bg-hero p-5 text-white shadow-soft">
           <div className="flex items-center gap-3">
-            <Zaid mood="happy" size={110} />
+            <KidBuddy mood="happy" size={110} />
             <div className="flex-1">
               <p className="text-white/80">السلام عليكم</p>
               <h1 className="font-heading text-3xl font-extrabold">يا {user?.name ?? g("بطل", "بطلة")}!</h1>
@@ -129,6 +129,7 @@ export default function KidHome() {
           </div>
         </SpotlightCard>
       </BlurFade>
+      <Link href="/about/" className="mx-auto text-sm font-bold text-muted-foreground underline-offset-4 hover:underline">من نحن ✨</Link>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { BlurFade } from "@/components/ui/blur-fade";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Icon3D } from "@/components/icon3d";
-import { Zaid } from "@/components/zaid";
+import { KidBuddy } from "@/components/kid-buddy";
 import { g } from "@/lib/kid-text";
 
 export default function LecturesPage() {
@@ -30,14 +30,14 @@ export default function LecturesPage() {
       {loading && !data && [0, 1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-[28px]" />)}
       {error && !data && (
         <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">
-          <Zaid mood="surprised" size={100} />
+          <KidBuddy mood="surprised" size={100} />
           <p>{error}</p>
           <button className="font-bold text-primary" onClick={reload}>{g("حاول تاني", "حاولي تاني")}</button>
         </div>
       )}
       {data?.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">
-          <Zaid mood="thinking" size={110} />
+          <KidBuddy mood="thinking" size={110} />
           <p className="font-bold">لسه مفيش محاضرات، قريبًا إن شاء الله</p>
         </div>
       )}

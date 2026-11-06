@@ -62,6 +62,7 @@ export default function TeacherLogin() {
           <Button type="submit" variant="hero" size="xl" disabled={busy}>{busy ? <Loader2 className="animate-spin" /> : <>دخول <LogIn /></>}</Button>
           <p role="alert" className="min-h-5 text-center text-sm font-bold text-destructive">{err || reason}</p>
         </form>
+        <Link href="/about/" className="text-sm font-bold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">من نحن ✨</Link>
       </main>
     </div>
   );

@@ -125,6 +125,7 @@ export default function Welcome() {
           <p role="alert" className={cn("mt-2 min-h-6 text-center text-sm font-bold text-destructive", !err && "invisible")}>{err || "."}</p>
         </div>
         {busy && step === "code" && <Skeleton className="h-2 w-24 rounded-full" />}
+        <Link href="/about/" className="text-sm font-bold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">من نحن ✨</Link>
       </main>
     </div>
   );

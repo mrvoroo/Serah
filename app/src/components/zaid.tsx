@@ -3,7 +3,8 @@ import { motion } from "motion/react";
 import { useMotionAllowed } from "@/lib/tier";
 import { cn } from "@/lib/utils";
 
-// زيد: الشخصية المرافقة. كل إحساس = مجموعة أجزاء (عيون، حواجب، فم، ذراعين)
+// زيد: الشخصية المرافقة للأولاد، و«حبيبة» للبنات (girl): نفس المشاعر والحركات، ولها حجاب وردي وفستان ورموش ودبوس وردة.
+// كل إحساس = مجموعة أجزاء (عيون، حواجب، فم، ذراعين)
 export type Mood = "happy" | "surprised" | "thinking" | "helping" | "play" | "cheer";
 const PARTS: Record<Mood, string[]> = {
   happy: ["eyesClosed", "browsNormal", "mouthLaugh", "armsDown"],
@@ -14,10 +15,13 @@ const PARTS: Record<Mood, string[]> = {
   cheer: ["eyesOpen", "browsNormal", "mouthSmile", "armsUp"],
 };
 const LABEL: Record<Mood, string> = { happy: "زيد فرحان", surprised: "زيد مستغرب", thinking: "زيد بيفكر", helping: "زيد بيسلّم", play: "زيد عايز يلعب", cheer: "زيد بيشجع" };
+const GIRL_LABEL: Record<Mood, string> = { happy: "حبيبة فرحانة", surprised: "حبيبة مستغربة", thinking: "حبيبة بتفكر", helping: "حبيبة بتسلّم", play: "حبيبة عايزة تلعب", cheer: "حبيبة بتشجع" };
+const HIJAB = "#FF8CC1", HIJAB_SHADE = "#E8609F";
 
-export function Zaid({ mood = "happy", size = 160, className, float = true }: { mood?: Mood; size?: number; className?: string; float?: boolean }) {
+export function Zaid({ mood = "happy", size = 160, className, float = true, girl = false }: { mood?: Mood; size?: number; className?: string; float?: boolean; girl?: boolean }) {
   const animate = useMotionAllowed();
   const on = new Set(PARTS[mood]);
+  const CLOTH = girl ? "#C94FA0" : "#6D4AFF";
   return (
     <motion.svg
       key={mood}
@@ -25,7 +29,7 @@ export function Zaid({ mood = "happy", size = 160, className, float = true }: { 
       height={size * 1.2}
       viewBox="0 0 200 240"
       role="img"
-      aria-label={LABEL[mood]}
+      aria-label={girl ? GIRL_LABEL[mood] : LABEL[mood]}
       className={cn("shrink-0 select-none", className)}
       initial={animate ? { scale: 0.85, rotate: -4, opacity: 0 } : false}
       // بدون حركة: نثبته ظاهرًا (وإلا يبقى شفافًا لو أُلغيت الحركة بعد أول رسم — مثل «تقليل الحركة»)
@@ -35,15 +39,27 @@ export function Zaid({ mood = "happy", size = 160, className, float = true }: { 
 
   {on.has("armsBack") && (<g>
     <path d="M66 192 Q40 196 30 176" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M66 192 Q40 196 30 176" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M66 192 Q40 196 30 176" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <path d="M134 192 Q160 196 170 176" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M134 192 Q160 196 170 176" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M134 192 Q160 196 170 176" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <circle cx="30" cy="173" r="11" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="3.5" />
     <circle cx="170" cy="173" r="11" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="3.5" />
   </g>)}
-  <path d="M50 240 C50 196 72 170 100 170 C128 170 150 196 150 240 Z" fill="#6D4AFF" stroke="#2A1E3F" strokeWidth="4" strokeLinejoin="round" />
+  <path d="M50 240 C50 196 72 170 100 170 C128 170 150 196 150 240 Z" fill={CLOTH} stroke="#2A1E3F" strokeWidth="4" strokeLinejoin="round" />
   <path d="M84 172 Q100 190 116 172" fill="none" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" />
   <circle cx="122" cy="210" r="8" fill="#FFC93C" stroke="#2A1E3F" strokeWidth="3" />
+  {girl ? (<>
+  {/* حبيبة: حجاب وردي يحيط بالوجه وينسدل على الكتفين، وشريط أمامي، ودبوس وردة */}
+  <path d="M34 128 C26 66 60 32 100 32 C140 32 174 66 166 128 C168 166 152 188 128 190 L72 190 C48 188 32 166 34 128 Z" fill={HIJAB} stroke="#2A1E3F" strokeWidth="4" strokeLinejoin="round" />
+  <path d="M52 168 Q64 184 60 194 M148 168 Q136 184 140 194" fill="none" stroke={HIJAB_SHADE} strokeWidth="3" strokeLinecap="round" />
+  <circle cx="100" cy="106" r="58" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="4" />
+  <path d="M44 100 C46 60 72 42 100 42 C128 42 154 60 156 100 C140 78 120 70 100 70 C80 70 60 78 44 100 Z" fill={HIJAB} stroke="#2A1E3F" strokeWidth="3.5" strokeLinejoin="round" />
+  <path d="M60 80 Q100 60 140 80" fill="none" stroke={HIJAB_SHADE} strokeWidth="3" strokeLinecap="round" />
+  <g transform="translate(150 88)">
+    {[0, 72, 144, 216, 288].map((a) => <ellipse key={a} cx="0" cy="-7" rx="5" ry="7" fill="#FFF3F8" stroke="#2A1E3F" strokeWidth="2" transform={`rotate(${a})`} />)}
+    <circle r="4.5" fill="#FFC93C" stroke="#2A1E3F" strokeWidth="2" />
+  </g>
+  </>) : (<>
   <circle cx="44" cy="110" r="13" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="4" />
   <circle cx="156" cy="110" r="13" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="4" />
   <circle cx="100" cy="106" r="58" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="4" />
@@ -55,6 +71,7 @@ export function Zaid({ mood = "happy", size = 160, className, float = true }: { 
   <circle cx="120" cy="48" r="3" fill="#CFC4FF" />
   <circle cx="90" cy="58" r="2.5" fill="#CFC4FF" />
   <circle cx="110" cy="58" r="2.5" fill="#CFC4FF" />
+  </>)}
   <circle cx="68" cy="126" r="9" fill="#FF8FA3" opacity="0.45" />
   <circle cx="132" cy="126" r="9" fill="#FF8FA3" opacity="0.45" />
   <path d="M97 114 Q100 119 104 114" fill="none" stroke="#2A1E3F" strokeWidth="3.5" strokeLinecap="round" />
@@ -95,6 +112,9 @@ export function Zaid({ mood = "happy", size = 160, className, float = true }: { 
     <path transform="translate(122 104)" d="M0 -13 L3.8 -4.3 L13 -4 L6 2.4 L8 12 L0 7 L-8 12 L-6 2.4 L-13 -4 L-3.8 -4.3 Z" />
   </g>)}
 
+  {girl && !on.has("eyesClosed") && (<g fill="none" stroke="#2A1E3F" strokeWidth="3" strokeLinecap="round">
+    <path d="M68 97 L62 92 M71 93 L67 87" /><path d="M132 97 L138 92 M129 93 L133 87" />
+  </g>)}
   </motion.g>
   {on.has("mouthLaugh") && (<g>
     <path d="M84 128 Q100 152 116 128 Z" fill="#7A2238" stroke="#2A1E3F" strokeWidth="3.5" strokeLinejoin="round" />
@@ -112,22 +132,22 @@ export function Zaid({ mood = "happy", size = 160, className, float = true }: { 
 
   {on.has("armsDown") && (<g>
     <path d="M66 194 Q50 210 54 230" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M66 194 Q50 210 54 230" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M66 194 Q50 210 54 230" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <path d="M134 194 Q150 210 146 230" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M134 194 Q150 210 146 230" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M134 194 Q150 210 146 230" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
   </g>)}
   {on.has("armsChin") && (<g>
     <path d="M66 194 Q50 210 54 230" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M66 194 Q50 210 54 230" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M66 194 Q50 210 54 230" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <path d="M134 194 Q150 172 122 158" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M134 194 Q150 172 122 158" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M134 194 Q150 172 122 158" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <circle cx="118" cy="155" r="11" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="3.5" />
   </g>)}
   {on.has("armsPoint") && (<g>
     <path d="M134 194 Q150 210 146 230" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M134 194 Q150 210 146 230" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M134 194 Q150 210 146 230" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <path d="M66 194 Q40 180 36 152" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M66 194 Q40 180 36 152" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M66 194 Q40 180 36 152" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <g fill="none" strokeLinecap="round">
       <path d="M26 142 L17 134 M28 131 L23 116 M35 128 L34 111 M41 129 L44 114 M46 133 L53 122" stroke="#2A1E3F" strokeWidth="10" />
       <path d="M26 142 L17 134 M28 131 L23 116 M35 128 L34 111 M41 129 L44 114 M46 133 L53 122" stroke="#F6C9A4" strokeWidth="5" />
@@ -139,17 +159,17 @@ export function Zaid({ mood = "happy", size = 160, className, float = true }: { 
     <circle cx="100" cy="214" r="21" fill="#FFB020" stroke="#2A1E3F" strokeWidth="4" />
     <path d="M79 214 L121 214 M100 193 Q113 214 100 235 M100 193 Q87 214 100 235" fill="none" stroke="#2A1E3F" strokeWidth="3" />
     <path d="M66 194 Q66 212 80 214" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M66 194 Q66 212 80 214" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M66 194 Q66 212 80 214" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <path d="M134 194 Q134 212 120 214" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M134 194 Q134 212 120 214" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M134 194 Q134 212 120 214" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <circle cx="82" cy="214" r="10" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="3.5" />
     <circle cx="118" cy="214" r="10" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="3.5" />
   </g>)}
   {on.has("armsUp") && (<g>
     <path d="M66 194 Q44 172 42 146" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M66 194 Q44 172 42 146" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M66 194 Q44 172 42 146" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <path d="M134 194 Q156 172 158 146" fill="none" stroke="#2A1E3F" strokeWidth="22" strokeLinecap="round" />
-    <path d="M134 194 Q156 172 158 146" fill="none" stroke="#6D4AFF" strokeWidth="14" strokeLinecap="round" />
+    <path d="M134 194 Q156 172 158 146" fill="none" stroke={CLOTH} strokeWidth="14" strokeLinecap="round" />
     <circle cx="42" cy="140" r="12" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="3.5" />
     <circle cx="158" cy="140" r="12" fill="#F6C9A4" stroke="#2A1E3F" strokeWidth="3.5" />
   </g>)}

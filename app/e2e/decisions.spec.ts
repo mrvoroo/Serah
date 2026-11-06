@@ -98,3 +98,42 @@ test("ذو الكفل وإلياس واليسع: الرمز الموحد «نب�
   await expect(stage.getByRole("tab")).toHaveCount(0);
   await expect(stage.getByText("اضغط على الشكل")).toHaveCount(0);
 });
+
+test("البنت يرافقها «حبيبة» بدل «زيد»", async ({ page }) => {
+  await mock(page, GIRL, (b) => (b.action === "me" ? { points: 0, attended: [], rank: 1, total: 1, gender: "f" } : undefined));
+  await page.goto("/Serah/kid/");
+  await expect(page.getByRole("img", { name: /^حبيبة/ }).first()).toBeVisible();
+  await expect(page.getByRole("img", { name: /^زيد/ })).toHaveCount(0);
+});
+
+test("الولد الذي غيّرته المعلمة لبنت: الشخصية تتحول لحبيبة بدون خروج", async ({ page }) => {
+  await mock(page, { ...GIRL, gender: "m" }, (b) => (b.action === "me" ? { points: 0, attended: [], rank: 1, total: 1, gender: "f" } : undefined));
+  await page.goto("/Serah/kid/");
+  await expect(page.getByRole("img", { name: /^حبيبة/ }).first()).toBeVisible();
+});
+
+test("إدارة الرحلة: تحديد عدة أنبياء وإخفاؤهم مرة واحدة، وإظهار الكل", async ({ page }, info) => {
+  // WebKit على ويندوز لا يعتبر الصف «ثابتًا» أبدًا (نفس مشكلة الرسم السابقة)، فنضغط مباشرة هناك
+  const force = info.project.name === "iphone";
+  const rows = ["nuh", "hud", "salih"].map((id, i) => ({ prophet_id: id, name: id, title: "", tag: "", text: "", symbol: "", symbol_name: "", visible: true, items: 0, pending: 0, sort: i }));
+  const calls = await mock(page, { user_id: "T1", name: "المعلمة", role: "admin", class_id: "C1", avatar: "" }, (b) => (b.action === "journeyAdmin" ? rows : b.action === "setProphetsVisible" ? 2 : undefined));
+  await page.goto("/Serah/teacher/journey/");
+  await page.getByRole("checkbox", { name: "تحديد nuh" }).click({ force });
+  await expect(page.getByRole("checkbox", { name: "تحديد nuh" })).toBeChecked();
+  await page.getByRole("checkbox", { name: "تحديد salih" }).click({ force });
+  await page.getByRole("button", { name: /إخفاء المحدد/ }).click();
+  await expect.poll(() => calls.find((c) => c.action === "setProphetsVisible")).toMatchObject({ ids: ["nuh", "salih"], visible: false });
+  await page.getByRole("button", { name: /إظهار الكل/ }).click();
+  await expect.poll(() => calls.filter((c) => c.action === "setProphetsVisible").length).toBe(2);
+  expect(calls.filter((c) => c.action === "setProphetsVisible")[1]).toMatchObject({ all: true, visible: true });
+});
+
+test("صفحة «من نحن»: الصورة والنبذة والدعوة، ورابطها في صفحة الدخول", async ({ page }) => {
+  await page.goto("/Serah/");
+  await page.getByRole("link", { name: /من نحن/ }).click();
+  await expect(page).toHaveURL(/\/about\/$/);
+  await expect(page.getByRole("img", { name: "م. احمد أشرف" })).toBeVisible();
+  await expect(page.getByText("جامعة الملك سعود").first()).toBeVisible();
+  await expect(page.getByText("ادعولي اتجوز")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});

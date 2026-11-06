@@ -9,7 +9,7 @@ import { BlurFade } from "@/components/ui/blur-fade";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Icon3D } from "@/components/icon3d";
-import { Zaid } from "@/components/zaid";
+import { KidBuddy } from "@/components/kid-buddy";
 import { cn, questionCount } from "@/lib/utils";
 import { RT } from "@/components/religious-text";
 import { g } from "@/lib/kid-text";
@@ -49,7 +49,7 @@ export default function KidTasks() {
         {quizzes.loading && !quizzes.data && <Skeleton className="h-24 rounded-[28px]" />}
         {quizzes.error && !quizzes.data && <p className="rounded-[28px] border bg-card p-4 text-center">{quizzes.error} <button className="font-bold text-primary" onClick={quizzes.reload}>{g("حاول تاني", "حاولي تاني")}</button></p>}
         {quizzes.data?.length === 0 && (
-          <div className="flex items-center gap-3 rounded-[28px] border bg-card p-4"><Zaid mood="thinking" size={80} /><p className="font-bold">لسه مفيش اختبارات، قريبًا إن شاء الله</p></div>
+          <div className="flex items-center gap-3 rounded-[28px] border bg-card p-4"><KidBuddy mood="thinking" size={80} /><p className="font-bold">لسه مفيش اختبارات، قريبًا إن شاء الله</p></div>
         )}
         <ul className="flex flex-col gap-3">
           {quizzes.data?.map((z, i) => (

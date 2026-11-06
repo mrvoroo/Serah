@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, DownloadCloud, GripVertical, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, DownloadCloud, GripVertical, Loader2, Pencil, Plus, Trash2, Eye, EyeOff } from "lucide-react";
 import { Icon3D } from "@/components/icon3d";
 import { api } from "@/lib/api";
 import { invalidate, useApi } from "@/hooks/use-api";
@@ -29,6 +29,9 @@ export default function JourneyAdmin() {
   const [form, setForm] = useState<Form | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
   const [order, setOrder] = useState<ProphetAdminRow[] | null>(null);
+  // تحديد عدة أنبياء لإظهارهم أو إخفائهم مرة واحدة
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const list = order ?? data ?? [];
 
   const refresh = () => { invalidate("journey"); invalidate("prophet"); return reload(); };
@@ -44,6 +47,8 @@ export default function JourneyAdmin() {
     if (to < 0 || to >= list.length || to === i) return;
     const next = list.slice(); const [x] = next.splice(i, 1); next.splice(to, 0, x); saveOrder(next);
   };
+  const bulk = (visible: boolean, all = false) => run("bulk", () => api("setProphetsVisible", all ? { all: true, visible } : { ids: [...sel], visible }),
+    all ? (visible ? "كل الأنبياء ظاهرين للأطفال" : "تم إخفاء كل الأنبياء") : visible ? `ظهر ${sel.size.toLocaleString("ar-EG")} للأطفال` : `تم إخفاء ${sel.size.toLocaleString("ar-EG")}`).then(() => setSel(new Set()));
   const save = () => form && run("form", () => api("saveProphet", { ...form }), form.prophet_id ? "تم حفظ التعديل" : "تمت إضافة القسم").then(() => setForm(null));
 
   return (
@@ -63,12 +68,31 @@ export default function JourneyAdmin() {
               {busy === "seed" ? <Loader2 className="animate-spin" /> : <DownloadCloud />} استيراد أقسام الرحلة
             </Button>
           </div>
-        ) : (
+        ) : (<>
+          <div role="toolbar" aria-label="إظهار وإخفاء مجمّع" className="z-10 flex sm:sticky sm:top-2 flex-wrap items-center gap-2 rounded-[24px] border bg-card/95 p-3 shadow-soft backdrop-blur">
+            <label className="flex items-center gap-2 font-bold">
+              <input type="checkbox" className="size-5 accent-[var(--primary)]" aria-label="تحديد الكل"
+                checked={list.length > 0 && sel.size === list.length} onChange={(e) => setSel(e.target.checked ? new Set(list.map((p) => p.prophet_id)) : new Set())} />
+              {sel.size ? `تم تحديد ${sel.size.toLocaleString("ar-EG")}` : "تحديد الكل"}
+            </label>
+            <span className="flex-1" />
+            {sel.size > 0 ? (<>
+              <Button variant="hero" size="lg2" disabled={!!busy} onClick={() => bulk(true)}><Eye /> إظهار المحدد</Button>
+              <Button variant="secondary" size="lg2" disabled={!!busy} onClick={() => bulk(false)}><EyeOff /> إخفاء المحدد</Button>
+            </>) : (<>
+              <Button variant="secondary" size="lg2" disabled={!!busy} onClick={() => bulk(true, true)}><Eye /> إظهار الكل</Button>
+              <Button variant="secondary" size="lg2" disabled={!!busy} onClick={() => bulk(false, true)}><EyeOff /> إخفاء الكل</Button>
+            </>)}
+            {busy === "bulk" && <Loader2 className="animate-spin" />}
+          </div>
           <ol className="grid gap-2">
             {list.map((p, i) => (
               <li key={p.prophet_id} data-testid="prophet-row" draggable onDragStart={() => setDrag(i)} onDragOver={(e) => e.preventDefault()}
                 onDrop={() => { if (drag !== null) move(drag, i); setDrag(null); }}
                 className={cn("flex flex-wrap items-center gap-3 rounded-[24px] border bg-card p-3 shadow-soft", !p.visible && "opacity-60", drag === i && "ring-2 ring-gold")}>
+                <label className="grid size-10 shrink-0 cursor-pointer place-items-center" onPointerDown={(e) => e.stopPropagation()}>
+                  <input type="checkbox" className="size-5 accent-[var(--primary)]" aria-label={`تحديد ${p.name}`} checked={sel.has(p.prophet_id)} onChange={() => toggleSel(p.prophet_id)} />
+                </label>
                 <GripVertical className="hidden size-5 cursor-grab text-muted-foreground sm:block" aria-hidden />
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-sm font-bold">{(i + 1).toLocaleString("ar-EG")}</span>
                 <div className="min-w-0 flex-1">
@@ -91,6 +115,7 @@ export default function JourneyAdmin() {
               </li>
             ))}
           </ol>
+        </>
         )}
 
       <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>

@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { api, driveImage, type QuizFull, type QuizSubmit } from "@/lib/api";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { useMotionAllowed } from "@/lib/tier";
-import { Zaid } from "@/components/zaid";
+import { KidBuddy } from "@/components/kid-buddy";
 import { Icon3D } from "@/components/icon3d";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buttonVariants } from "@/components/ui/button";
@@ -62,7 +62,7 @@ export function QuizPlayer({ id }: { id: string }) {
     return (
       <div className="flex flex-col gap-4">
         <section className="flex flex-col items-center gap-2 rounded-[32px] bg-hero p-5 text-center text-white shadow-soft" aria-live="polite">
-          <Zaid mood={mood} size={130} />
+          <KidBuddy mood={mood} size={130} />
           <h1 ref={heading} tabIndex={-1} className="font-heading text-3xl font-extrabold outline-none">{pct === 1 ? "ما شاء الله! كله صح" : pct >= 0.5 ? g("شاطر! أحسنت، بارك الله فيك", "شاطرة! أحسنتِ، بارك الله فيكِ") : "ولا يهمك، المرة الجاية أحسن إن شاء الله"}</h1>
           <p className="text-xl font-bold">جاوبت {n(result.score)} من {n(result.total)} صح</p>
           <p className="text-sm text-white/85">نتعلم قصص الأنبياء عشان نقتدي بيهم ونرضي ربنا</p>
@@ -99,7 +99,7 @@ export function QuizPlayer({ id }: { id: string }) {
   if (step < 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-[32px] border bg-card p-6 text-center shadow-soft">
-        <Zaid mood="thinking" size={140} />
+        <KidBuddy mood="thinking" size={140} />
         <h1 className="font-heading text-3xl font-extrabold">{data.quiz.title}</h1>
         <p className="text-lg text-muted-foreground">{questionCount(qs.length)} · {g("اختار", "اختاري")} الإجابة الصح في كل سؤال</p>
         {data.mine ? (
@@ -162,7 +162,7 @@ export function QuizPlayer({ id }: { id: string }) {
 function Empty({ text, retry }: { text: string; retry?: () => void }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">
-      <Zaid mood="surprised" size={100} />
+      <KidBuddy mood="surprised" size={100} />
       <p className="font-bold">{text}</p>
       {retry && <button type="button" className={buttonVariants({ variant: "hero", size: "lg2" })} onClick={retry}>{g("حاول تاني", "حاولي تاني")}</button>}
       <Link href="/kid/tasks/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>رجوع للاختبارات</Link>

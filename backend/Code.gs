@@ -138,6 +138,8 @@ function normDigits_(s) {
     .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660))
     .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x06F0));
 }
+// اسم المعلمة/المطوّر للدخول بدون اللقب: «م.احمد» و«م. احمد» و«احمد» واحد، و«أ. مروة» = «مروة»
+function staffName_(s) { return normName_(s).replace(/^(ا|م|د)\s*[.\/]\s*/, ''); }
 function normName_(s) {
   return String(s == null ? '' : s).trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
 }
@@ -244,6 +246,7 @@ const POLICY = {
   saveProphet: { min: 'admin', write: 1, audit: 1 },
   deleteProphet: { min: 'admin', write: 1, audit: 1 },
   reorderProphets: { min: 'admin', write: 1, audit: 1 },
+  setProphetsVisible: { min: 'admin', write: 1, audit: 1 },
   saveContent: { min: 'admin', write: 1, audit: 1 },
   setContentFlags: { min: 'admin', write: 1, audit: 1 },
   deleteContent: { min: 'admin', write: 1, audit: 1 },
@@ -314,6 +317,8 @@ function migrate_() {
     Object.keys(SCHEMA).forEach(ensureSheet_);
     if (!prop_('AUDIO_FIXED')) { try { fixAudioTypes_(); props_().setProperty('AUDIO_FIXED', '1'); } catch (e) { console.error(e); } }
     if (!prop_('AUDIO_WEBM')) { try { convertOldAudio_(); props_().setProperty('AUDIO_WEBM', '1'); } catch (e) { console.error(e); } }
+    // اسم حساب المطوّر «احمد» (اللقب «م.» يُضاف عند العرض فقط) — مرة واحدة
+    if (!prop_('SA_RENAMED')) { try { rows_('Users').filter(u => u.role === 'superadmin' && normName_(u.name) === normName_('م.احمد')).forEach(u => update_('Users', 'user_id', u.user_id, { name: 'احمد' })); props_().setProperty('SA_RENAMED', '1'); } catch (e) { console.error(e); } }
     props_().setProperty('SCHEMA_VERSION', String(VERSION));
   } finally { lock.releaseLock(); }
 }
@@ -336,7 +341,7 @@ const ACTIONS = {
     const users = rows_('Users');
     // الطفل بالمعرّف، والمعلمة بالاسم فقط (حتى لا يكون لها عدادا تخمين منفصلان)
     let u = p.user_id ? users.find(x => x.user_id === String(p.user_id) && x.role === 'student')
-                      : users.find(x => x.role !== 'student' && normName_(x.name) === normName_(p.name));
+                      : users.find(x => x.role !== 'student' && staffName_(x.name) === staffName_(p.name));
     // حساب غير موجود: لا نكتب صفًا في LoginAttempts (يكبر الشيت بلا حد)، بل إبطاء عام
     if (!u) { codeFail_('loginFails'); throw new Error('الرمز غير صحيح'); }
     const a = checkLock_(key);
@@ -530,6 +535,19 @@ const ACTIONS = {
   },
 
   reorderProphets: (p) => { reorder_('Prophets', 'prophet_id', p.ids); return true; },
+
+  // إظهار/إخفاء عدة أنبياء مرة واحدة (ids فارغة أو all=true = كل الأقسام)
+  setProphetsVisible: (p) => {
+    const visible = p.visible === true || p.visible === 'true';
+    const rows = rows_('Prophets');
+    const ids = p.all ? rows.map(r => r.prophet_id) : (Array.isArray(p.ids) ? p.ids.map(String) : []);
+    if (!ids.length) throw new Error('اختاري نبيًا واحدًا على الأقل');
+    if (ids.length > 100) throw new Error('عدد كبير');
+    const known = {}; rows.forEach(r => known[r.prophet_id] = 1);
+    const ok = ids.filter(id => known[id]);
+    updateWhere_('Prophets', r => ok.indexOf(String(r.prophet_id)) >= 0, () => ({ visible, updated_at: now_() }));
+    return ok.length;
+  },
 
   // عنصر في صفحة النبي: text نص، audio/image ملف على درايف (من startUpload)، youtube رابط فيديو
   // العنصر الجديد غير معتمد حتى تعتمده الأدمن (المراجعة الشرعية)
@@ -1213,7 +1231,7 @@ function staffTarget_(me, user_id) {
 }
 // الدخول بالاسم، فلا يتكرر اسم بين المعلمات
 function uniqueStaffName_(name, exceptId) {
-  if (rows_('Users').some(u => u.role !== 'student' && u.user_id !== exceptId && normName_(u.name) === normName_(name))) throw new Error('يوجد حساب بنفس الاسم، اختاري اسمًا آخر');
+  if (rows_('Users').some(u => u.role !== 'student' && u.user_id !== exceptId && staffName_(u.name) === staffName_(name))) throw new Error('يوجد حساب بنفس الاسم، اختاري اسمًا آخر');
 }
 function targetUser_(me, user_id) {
   const u = rows_('Users').find(x => x.user_id === user_id);
@@ -1440,7 +1458,7 @@ function prophetKb_(list, other) {
 }
 // اسم النبي مع اللقب الواجب: «ﷺ» لنبينا محمد، و«عليه السلام» لباقي الأنبياء
 // «أ.» (أستاذة) قبل اسم المعلمة احترامًا، إلا لو بدأ الاسم بلقب أو كان الحساب للمطوّر
-function teacherTitle_(u) { const n = String(u.name || '').trim(); return !n || u.role === 'superadmin' || /^(أ|د|م)\s*[./]/.test(n) ? n : 'أ. ' + n; }
+function teacherTitle_(u) { const n = String(u.name || '').trim(); if (!n || /^(أ|د|م)\s*[./]/.test(n)) return n; return (u.role === 'superadmin' ? 'م. ' : 'أ. ') + n; }
 function honored_(p) { const n = String(p.name).replace(/\s*(ﷺ|عليه السلام)\s*$/, ''); return p.prophet_id === 'muhammad' ? n + ' ﷺ' : n + ' عليه السلام'; }
 function suggestTitle_(p) { return p.prophet_id === 'muhammad' ? 'من سيرة سيدنا محمد ﷺ' : 'قصة سيدنا ' + honored_(p); }
 // SITE_ORIGIN قد يُكتب بالمسار (https://mrvoroo.github.io/Serah) كما في README: نفصل الأصل عن رابط الموقع
@@ -1796,7 +1814,7 @@ function seedFirstClass() {
 function createSuperAdmin() {
   const pin = normDigits_(prop_('NEW_SUPER_PIN'));
   if (!/^\d{6,}$/.test(pin)) throw new Error('ضع NEW_SUPER_PIN في Script Properties (6 أرقام على الأقل) ثم شغّلها مرة أخرى');
-  const NAME = 'م.احمد';
+  const NAME = 'احمد';
   ensureSheet_('Users'); ensureSheet_('AuditLog');
   const existing = rows_('Users').find(u => u.role === 'superadmin');
   let user_id;

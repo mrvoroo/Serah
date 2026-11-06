@@ -1234,6 +1234,30 @@ test('تصحيح سؤال محلول: لا يُحذف اختيار (الإجاب
   assert.strictEqual(t.call('me', {}, tok.kid).data.gender, 'f');
 });
 
+test('إظهار/إخفاء الأنبياء مرة واحدة (الكل أو المحدد) للأدمن فقط', () => {
+  const t = setup();
+  const tok = { admin: t.login({ name: 'المعلمة', pin: '482615' }), teacher: t.login({ name: 'معلمة ثانية', pin: '222222' }) };
+  t.call('seedProphets', { list: SEED }, tok.admin);
+  const vis = () => t.g.rows_('Prophets').filter(r => r.visible === true || String(r.visible).toUpperCase() === 'TRUE').map(r => r.prophet_id);
+  const all = t.g.rows_('Prophets').map(r => r.prophet_id);
+  assert.ok(!t.call('setProphetsVisible', { all: true, visible: false }, tok.teacher).ok);
+  assert.strictEqual(t.call('setProphetsVisible', { all: true, visible: false }, tok.admin).data, all.length);
+  assert.deepStrictEqual(vis(), []);
+  assert.strictEqual(t.call('setProphetsVisible', { ids: [all[0], all[1], 'nope'], visible: true }, tok.admin).data, 2);
+  assert.deepStrictEqual(vis(), [all[0], all[1]]);
+  assert.match(t.call('setProphetsVisible', { ids: [], visible: true }, tok.admin).error, /اختاري/);
+});
+
+test('اسم المطوّر «احمد» يدخل بـ«احمد» أو «م.احمد» أو «م. احمد»، ولقب البوت «م. احمد»', () => {
+  const t = setup();
+  t.call('ping');
+  assert.strictEqual(t.g.rows_('Users').find(u => u.role === 'superadmin').name, 'احمد');
+  for (const name of ['احمد', 'م.احمد', 'م. احمد', 'أحمد']) assert.ok(t.call('login', { name, pin: '987654' }).ok, name);
+  // لا يمكن إنشاء معلمة باسم يطابق المطوّر بعد حذف اللقب
+  const admin = t.login({ name: 'المعلمة', pin: '482615' });
+  assert.match(t.call('addTeacher', { name: 'م. احمد', pin: '123456' }, admin).error, /بنفس الاسم/);
+});
+
 for (const [name, fn] of tests) {
   try { fn(); console.log('✔', name); } catch (e) { failed++; console.log('✘', name, '\n   ', e.message); }
 }

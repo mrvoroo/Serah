@@ -9,7 +9,7 @@ import { ruqaaFont } from "@/lib/particles/font";
 import { BlurFade } from "@/components/ui/blur-fade";
 import SplitText from "@/components/SplitText";
 import { buttonVariants } from "@/components/ui/button";
-import { Zaid } from "@/components/zaid";
+import { KidBuddy } from "@/components/kid-buddy";
 import { BranchedMenu, type BranchedMenuItem } from "@/components/branched-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -297,8 +297,8 @@ export function Journey({ stations }: { stations: Station[] }) {
             <BlurFade inView inViewMargin="-20% 0px" className="w-full md:max-w-md">
               <div data-card className="rounded-[28px] border bg-card/90 p-5 shadow-soft backdrop-blur-md md:p-6">
                 <div className="flex items-center gap-3">
-                  {i === 0 && <Zaid mood="helping" size={84} />}
-                  {i === stations.length - 1 && <Zaid mood="happy" size={84} />}
+                  {i === 0 && <KidBuddy mood="helping" size={84} />}
+                  {i === stations.length - 1 && <KidBuddy mood="happy" size={84} />}
                   <div>
                     <span className="inline-block rounded-full bg-secondary px-3 py-1 text-xs font-bold text-secondary-foreground">{s.id === "start" ? g(s.tag, s.tag.replace("يا بطل", "يا بطلة")) : s.tag}</span>
                     {i === 0 ? (
