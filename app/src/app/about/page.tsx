@@ -12,7 +12,7 @@ import { useMotionAllowed } from "@/lib/tier";
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const TEAM = [
   { href: "/about/ahmad/", name: "أحمد", role: "نظم المعلومات · Odoo · Oracle SCM", photo: "/about/ahmad.jpg", pos: "center" },
-  { href: "/about/abdullah/", name: "عبد الله", role: "أمن سيبراني · برمجة · ذكاء اصطناعي", photo: "/about/abdullah.jpg", pos: "center 20%" },
+  { href: "/about/abdullah/", name: "عبد الله", role: "أمن سيبراني · برمجة · ذكاء اصطناعي", photo: "/about/abdullah.jpg", pos: "center" },
 ];
 
 export default function About() {
@@ -33,14 +33,14 @@ export default function About() {
         </motion.h1>
 
         {/* صورة الفريق: إطار ذهبي متحرك يطفو */}
-        <motion.figure className="relative w-full max-w-sm" initial={animate ? { opacity: 0, scale: 0.9, rotate: -3 } : false} animate={{ opacity: 1, scale: 1, rotate: 0 }}
+        <motion.figure className="relative w-full max-w-[18rem] sm:max-w-xs" initial={animate ? { opacity: 0, scale: 0.9, rotate: -3 } : false} animate={{ opacity: 1, scale: 1, rotate: 0 }}
           transition={{ type: "spring", stiffness: 120, damping: 14 }}>
           <motion.div aria-hidden className="absolute -inset-1.5 rounded-[44px]" style={{ background: "conic-gradient(from 0deg, #FFC24D, #FF6FB5, #9C8BFF, #2FD3C0, #FFC24D)" }}
             animate={animate ? { rotate: [0, 2, -2, 0] } : undefined} transition={{ duration: 6, repeat: Infinity }} />
           <motion.div aria-hidden className="absolute -inset-6 rounded-[56px] bg-[#FFC24D]/20 blur-3xl" animate={animate ? { opacity: [0.4, 0.8, 0.4] } : undefined} transition={{ duration: 4, repeat: Infinity }} />
           <motion.div className="relative overflow-hidden rounded-[40px] bg-[#140B35]" animate={animate ? { y: [0, -10, 0] } : undefined} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${base}/about/team.jpg`} alt="أحمد وعبد الله" className="aspect-[3/4] w-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
+            <img src={`${base}/about/team.jpg`} alt="أحمد وعبد الله" className="aspect-[9/16] w-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
           </motion.div>
           <figcaption className="mt-4 text-center font-heading text-lg font-extrabold">أحمد وعبد الله — صحاب وشركاء الحلم 🤝</figcaption>
         </motion.figure>

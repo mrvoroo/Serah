@@ -4,7 +4,7 @@ import { ProfilePage, Float3DText } from "@/components/about/profile-page";
 // الصفحة الشخصية: عبد الله
 export default function AbdullahPage() {
   return (
-    <ProfilePage photo="/about/abdullah.jpg" photoPosition="center 20%" name="عبد الله" line="طالب أمن سيبراني · مبرمج"
+    <ProfilePage photo="/about/abdullah.jpg" name="عبد الله" line="طالب أمن سيبراني · مبرمج"
       skills={["الأمن السيبراني", "برمجة", "الذكاء الاصطناعي", "Cyber Security"]} floaters={["key", "gem", "sparkles"]}
       closing={<Float3DText emoji="🤲" sub="ربنا يوفّقه وينفع بيه 🌙">ادعوله بالتوفيق</Float3DText>}>
       <p>السلام عليكم ورحمة الله وبركاته 👋</p>
