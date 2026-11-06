@@ -128,12 +128,47 @@ test("إدارة الرحلة: تحديد عدة أنبياء وإخفاؤهم �
   expect(calls.filter((c) => c.action === "setProphetsVisible")[1]).toMatchObject({ all: true, visible: true });
 });
 
-test("صفحة «من نحن»: الصورة والنبذة والدعوة، ورابطها في صفحة الدخول", async ({ page }) => {
+test("صفحة «من نحن»: الفريق ثم صفحة أحمد الشخصية، ورابطها في صفحة الدخول", async ({ page }) => {
   await page.goto("/Serah/");
   await page.getByRole("link", { name: /من نحن/ }).click();
   await expect(page).toHaveURL(/\/about\/$/);
-  await expect(page.getByRole("img", { name: "م. احمد أشرف" })).toBeVisible();
+  await expect(page.getByText("اتنين صحاب")).toBeVisible();
+  await expect(page.getByRole("link", { name: "الصفحة الشخصية: عبد الله" })).toHaveAttribute("href", /\/about\/abdullah\/$/);
+  await page.getByRole("link", { name: "الصفحة الشخصية: أحمد" }).click();
+  await expect(page).toHaveURL(/\/about\/ahmad\/$/);
   await expect(page.getByText("جامعة الملك سعود").first()).toBeVisible();
   await expect(page.getByText("ادعولي اتجوز")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
+test("اللوجو وزر «الرئيسية» يرجعان كل مستخدم لرئيسيته، والزر يختفي على الرئيسية", async ({ page }) => {
+  await mock(page, GIRL);
+  await page.goto("/Serah/kid/tasks/");
+  await expect(page.getByRole("link", { name: "المُنْتَهَى — الرئيسية" })).toHaveAttribute("href", /\/kid\/$/);
+  await page.getByRole("link", { name: "رجوع للرئيسية" }).click();
+  await expect(page).toHaveURL(/\/Serah\/kid\/$/);
+  await expect(page.getByRole("link", { name: "رجوع للرئيسية" })).toHaveCount(0);
+});
+
+test("المعلمة داخل صفحات الطفل: اللوجو يرجعها للوحتها", async ({ page }) => {
+  await mock(page, { user_id: "T2", name: "معلمة", role: "teacher", class_id: "C1", avatar: "" });
+  await page.goto("/Serah/kid/quran/");
+  await expect(page.getByRole("link", { name: "المُنْتَهَى — الرئيسية" })).toHaveAttribute("href", /\/teacher\/$/);
+  await expect(page.getByRole("link", { name: "رجوع للرئيسية" })).toHaveAttribute("href", /\/teacher\/$/);
+});
+
+test("أسماء الله الحسنى: ٩٩ اسمًا، والبحث، وبطاقة الاسم بالمعنى والدليل، والتنقل والعداد", async ({ page }) => {
+  await mock(page, GIRL);
+  await page.goto("/Serah/kid/names/");
+  await expect(page.getByRole("list", { name: "الأسماء" }).getByRole("button")).toHaveCount(99);
+  await page.getByLabel("بحث في الأسماء").fill("رحمن");
+  await expect(page.getByRole("list", { name: "الأسماء" }).getByRole("button")).toHaveCount(1);
+  await page.getByRole("button", { name: /^الرحمن —/ }).click();
+  const d = page.getByRole("dialog", { name: "اسم الله الرحمن" });
+  await expect(d).toBeVisible();
+  await expect(d.locator("[data-ayah-text]").first()).toBeVisible();
+  await d.getByRole("button", { name: "الاسم التالي" }).click();
+  await expect(page.getByRole("dialog", { name: "اسم الله الرحيم" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText(/تعرّفتِ على ٢ من ٩٩/)).toBeVisible();
 });

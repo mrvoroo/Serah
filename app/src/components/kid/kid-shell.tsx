@@ -11,6 +11,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import ClickSpark from "@/components/ClickSpark";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-logo";
+import { HomeBack } from "@/components/home-back";
 
 const NAV = [
   { href: "/kid/", label: "الرئيسية", icon: Home },
@@ -19,7 +20,7 @@ const NAV = [
   { href: "/kid/stars/", label: "النجوم", icon: Trophy },
 ];
 // المعلمات والأدمن والمطوّر يفتحن الرحلة وصفحات الأنبياء والقرآن كما يراها الطفل، مع زر رجوع للوحة بدل تنقل الطفل
-const STAFF_PATHS = /^\/kid\/(journey|prophet|quran|swords)(\/|$)/;
+const STAFF_PATHS = /^\/kid\/(journey|prophet|quran|swords|names)(\/|$)/;
 const STAFF_NAV = [
   { href: "/kid/journey/", label: "الرحلة", icon: Map },
   { href: "/kid/quran/", label: "القرآن", icon: BookOpen },
@@ -69,10 +70,11 @@ export function KidShell({ children }: { children: ReactNode }) {
     <div className="relative min-h-svh pb-28">
       <header className="sticky top-0 z-30 px-3 pt-3">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 rounded-3xl border bg-card/85 px-3 py-2 shadow-soft backdrop-blur-md">
-          <Link href={staff ? "/kid/journey/" : "/kid/"} className="flex items-center gap-2" aria-label="المُنْتَهَى — الرئيسية">
+          <Link href={user ? homeOf(user.role) : "/kid/"} className="flex items-center gap-2" aria-label="المُنْتَهَى — الرئيسية">
             <BrandMark />
           </Link>
           <div className="flex items-center gap-2">
+            <HomeBack />
             <ThemeToggle />
             <button type="button" onClick={logout} aria-label="خروج" className="grid size-11 place-items-center rounded-2xl bg-secondary text-secondary-foreground"><LogOut className="size-5" /></button>
           </div>

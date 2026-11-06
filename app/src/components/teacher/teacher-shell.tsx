@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { cn, teacherTitle } from "@/lib/utils";
 import { EncouragementCloud } from "@/components/teacher/encouragement-cloud";
 import { BrandMark } from "@/components/brand-logo";
+import { HomeBack } from "@/components/home-back";
 
 const RANK: Record<Role, number> = { student: 0, teacher: 1, admin: 2, superadmin: 3 };
 
@@ -96,7 +97,7 @@ export function TeacherShell({ children, roles = ["teacher", "admin", "superadmi
             <div className="lg:hidden"><Brand role={role} /></div>
             <p className="hidden font-heading text-lg font-extrabold lg:block">أهلًا {teacherTitle(user?.name, user?.role)}</p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2"><HomeBack /><ThemeToggle /></div>
         </header>
         <main className="mx-auto max-w-6xl p-4 lg:p-6">{user ? children : null}</main>
         {user && user.role !== "superadmin" && <EncouragementCloud />}

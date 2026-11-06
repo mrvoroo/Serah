@@ -23,6 +23,7 @@ const TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] =
   { href: "/kid/lectures/", label: "المحاضرات", icon: "headphone", tone: "from-[#2FB5A3] to-[#167A6E]" },
   { href: "/kid/stars/", label: "لوحة النجوم", icon: "trophy", tone: "from-[#FFB020] to-[#E07A00]" },
   { href: "/kid/quran/", label: "القرآن الكريم", icon: "open-book", tone: "from-[#1FA37F] to-[#0E6B52]" },
+  { href: "/kid/names/", label: "أسماء الله الحسنى", icon: "sparkles", tone: "from-[#3A2A8F] to-[#120A30]" },
 ];
 
 export default function KidHome() {
@@ -106,10 +107,10 @@ export default function KidHome() {
         </Link>
       </BlurFade>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {TILES.map((t, i) => (
-          <BlurFade key={t.href} delay={0.18 + i * 0.05}>
-            <Link href={t.href} className={cn("flex aspect-square flex-col items-center justify-center gap-2 rounded-[28px] bg-gradient-to-br p-2 text-center font-bold text-white shadow-soft transition-transform active:scale-95", t.tone)}>
+          <BlurFade key={t.href} delay={0.18 + i * 0.05} className={cn(i === TILES.length - 1 && "col-span-2 sm:col-span-1")}>
+            <Link href={t.href} className={cn("flex flex-col items-center justify-center gap-2 rounded-[28px]", i === TILES.length - 1 ? "h-full min-h-28 sm:aspect-square" : "aspect-square", " bg-gradient-to-br p-2 text-center font-bold text-white shadow-soft transition-transform active:scale-95", t.tone)}>
               <Icon3D name={t.icon} size={54} float delay={i * 0.3} />
               <span className="text-sm leading-tight">{t.label}</span>
             </Link>
