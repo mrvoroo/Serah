@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { test, expect, type Page, type Route } from "@playwright/test";
 
 // قرارات م. أحمد والوالدة: صيغة المؤنث للبنات، إشعار تصحيح السؤال، مشاركة الواجب، وضع التصحيح للأدمن، والرمز الموحد
@@ -171,4 +172,17 @@ test("أسماء الله الحسنى: ٩٩ اسمًا، والبحث، وبط�
   await expect(page.getByRole("dialog", { name: "اسم الله الرحيم" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByText(/تعرّفتِ على ٢ من ٩٩/)).toBeVisible();
+});
+
+test("أسماء الله الحسنى: الأسماء الثابتة فقط (المجيد لا الماجد)، ولكل اسم دليل", async ({ page }) => {
+  const { names } = JSON.parse(readFileSync("src/content/asma-husna.json", "utf8")) as { names: { plain: string; ref: string; from: string }[] };
+  const plain = names.map((x) => x.plain);
+  expect(new Set(plain).size).toBe(99);
+  for (const bad of ["الماجد", "الواجد", "المنتقم", "الضار", "المذل", "الخافض", "الباقي", "الصبور"]) expect(plain).not.toContain(bad);
+  for (const x of names) { expect(x.ref.length, x.plain).toBeGreaterThan(5); expect(["quran", "sunnah"]).toContain(x.from); }
+  await mock(page, GIRL);
+  await page.goto("/Serah/kid/names/");
+  await page.getByLabel("بحث في الأسماء").fill("المجيد");
+  await page.getByRole("button", { name: /^المجيد —/ }).click();
+  await expect(page.getByRole("dialog", { name: "اسم الله المجيد" }).getByText("ورد في القرآن")).toBeVisible();
 });

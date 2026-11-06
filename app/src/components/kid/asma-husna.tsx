@@ -11,10 +11,11 @@ import { cn } from "@/lib/utils";
 
 // أسماء الله الحسنى: ٩٩ نجمة مضيئة بخط الرقعة في سماء ليلية، والضغط على اسم يفتح بطاقته
 // (المعنى، والشرح، والدليل بخط المصحف، ودرس عملي). المحتوى مراجَع من الشيخ: content/asma-husna.json
-type Name = { n: number; name: string; plain: string; meaning: string; detail: string; ref: string; lesson: string };
+type Name = { n: number; name: string; plain: string; meaning: string; detail: string; ref: string; lesson: string; from?: "quran" | "sunnah" };
 const NAMES = (data as { names: Name[] }).names;
 const NOTE = (data as { meta?: { note?: string } }).meta?.note ?? "";
-const SEEN_KEY = "serah_asma_seen";
+// v2: القائمة صارت على الأسماء الثابتة بالكتاب والسنة فتغيّر الترقيم
+const SEEN_KEY = "serah_asma_seen_v2";
 const ar = (v: number) => v.toLocaleString("ar-EG");
 // إزالة التشكيل للبحث
 const bare = (s: string) => s.replace(/[ً-ْٰـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
@@ -103,7 +104,7 @@ export function AsmaHusna() {
               transition={{ type: "spring", stiffness: 240, damping: 22 }}
               className="relative max-h-[88svh] w-full max-w-md overflow-y-auto rounded-[32px] border border-[#FFC24D]/40 bg-[radial-gradient(ellipse_at_top,#2E1F78_0%,#130B33_70%)] p-6 text-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]">
               <button type="button" onClick={() => setOpen(null)} aria-label="إغلاق" className="absolute end-3 top-3 grid size-10 place-items-center rounded-full bg-white/10"><X className="size-5" /></button>
-              <p className="text-center text-xs font-bold text-white/60">الاسم {ar(cur.n)} من {ar(NAMES.length)}</p>
+              <p className="text-center text-xs font-bold text-white/60">الاسم {ar(cur.n)} من {ar(NAMES.length)}{cur.from && <span className="ms-2 rounded-full bg-white/10 px-2 py-0.5">{cur.from === "quran" ? "ورد في القرآن" : "ورد في السنة"}</span>}</p>
               <div className="relative my-3 grid place-items-center">
                 <motion.div aria-hidden className="absolute size-44 rounded-full bg-[#FFC24D]/25 blur-3xl" animate={animate ? { scale: [1, 1.2, 1] } : undefined} transition={{ duration: 3, repeat: Infinity }} />
                 <h2 className="relative font-ruqaa text-7xl leading-[1.3] text-[#FFD57A] drop-shadow-[0_0_22px_rgba(255,194,77,0.6)]">{cur.plain}</h2>
