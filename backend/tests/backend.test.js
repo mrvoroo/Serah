@@ -1258,6 +1258,33 @@ test('اسم المطوّر «احمد» يدخل بـ«احمد» أو «م.ا�
   assert.match(t.call('addTeacher', { name: 'م. احمد', pin: '123456' }, admin).error, /بنفس الاسم/);
 });
 
+test('أمن: تغيير اللقب («م.احمد»/«د/احمد»…) لا يقسم عداد التخمين لحساب المعلمة/المطوّر', () => {
+  const t = setup();
+  t.call('ping');
+  const variants = ['احمد', 'م.احمد', 'م. احمد', 'م .احمد', 'د.احمد', 'د/احمد', 'أ.احمد', 'أ/ احمد', 'ا. احمد', 'م/احمد'];
+  let locked = false;
+  for (let i = 0; i < 10; i++) { const r = t.call('login', { name: variants[i], pin: '000000' }); if (/انتظر|محاولات كثيرة/.test(r.error || '')) locked = true; }
+  assert.ok(locked, 'one counter for all title variants');
+  assert.match(t.call('login', { name: 'م. احمد', pin: '987654' }).error, /محاولات كثيرة/);
+  const keys = t.g.rows_('LoginAttempts').map(r => r.key).filter(k => /احمد/.test(k));
+  assert.deepStrictEqual(keys, ['login:احمد']);
+});
+
+test('أمن: اسمان قديمان يتطابقان بعد حذف اللقب (أ. مروة / مروة) يدخل كل منهما برمزه لحسابه فقط', () => {
+  const t = setup();
+  t.call('ping');
+  const admin = t.login({ name: 'المعلمة', pin: '482615' });
+  assert.ok(t.call('addTeacher', { name: 'مروة', pin: '111111' }, admin).ok);
+  // صف قديم (قبل staffName_) باسم يطابقه بعد حذف اللقب
+  const row = { user_id: 'Ulegacy', role: 'teacher', name: 'أ. مروة', class_id: 'C1', avatar: '', pin_hash: t.g.hashPin_('222222'), active: true, created_at: 'x' };
+  t.sheets.Users.appendRow(t.g.SCHEMA.Users.map(h => h in row ? row[h] : ''));
+  const a = t.call('login', { name: 'مروة', pin: '111111' }), b = t.call('login', { name: 'أ. مروة', pin: '222222' });
+  assert.ok(a.ok && b.ok);
+  assert.notStrictEqual(a.data.user.user_id, b.data.user.user_id);
+  assert.strictEqual(b.data.user.user_id, 'Ulegacy');
+  assert.ok(!t.call('login', { name: 'مروة', pin: '333333' }).ok);
+});
+
 for (const [name, fn] of tests) {
   try { fn(); console.log('✔', name); } catch (e) { failed++; console.log('✘', name, '\n   ', e.message); }
 }

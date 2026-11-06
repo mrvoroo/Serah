@@ -337,11 +337,17 @@ const ACTIONS = {
 
   // دخول الطفل (user_id + رمز) أو المعلمة (name + رمز)
   login: (p) => {
-    const key = 'login:' + (p.user_id ? String(p.user_id) : normName_(p.name));
+    // عداد التخمين للمعلمة على الاسم بدون اللقب، فلا يُقسم بتغيير «م.»/«أ.»/«د/» أو المسافات
+    const key = 'login:' + (p.user_id ? String(p.user_id) : staffName_(p.name));
     const users = rows_('Users');
     // الطفل بالمعرّف، والمعلمة بالاسم فقط (حتى لا يكون لها عدادا تخمين منفصلان)
-    let u = p.user_id ? users.find(x => x.user_id === String(p.user_id) && x.role === 'student')
-                      : users.find(x => x.role !== 'student' && staffName_(x.name) === staffName_(p.name));
+    let u;
+    if (p.user_id) u = users.find(x => x.user_id === String(p.user_id) && x.role === 'student');
+    else {
+      // حسابات قديمة قد تتطابق بعد حذف اللقب (أ. مروة / مروة): كل منها يدخل برمزه لحسابه هو فقط
+      const sn = staffName_(p.name), same = sn ? users.filter(x => x.role !== 'student' && staffName_(x.name) === sn) : [];
+      u = same.length > 1 ? (same.find(x => x.active !== false && x.pin_hash === hashPin_(p.pin)) || same[0]) : same[0];
+    }
     // حساب غير موجود: لا نكتب صفًا في LoginAttempts (يكبر الشيت بلا حد)، بل إبطاء عام
     if (!u) { codeFail_('loginFails'); throw new Error('الرمز غير صحيح'); }
     const a = checkLock_(key);
@@ -540,7 +546,7 @@ const ACTIONS = {
   setProphetsVisible: (p) => {
     const visible = p.visible === true || p.visible === 'true';
     const rows = rows_('Prophets');
-    const ids = p.all ? rows.map(r => r.prophet_id) : (Array.isArray(p.ids) ? p.ids.map(String) : []);
+    const ids = (p.all === true || p.all === 'true') ? rows.map(r => r.prophet_id) : (Array.isArray(p.ids) ? p.ids.map(String) : []);
     if (!ids.length) throw new Error('اختاري نبيًا واحدًا على الأقل');
     if (ids.length > 100) throw new Error('عدد كبير');
     const known = {}; rows.forEach(r => known[r.prophet_id] = 1);
@@ -678,7 +684,7 @@ const ACTIONS = {
       const pin = normDigits_(p.pin);
       if (!/^\d{6,}$/.test(pin)) throw new Error('رمز المعلمة 6 أرقام على الأقل');
       patch.pin_hash = hashPin_(pin);
-      const key = 'login:' + normName_(u.name);
+      const key = 'login:' + staffName_(u.name);
       clearAttempts_(key, rows_('LoginAttempts').find(r => String(r.key) === key));
     }
     if (p.active !== undefined) patch.active = p.active === true || p.active === 'true';
@@ -1138,7 +1144,7 @@ const ACTIONS = {
     const pin = normDigits_(p.pin);
     if (u.role === 'student' ? !/^\d{4}$/.test(pin) : !/^\d{6,}$/.test(pin)) throw new Error(u.role === 'student' ? 'رمز الطفل 4 أرقام' : 'رمز المعلمة 6 أرقام على الأقل');
     update_('Users', 'user_id', u.user_id, { pin_hash: hashPin_(pin) });
-    const key = 'login:' + (u.role === 'student' ? u.user_id : normName_(u.name));
+    const key = 'login:' + (u.role === 'student' ? u.user_id : staffName_(u.name));
     clearAttempts_(key, rows_('LoginAttempts').find(r => String(r.key) === key));
     return true;
   },
@@ -1777,7 +1783,7 @@ function dots_(pin) { return pin ? '●'.repeat(pin.length) : '○○○○○�
 function checkLinkPin_(chat, d, pin) {
   const u = rows_('Users').find(x => x.user_id === d.user_id);
   if (!u) return startLink_(chat, 'اختاري فصلكِ من الأزرار 👇');
-  const key = 'login:' + normName_(u.name);
+  const key = 'login:' + staffName_(u.name);
   let a;
   try { a = checkLock_(key); } catch (e) { setState_(chat, 'link_class', {}); return say_(chat, String(e.message || e), kb_(rowsOf_(rows_('Classes').map(c => String(c.name)), 2))); }
   if (u.active === false || u.pin_hash !== hashPin_(pin)) {
@@ -1822,7 +1828,7 @@ function createSuperAdmin() {
     user_id = existing.user_id;
     update_('Users', 'user_id', user_id, { pin_hash: hashPin_(pin), active: true });
   } else {
-    if (rows_('Users').some(u => u.role !== 'student' && normName_(u.name) === normName_(NAME))) throw new Error('يوجد حساب آخر بنفس الاسم');
+    if (rows_('Users').some(u => u.role !== 'student' && staffName_(u.name) === staffName_(NAME))) throw new Error('يوجد حساب آخر بنفس الاسم');
     user_id = id_('U');
     append_('Users', { user_id, role: 'superadmin', name: NAME, class_id: '', avatar: '', pin_hash: hashPin_(pin), active: true, created_at: now_() });
   }
