@@ -56,17 +56,17 @@ export function ProfilePage({ photo, photoPosition, name, line, skills, children
         <div className="relative mt-4 grid place-items-center" style={{ perspective: 900 }} onPointerMove={onMove} onPointerLeave={() => { mx.set(0); my.set(0); }}>
           <motion.div aria-hidden className="absolute size-[300px] rounded-full sm:size-[380px]"
             style={{ background: "conic-gradient(from 0deg, #FFC24D, #FF6FB5, #9C8BFF, #2FD3C0, #FFC24D)" }}
-            animate={animate ? { rotate: 360 } : undefined} transition={{ duration: 14, repeat: Infinity, ease: "linear" }} />
+            animate={animate ? { rotate: 360 } : { rotate: 0 }} transition={animate ? { duration: 14, repeat: Infinity, ease: "linear" } : { duration: 0.3 }} />
           <div aria-hidden className="absolute size-[288px] rounded-full bg-[#140B35] sm:size-[366px]" />
           <motion.div aria-hidden className="absolute size-[260px] rounded-full bg-[#FFC24D]/30 blur-3xl sm:size-[330px]"
-            animate={animate ? { scale: [1, 1.12, 1], opacity: [0.5, 0.85, 0.5] } : undefined} transition={{ duration: 4, repeat: Infinity }} />
+            animate={animate ? { scale: [1, 1.12, 1], opacity: [0.5, 0.85, 0.5] } : { scale: 1, opacity: 0.5 }} transition={animate ? { duration: 4, repeat: Infinity } : { duration: 0.3 }} />
           <motion.div className="relative size-[288px] overflow-hidden rounded-full sm:size-[366px]" style={{ rotateX: rx, rotateY: ry, transformStyle: "preserve-3d" }}
-            animate={animate ? { y: [0, -12, 0] } : undefined} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}>
+            animate={animate ? { y: [0, -12, 0] } : { y: 0 }} transition={animate ? { duration: 5, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}>
             <AvatarCircle src={photo} name={name} position={photoPosition} className="size-full" />
           </motion.div>
           {orbit.map((ic, i) => (
-            <motion.div key={i} aria-hidden className="absolute size-[340px] sm:size-[420px]" animate={animate ? { rotate: 360 } : undefined}
-              transition={{ duration: 10 + i * 4, repeat: Infinity, ease: "linear", delay: i }}>
+            <motion.div key={i} aria-hidden className="absolute size-[340px] sm:size-[420px]" animate={animate ? { rotate: 360 } : { rotate: 0 }}
+              transition={animate ? { duration: 10 + i * 4, repeat: Infinity, ease: "linear", delay: i } : { duration: 0.3 }}>
               <Icon3D name={ic} size={30} className="absolute -top-2 left-1/2" />
             </motion.div>
           ))}
@@ -118,10 +118,10 @@ export function Float3DText({ children, sub, emoji }: { children: ReactNode; sub
     <section className="relative flex flex-col items-center gap-3 py-10" style={{ perspective: 800 }}>
       <motion.p className="select-none text-center font-heading text-[clamp(2.6rem,11vw,6rem)] font-black leading-tight"
         style={{ color: "#FFE08A", textShadow: "0 1px 0 #F5B935, 0 2px 0 #E9A621, 0 3px 0 #DB9512, 0 4px 0 #C98508, 0 5px 0 #B67604, 0 6px 0 #A06702, 0 7px 0 #8A5800, 0 18px 30px rgba(0,0,0,0.55), 0 0 40px rgba(255,194,77,0.55)" }}
-        animate={animate ? { y: [0, -14, 0], rotateX: [12, 4, 12], rotateZ: [-2, 2, -2] } : undefined} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}>
+        animate={animate ? { y: [0, -14, 0], rotateX: [12, 4, 12], rotateZ: [-2, 2, -2] } : { y: 0, rotateX: 12, rotateZ: -2 }} transition={animate ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}>
         {children}
       </motion.p>
-      {emoji && <motion.p className="mt-2 text-6xl" animate={animate ? { y: [0, -6, 0] } : undefined} transition={{ duration: 2.4, repeat: Infinity }}>{emoji}</motion.p>}
+      {emoji && <motion.p className="mt-2 text-6xl" animate={animate ? { y: [0, -6, 0] } : { y: 0 }} transition={animate ? { duration: 2.4, repeat: Infinity } : { duration: 0.3 }}>{emoji}</motion.p>}
       {sub && <p className="text-center text-white/80">{sub}</p>}
     </section>
   );

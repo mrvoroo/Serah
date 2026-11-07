@@ -1,9 +1,11 @@
 // عامل خدمة آمن مع سفاري: لا يتدخل في فتح الصفحات نهائيًا (سفاري يرفض الصفحة لو مرّت بتحويل عبر عامل الخدمة)
 // ويخزن فقط الملفات الثابتة (الخطوط، الأيقونات، ملفات الواجهة) لتسريع الفتح. لا يخزن الـ API ولا الصوت.
-const V = "serah-v6";
+const V = "serah-v7";
+// إعدادات الإشعارات (مفتاح الجهاز ورابط الخلفية ونصوص التذكير) يكتبها التطبيق هنا، ولا تُحذف مع تحديث النسخة
+const NOTIFY = "serah-notify";
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(
-  caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== V).map((k) => caches.delete(k)))).then(() => self.clients.claim())
+  caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== V && k !== NOTIFY).map((k) => caches.delete(k)))).then(() => self.clients.claim())
 ));
 self.addEventListener("fetch", (e) => {
   const req = e.request;
@@ -15,4 +17,57 @@ self.addEventListener("fetch", (e) => {
     if (res.ok && !res.redirected) c.put(req, res.clone());
     return res;
   }))));
+});
+
+/* ===== الإشعارات =====
+ * الخادم يرسل إشعارًا بلا محتوى، وعامل الخدمة يسحب نوع الرسالة بمفتاح الجهاز (لا يحمل رمز دخول الطفل)
+ * ويختار النص من نصوص التذكير المراجَعة (salah.json) التي حفظها التطبيق. */
+const BASE = self.registration.scope.replace(/\/$/, "");
+const readJson = (c, k) => c.match(k).then((r) => (r ? r.json() : null)).catch(() => null);
+const pick = (arr, i) => (arr && arr.length ? arr[(i ?? Math.floor(Math.random() * arr.length)) % arr.length] : null);
+
+function textFor(item, t) {
+  const r = (t && t.reminders) || {};
+  if (item.title) return { title: item.title, body: item.body || "", url: item.url || "/kid/" };
+  if (/^p:/.test(item.kind)) {
+    const name = (t && t.names && t.names[item.kind.slice(2)]) || "";
+    const p = r.prayer || { title: "حان وقت صلاة {name}", body: "هيا نتوضأ ونصلي" };
+    return { title: p.title.replace("{name}", name), body: p.body, url: "/kid/prayer/" };
+  }
+  if (item.kind === "duha") { const x = pick(r.duha, item.idx) || { title: "صلاة الضحى", body: "ركعتان من الضحى" }; return { ...x, url: "/kid/prayer/" }; }
+  if (item.kind === "fri") { const x = pick(r.friday, item.idx) || { title: "جمعة مباركة", body: "اقرأ سورة الكهف" }; return { ...x, url: "/kid/prayer/" }; }
+  const d = pick(r.dhikr, item.idx) || { text: "سبحان الله وبحمده" };
+  return { title: "اذكر الله 🤍", body: d.text, url: "/kid/prayer/" };
+}
+
+self.addEventListener("push", (e) => e.waitUntil((async () => {
+  const c = await caches.open(NOTIFY);
+  const cfg = (await readJson(c, "cfg")) || {};
+  const texts = await readJson(c, "texts");
+  let items = [];
+  try {
+    if (cfg.api && cfg.key) {
+      const res = await fetch(cfg.api, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "pullNotices", key: cfg.key }) });
+      const j = await res.json();
+      if (j.ok) items = j.data.items || [];
+    }
+  } catch { /* بدون إنترنت: نعرض ذكرًا عامًا */ }
+  if (!items.length) items = [{ kind: "dhikr" }]; // سفاري يلغي الاشتراك لو وصل إشعار ولم يُعرض شيء
+  await Promise.all(items.slice(-3).map((it, i) => {
+    const n = textFor(it, texts);
+    return self.registration.showNotification(n.title, {
+      body: n.body, dir: "rtl", lang: "ar", tag: it.kind + ":" + i + ":" + Date.now(),
+      icon: BASE + "/brand/icon-192.png", badge: BASE + "/brand/favicon-32.png", data: { url: BASE + n.url }
+    });
+  }));
+})()));
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || BASE + "/kid/";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ws) => {
+    const w = ws.find((x) => x.url.startsWith(BASE));
+    if (w) return w.focus().then(() => w.navigate ? w.navigate(url) : null).catch(() => self.clients.openWindow(url));
+    return self.clients.openWindow(url);
+  }));
 });

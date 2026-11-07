@@ -36,11 +36,11 @@ function boot() {
   const ss = { getSheetByName: (n) => sheets[n] || null, insertSheet: mkSheet, getId: () => 'x', getSheets: () => Object.values(sheets) };
   const env = {
     SpreadsheetApp: { openById: () => ss },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = String(v); }, deleteProperty: (k) => { delete props[k]; } }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = String(v); }, setProperties: (o) => { Object.keys(o).forEach(k => { props[k] = String(o[k]); }); }, deleteProperty: (k) => { delete props[k]; } }) },
     Utilities: {
       getUuid: () => crypto.randomUUID(), DigestAlgorithm: { SHA_256: 1 },
       computeDigest: (_, s) => [...crypto.createHash('sha256').update(s).digest()].map(b => (b > 127 ? b - 256 : b)),
-      computeHmacSha256Signature: (s, k) => [...crypto.createHmac('sha256', k).update(s).digest()],
+      computeHmacSha256Signature: (s, k) => { const b = (x) => (Array.isArray(x) ? Buffer.from(Uint8Array.from(x, (v) => v & 255)) : x); return [...crypto.createHmac('sha256', b(k)).update(b(s)).digest()].map(v => (v > 127 ? v - 256 : v)); },
       base64EncodeWebSafe: (x) => Buffer.from(typeof x === 'string' ? x : Uint8Array.from(x.map(b => b & 255))).toString('base64url'),
       base64DecodeWebSafe: (s) => [...Buffer.from(s, 'base64url')],
       base64Encode: (x) => Buffer.from(Uint8Array.from(x, (b) => b & 255)).toString('base64'),
@@ -53,7 +53,7 @@ function boot() {
     // القفل يُحاكى بحالة «محجوز»: طلب متداخل أثناء قسم حرج لا يحصل عليه (كطلب متزامن ينتظر)
     LockService: { getScriptLock: () => ({ tryLock: () => (lock.held ? false : (lock.held = 1, true)), waitLock() { if (lock.held) throw new Error('lock busy'); lock.held = 1; }, releaseLock() { lock.held = 0; } }) },
     ScriptApp: { getProjectTriggers: () => [{ getHandlerFunction: () => 'pollTelegram' }], getOAuthToken: () => 't', getService: () => ({ getUrl: () => 'u' }) },
-    UrlFetchApp: { fetch: (url, opts) => {
+    UrlFetchApp: { fetchAll: (reqs) => reqs.map(q => { fetches.push({ url: q.url, opts: q }); return { getResponseCode: () => (/gone/.test(q.url) ? 410 : 201) }; }), fetch: (url, opts) => {
       fetches.push({ url, opts });
       if (/api\.telegram\.org\/file\//.test(url)) { const b = { type: 'application/octet-stream', name: '' }; return { getBlob: () => ({ setName(n) { b.name = n; return this; }, setContentType(t) { b.type = t; return this; }, getBytes: () => signed(VOICE), getContentType: () => b.type, _b: b }) }; }
       if (/googleapis\.com\/upload\/drive/.test(url)) return { getResponseCode: () => 200, getHeaders: () => ({ Location: 'https://upload/session' }) };
@@ -78,7 +78,7 @@ function boot() {
       return { setSharing() { shared.push(id); }, getParents: () => { let i = 0; return { hasNext: () => i < parents.length, next: () => parents[i++] }; } };
     }, getFolderById: () => ({ createFile: (blob) => { saved.push({ ...(blob && blob._b) }); return { getId: () => 'drv' + (++drv) }; } }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
-  const g = new Function(...Object.keys(env), code + '\nreturn { handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN, oggOpusToWebm_ };')(...Object.values(env));
+  const g = new Function(...Object.keys(env), code + '\nreturn { pushTick, vapidJwt_, vapid_, handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN, oggOpusToWebm_ };')(...Object.values(env));
   return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches, shared, lock };
 }
 
@@ -1283,6 +1283,105 @@ test('أمن: اسمان قديمان يتطابقان بعد حذف اللقب 
   assert.notStrictEqual(a.data.user.user_id, b.data.user.user_id);
   assert.strictEqual(b.data.user.user_id, 'Ulegacy');
   assert.ok(!t.call('login', { name: 'مروة', pin: '333333' }).ok);
+});
+
+// ===== المرحلة 6: الصلوات والإشعارات =====
+const todayIso = (n = 0) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+test('جدول الصلوات: الطفل يعلّم ويلغي، ولا يوم مستقبلي ولا صلاة غير معروفة، والسجل لصاحبه فقط', () => {
+  const t = setup();
+  const k = t.login({ class_code: 'SERAH1', user_id: 'S1', pin: '1111' }), k2 = t.login({ class_code: 'SERAH1', user_id: 'S2', pin: '2222' });
+  assert.deepStrictEqual(t.call('markPrayer', { date: todayIso(), prayer: 'fajr', done: true }, k).data, ['fajr']);
+  assert.deepStrictEqual(t.call('markPrayer', { date: todayIso(), prayer: 'asr', done: true }, k).data, ['fajr', 'asr']);
+  assert.deepStrictEqual(t.call('markPrayer', { date: todayIso(), prayer: 'fajr', done: false }, k).data, ['asr']);
+  t.call('markPrayer', { date: todayIso(-1), prayer: 'isha', done: 'true' }, k);
+  assert.ok(!t.call('markPrayer', { date: todayIso(5), prayer: 'fajr', done: true }, k).ok, 'future');
+  assert.ok(!t.call('markPrayer', { date: todayIso(-60), prayer: 'fajr', done: true }, k).ok, 'too old');
+  assert.ok(!t.call('markPrayer', { date: todayIso(), prayer: 'witr', done: true }, k).ok);
+  assert.ok(!t.call('markPrayer', { date: '=1+1', prayer: 'fajr', done: true }, k).ok);
+  const log = t.call('prayerLog', { from: todayIso(-7), to: todayIso() }, k).data.days;
+  assert.deepStrictEqual(log[todayIso()], ['asr']);
+  assert.deepStrictEqual(log[todayIso(-1)], ['isha']);
+  assert.deepStrictEqual(t.call('prayerLog', { from: todayIso(-7), to: todayIso() }, k2).data.days, {});
+  assert.strictEqual(t.sheets.PrayerLog._data.length, 3, 'one row per day');
+  const tk = t.login({ name: 'المعلمة', pin: '482615' });
+  assert.ok(!t.call('markPrayer', { date: todayIso(), prayer: 'fajr', done: true }, tk).ok, 'kids only');
+});
+
+test('الإشعارات: مفتاح VAPID يُولَّد مرة ويُحفظ في الخصائص، وتوقيع ES256 صحيح', () => {
+  const t = setup();
+  const k = t.login({ class_code: 'SERAH1', user_id: 'S1', pin: '1111' });
+  const pub = t.call('pushConfig', {}, k).data.publicKey;
+  assert.strictEqual(pub, t.props.VAPID_PUB);
+  assert.strictEqual(t.call('pushConfig', {}, k).data.publicKey, pub, 'stable');
+  const raw = Buffer.from(pub, 'base64url');
+  assert.strictEqual(raw.length, 65); assert.strictEqual(raw[0], 4);
+  const key = crypto.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: raw.subarray(1, 33).toString('base64url'), y: raw.subarray(33).toString('base64url') }, format: 'jwk' });
+  for (const aud of ['https://fcm.googleapis.com', 'https://web.push.apple.com']) {
+    const jwt = t.g.vapidJwt_(aud), [h, b, sig] = jwt.split('.');
+    assert.ok(crypto.verify('sha256', Buffer.from(h + '.' + b), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(sig, 'base64url')), 'signature verifies');
+    const claims = JSON.parse(Buffer.from(b, 'base64url'));
+    assert.strictEqual(claims.aud, aud); assert.ok(claims.exp > Date.now() / 1000);
+  }
+});
+
+test('الإشعارات: الاشتراك لخوادم معروفة فقط، والجدول يُنظَّف، والمشغّل يرسل ما حان ويحذف الملغى', () => {
+  const t = setup();
+  const k = t.login({ class_code: 'SERAH1', user_id: 'S1', pin: '1111' });
+  const now = Math.floor(Date.now() / 1000);
+  assert.ok(!t.call('pushSubscribe', { endpoint: 'https://evil.example.com/x', plan: [] }, k).ok, 'unknown host');
+  assert.ok(!t.call('pushSubscribe', { endpoint: 'http://fcm.googleapis.com/fcm/send/x', plan: [] }, k).ok, 'http');
+  const plan = [[now - 60, 'p:fajr', 0], [now + 3600, 'dhikr', 3], [now, 'evil', 0], [now + 99 * 86400, 'duha', 0], ['x', 'fri', 0]];
+  const r = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', plan, prefs: { tasks: true } }, k);
+  assert.ok(r.ok, JSON.stringify(r)); assert.match(r.data.key, /^[a-f0-9]{64}$/);
+  const row = t.g.rows_('PushSubs')[0];
+  assert.deepStrictEqual(JSON.parse(row.plan).map(e => e[1]), ['p:fajr', 'dhikr']);
+  assert.strictEqual(t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', plan }, k).data.key, r.data.key);
+  assert.strictEqual(t.g.rows_('PushSubs').length, 1);
+  t.call('pushSubscribe', { endpoint: 'https://web.push.apple.com/gone1', plan: [[now - 30, 'dhikr', 1]] }, k);
+  t.props.PUSH_LAST = String(now - 300);
+  t.g.pushTick();
+  const sent = t.fetches.filter(f => /fcm\.googleapis|push\.apple/.test(f.url));
+  assert.strictEqual(sent.length, 2);
+  assert.match(sent[0].opts.headers.Authorization, /^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=[\w-]+$/);
+  assert.strictEqual(sent[0].opts.payload, '');
+  assert.strictEqual(t.g.rows_('PushSubs').length, 1, '410 removes subscription');
+  const pulled = t.call('pullNotices', { key: r.data.key });
+  assert.deepStrictEqual(pulled.data.items, [{ kind: 'p:fajr', idx: 0 }]);
+  assert.deepStrictEqual(t.call('pullNotices', { key: r.data.key }).data.items, []);
+  assert.ok(!t.call('pullNotices', { key: 'f'.repeat(64) }).ok);
+  t.fetches.length = 0; t.g.pushTick();
+  assert.strictEqual(t.fetches.length, 0);
+});
+
+test('الإشعارات: نشر اختبار أو إضافة واجب يرسل لأطفال الفصل المفعّلين لإشعارات المهام فقط', () => {
+  const t = setup();
+  const k = t.login({ class_code: 'SERAH1', user_id: 'S1', pin: '1111' }), k2 = t.login({ class_code: 'SERAH1', user_id: 'S2', pin: '2222' });
+  const r1 = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/s1', plan: [], prefs: { tasks: true } }, k);
+  const r2 = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/s2', plan: [], prefs: { tasks: false } }, k2);
+  const tk = t.login({ name: 'المعلمة', pin: '482615' });
+  assert.ok(t.call('saveAssignment', { title: 'احفظ سورة الإخلاص' }, tk).ok);
+  t.g.pushTick();
+  assert.deepStrictEqual(t.fetches.filter(f => /fcm/.test(f.url)).map(f => f.url), ['https://fcm.googleapis.com/fcm/send/s1']);
+  const items = t.call('pullNotices', { key: r1.data.key }).data.items;
+  assert.strictEqual(items[0].kind, 'hw'); assert.match(items[0].body, /الإخلاص/);
+  assert.deepStrictEqual(t.call('pullNotices', { key: r2.data.key }).data.items, []);
+});
+
+test('الإشعارات: حد الجدول اليومي، وحذف أجهزة الموقوفين، ومدى السجل عبر نهاية السنة', () => {
+  const t = setup();
+  const k = t.login({ class_code: 'SERAH1', user_id: 'S1', pin: '1111' });
+  const now = Math.floor(Date.now() / 1000) + 3600;
+  const spam = Array.from({ length: 300 }, (_, i) => [now + i * 60, 'dhikr', 0]);
+  t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/z', plan: spam }, k);
+  const plan = JSON.parse(t.g.rows_('PushSubs')[0].plan);
+  assert.ok(plan.length <= 30, 'capped: ' + plan.length);
+  for (let i = 1; i < plan.length; i++) assert.ok(plan[i][0] - plan[i - 1][0] >= 600);
+  assert.ok(t.call('prayerLog', { from: '2026-12-20', to: '2027-01-10' }, k).ok, 'year boundary');
+  assert.ok(!t.call('prayerLog', { from: '2026-01-01', to: '2026-06-01' }, k).ok, 'too wide');
+  const tk = t.login({ name: 'المعلمة', pin: '482615' });
+  assert.ok(t.call('removeStudent', { user_id: 'S1' }, tk).ok);
+  t.g.pushTick();
+  assert.strictEqual(t.g.rows_('PushSubs').length, 0, 'removed kid device dropped');
 });
 
 for (const [name, fn] of tests) {

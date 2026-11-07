@@ -25,8 +25,8 @@ test("سيوف النبي ﷺ: محطة الرحلة تفتح الصفحة، و�
   await stage.getByRole("button", { name: /اضغط للشكل التالي/ }).click();
   await expect(stage).toContainText("قبيعة سيف رسول الله ﷺ من فضة");
   const first = page.locator("#sw-list ~ ul > li").first();
-  await expect(first).toContainText("ذو الفقار");
-  await first.getByRole("button", { name: /ذو الفقار/ }).click();
+  await expect(first).toContainText(/ذو الفَ?قَ?ار/);
+  await first.getByRole("button", { name: /ذو الفَ?قَ?ار/ }).click();
   await expect(first).toContainText("درجة الخبر");
   await expect(page.locator("#sw-list ~ ul > li")).toHaveCount(9);
   // الأخبار الضعيفة لا تظهر للطفل

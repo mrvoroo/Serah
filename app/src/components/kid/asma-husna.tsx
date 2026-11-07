@@ -18,7 +18,7 @@ const NOTE = (data as { meta?: { note?: string } }).meta?.note ?? "";
 const SEEN_KEY = "serah_asma_seen_v2";
 const ar = (v: number) => v.toLocaleString("ar-EG");
 // إزالة التشكيل للبحث
-const bare = (s: string) => s.replace(/[ً-ْٰـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
+const bare = (s: string) => s.replace(/[ً-ْٰـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[ؤ]/g, "و").replace(/[ئ]/g, "ي").replace(/ء/g, "").replace(/وو/g, "و");
 
 function loadSeen(): number[] { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch { return []; } }
 

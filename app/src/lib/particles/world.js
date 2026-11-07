@@ -159,18 +159,16 @@ function buildShape(name, n, r, font = 'serif') {
     const minaret = () => { const k = r(); if (k < 0.55) { const a = Math.floor(r() * 6) * TAU / 6; return [MX + Math.cos(a) * 0.14, -2.0 + r() * 3.2, Math.sin(a) * 0.14]; } if (k < 0.75) { const a = r() * TAU; return [MX + Math.cos(a) * 0.26, 0.6, Math.sin(a) * 0.26]; } const v = r(), a = r() * TAU; return [MX + Math.cos(a) * 0.15 * (1 - v), 1.2 + v * 0.5, Math.sin(a) * 0.15 * (1 - v)]; };
     parts = [[0.18, base], [0.1, drum], [0.3, dome], [0.05, finial], [0.17, minaret], [0.07, dust(4.2)]];
   } else if (name === 'sword') {
-    // ذو الفقار: حافتا النصل + خط المنتصف + طرفان متفرعان + واقٍ مقوّس + مقبض بحلقات + كرة
+    // ذو الفقار: حافتا النصل + خط المنتصف + رأس مدبّب + واقٍ مقوّس + مقبض بحلقات + كرة
+    // (الطرف المشقوق المشهور في الرسومات لا أصل له في المصادر، فنرسمه سيفًا عاديًا)
     const w = (y) => 0.2 - (y + 0.55) * 0.012;
     const edge = (side) => curve((u) => { const y = -0.55 + u * 2.95; return [side * w(y), y, 0]; }, 0.01);
     const fuller = curve((u) => [0, -0.4 + u * 2.6, 0.02], 0.008);
-    const prong = (side) => many([
-      curve((u) => [side * (0.02 + u * 0.24), 2.4 + u * 0.95, 0], 0.01),
-      curve((u) => [side * (0.17 + u * 0.12), 2.4 + u * 0.95, 0], 0.01)
-    ]);
+    const prong = (side) => curve((u) => { const x0 = side * w(2.4); return [x0 * (1 - u), 2.4 + u * 0.7 - (1 - u) * u * 0.08, 0]; }, 0.01);
     const guard = curve((u) => { const x = (u * 2 - 1) * 0.85; return [x, -0.6 + Math.pow(Math.abs(x), 2) * 0.22, 0]; }, 0.014);
     const grip = () => { const ring = Math.floor(r() * 8), y = -0.72 - ring * 0.15, th = r() * TAU; return [Math.cos(th) * 0.1, y + J(0.01), Math.sin(th) * 0.1]; };
     const pommel = () => { const th = r() * TAU, ph = Math.acos(2 * r() - 1); return [Math.sin(ph) * Math.cos(th) * 0.16, -2.0 + Math.cos(ph) * 0.16, Math.sin(ph) * Math.sin(th) * 0.16]; };
-    parts = [[0.17, edge(1)], [0.17, edge(-1)], [0.07, fuller], [0.09, prong(1)], [0.09, prong(-1)], [0.12, guard], [0.12, grip], [0.05, pommel], [0.12, dust(4.0)]];
+    parts = [[0.17, edge(1)], [0.17, edge(-1)], [0.07, fuller], [0.06, prong(1)], [0.06, prong(-1)], [0.12, guard], [0.12, grip], [0.05, pommel], [0.12, dust(4.0)]];
   } else if (name === 'yusuf_dream') {
     // رؤيا يوسف: الشمس بأشعتها + القمر هلالًا + أحد عشر كوكبًا في قوس فوقهما (نور يصعد من الشمس)
     const SX = -1.15, SY = -0.35, SR = 0.72;

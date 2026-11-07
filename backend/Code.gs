@@ -29,6 +29,9 @@ const SCHEMA = {
   LoginAttempts:['key', 'fails', 'first_at', 'locked_until'],
   // رحلة الأنبياء: الأقسام (sort ترتيب، symbol شكل المجسم 3D) وعناصر صفحة كل نبي (نص/صوت/صورة/يوتيوب)
   Prophets:     ['prophet_id', 'sort', 'name', 'title', 'tag', 'text', 'symbol', 'symbol_name', 'visible', 'updated_at'],
+  // المرحلة 6: سجل الصلوات (day رقم yyyymmdd، key = user_id:day) وأجهزة الإشعارات
+  PrayerLog:    ['key', 'user_id', 'day', 'prayers', 'updated_at'],
+  PushSubs:     ['sub_id', 'user_id', 'class_id', 'endpoint', 'pull_key', 'plan', 'prefs', 'created_at', 'last_seen', 'fails'],
   ProphetContent:['item_id', 'prophet_id', 'kind', 'title', 'body', 'file_id', 'url', 'sort', 'visible', 'approved', 'created_by', 'created_at']
 };
 const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من تيليجرام (20MB)
@@ -319,6 +322,9 @@ function migrate_() {
     if (!prop_('AUDIO_WEBM')) { try { convertOldAudio_(); props_().setProperty('AUDIO_WEBM', '1'); } catch (e) { console.error(e); } }
     // اسم حساب المطوّر «احمد» (اللقب «م.» يُضاف عند العرض فقط) — مرة واحدة
     if (!prop_('SA_RENAMED')) { try { rows_('Users').filter(u => u.role === 'superadmin' && normName_(u.name) === normName_('م.احمد')).forEach(u => update_('Users', 'user_id', u.user_id, { name: 'احمد' })); props_().setProperty('SA_RENAMED', '1'); } catch (e) { console.error(e); } }
+    // مشغّل الإشعارات كل ٥ دقائق — يُنشأ مرة واحدة تلقائيًا (بدون فتح المحرر)
+    if (!prop_('VAPID_PUB')) { try { genVapid_(); } catch (e) { console.error(e); } }
+    if (!prop_('PUSH_TRIGGER')) { try { installPushTrigger(); props_().setProperty('PUSH_TRIGGER', '1'); } catch (e) { console.error(e); } }
     props_().setProperty('SCHEMA_VERSION', String(VERSION));
   } finally { lock.releaseLock(); }
 }
@@ -909,6 +915,11 @@ const ACTIONS = {
     const z = ownQuiz_(me, p);
     if (p.status === 'published' && !quizQuestions_(z.quiz_id).length) throw new Error('الاختبار بلا أسئلة');
     update_('Quizzes', 'quiz_id', z.quiz_id, { status: p.status });
+    // أول نشر فقط (إعادة النشر بعد المسودة لا ترسل إشعارًا جديدًا)
+    if (p.status === 'published' && z.status !== 'published' && !CacheService.getScriptCache().get('ntq:' + z.quiz_id)) {
+      CacheService.getScriptCache().put('ntq:' + z.quiz_id, '1', 6 * 3600);
+      notifyClassTask_(z.class_id, 'quiz', z.title);
+    }
     return true;
   },
 
@@ -1012,6 +1023,7 @@ const ACTIONS = {
     }
     const id = id_('W'), cls = cls_(me, p);
     append_('Assignments', Object.assign(f, { assignment_id: id, class_id: cls, created_by: me.user_id, created_at: now_(), helpers: cleanHelpers_(p.helpers, cls, me.user_id) }));
+    notifyClassTask_(cls, 'hw', f.title);
     return id;
   },
 
@@ -1870,6 +1882,288 @@ function removePolling() {
 function setRelayWebhook(relayUrl, secret) {
   Logger.log(JSON.stringify(tg_('setWebhook', { url: relayUrl, secret_token: secret, allowed_updates: ['message'], drop_pending_updates: true })));
 }
+
+/* ============ المرحلة 6: جدول الصلوات والإشعارات ============ */
+const PRAYERS = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
+// اليوم بصيغة رقمية yyyymmdd (الشيت يحوّل نص التاريخ لكائن Date، فنخزّنه رقمًا)
+function dayNum_(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+  if (!m) throw new Error('تاريخ غير صحيح');
+  return Number(m[1] + m[2] + m[3]);
+}
+function dayOffset_(n) { const d = new Date(Date.now() + n * 864e5); return Number(d.toISOString().slice(0, 10).replace(/-/g, '')); }
+
+// خوادم الإشعارات المعروفة فقط (حتى لا يُستغل الخادم لإرسال طلبات لأي عنوان)
+const PUSH_HOSTS = /^https:\/\/(fcm\.googleapis\.com|android\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.push\.apple\.com|[a-z0-9.-]+\.notify\.windows\.com)\//;
+const PUSH_KINDS = /^(p:(fajr|dhuhr|asr|maghrib|isha)|dhikr|duha|fri)$/;
+const PUSH_MAX_PLAN = 400;
+
+Object.assign(POLICY, {
+  prayerLog: { min: 'student' }, markPrayer: { min: 'student', write: 1 },
+  pushConfig: { min: 'student' }, pushSubscribe: { min: 'student', write: 1 }, pushUnsubscribe: { min: 'student', write: 1 },
+  pullNotices: { min: null }
+});
+
+Object.assign(ACTIONS, {
+  // سجل صلوات الطفل في مدى أيام (حتى ٦٣ يومًا): { days: { 'yyyy-mm-dd': ['fajr', ...] } }
+  prayerLog: (p, me) => {
+    const from = dayNum_(p.from), to = dayNum_(p.to);
+    const utc = (n) => Date.UTC(Math.floor(n / 1e4), Math.floor(n / 100) % 100 - 1, n % 100);
+    if (to < from || (utc(to) - utc(from)) / 864e5 > 63) throw new Error('المدى كبير');
+    const days = {};
+    rows_('PrayerLog').forEach(r => {
+      const d = Number(r.day);
+      if (r.user_id !== me.user_id || d < from || d > to) return;
+      const s = String(d);
+      days[s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8)] = String(r.prayers || '').split(',').filter(x => PRAYERS.indexOf(x) >= 0);
+    });
+    return { days };
+  },
+
+  // الطفل يعلّم أنه صلّى (أو يلغي): اليوم أو ما قبله حتى ٣٥ يومًا، ولا يوم في المستقبل (يوم سماح لفرق التوقيت)
+  markPrayer: (p, me) => {
+    if (me.role !== 'student') throw new Error('للأطفال فقط');
+    const day = dayNum_(p.date), prayer = String(p.prayer || '');
+    if (PRAYERS.indexOf(prayer) < 0) throw new Error('صلاة غير معروفة');
+    if (day > dayOffset_(1) || day < dayOffset_(-35)) throw new Error('لا يمكن تعديل هذا اليوم');
+    rate_('prayer:' + me.user_id, 120, 600);
+    const done = p.done === true || p.done === 'true';
+    return withLock_(() => {
+      const key = me.user_id + ':' + day;
+      const row = rows_('PrayerLog').find(r => r.key === key);
+      const set = row ? String(row.prayers || '').split(',').filter(x => PRAYERS.indexOf(x) >= 0) : [];
+      const i = set.indexOf(prayer);
+      if (done && i < 0) set.push(prayer);
+      if (!done && i >= 0) set.splice(i, 1);
+      const prayers = PRAYERS.filter(x => set.indexOf(x) >= 0).join(',');
+      if (row) update_('PrayerLog', 'key', key, { prayers, updated_at: now_() });
+      else append_('PrayerLog', { key, user_id: me.user_id, day, prayers, updated_at: now_() });
+      return prayers ? prayers.split(',') : [];
+    });
+  },
+
+  pushConfig: () => ({ publicKey: vapid_().pub }),
+
+  // تسجيل جهاز للإشعارات مع جدول مواعيده (يحسبه التطبيق من مواقيت الصلاة وتفضيلات الطفل)
+  pushSubscribe: (p, me) => {
+    if (me.role !== 'student') throw new Error('للأطفال فقط');
+    const endpoint = String(p.endpoint || '');
+    if (endpoint.length > 1000 || !PUSH_HOSTS.test(endpoint)) throw new Error('خدمة إشعارات غير مدعومة');
+    rate_('psub:' + me.user_id, 30, 3600);
+    const plan = cleanPlan_(p.plan), prefs = cleanPrefs_(p.prefs);
+    return withLock_(() => {
+      const old = rows_('PushSubs').find(s => s.endpoint === endpoint);
+      if (old) {
+        if (old.user_id !== me.user_id) remove_('PushSubs', 'sub_id', old.sub_id); // نفس الجهاز لطفل آخر: يبدأ من جديد
+        else { update_('PushSubs', 'sub_id', old.sub_id, { plan: JSON.stringify(plan), prefs: JSON.stringify(prefs), last_seen: now_(), fails: 0 }); return { key: old.pull_key }; }
+      }
+      // حد للأجهزة لكل طفل (يُحذف الأقدم)
+      const mine = rows_('PushSubs').filter(s => s.user_id === me.user_id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+      while (mine.length >= 5) remove_('PushSubs', 'sub_id', mine.shift().sub_id);
+      const key = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+      append_('PushSubs', { sub_id: id_('PS'), user_id: me.user_id, class_id: me.class_id || '', endpoint, pull_key: key,
+        plan: JSON.stringify(plan), prefs: JSON.stringify(prefs), created_at: now_(), last_seen: now_(), fails: 0 });
+      return { key };
+    });
+  },
+
+  pushUnsubscribe: (p, me) => withLock_(() => {
+    const s = rows_('PushSubs').find(x => x.endpoint === String(p.endpoint || '') && x.user_id === me.user_id);
+    if (s) remove_('PushSubs', 'sub_id', s.sub_id);
+    return true;
+  }),
+
+  // عامل الخدمة يسحب نص الإشعار بمفتاح خاص بالجهاز فقط (لا يحمل رمز دخول الطفل)
+  pullNotices: (p) => {
+    const key = String(p.key || '');
+    if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('مفتاح غير صالح');
+    rate_('pull:' + key.slice(0, 12), 60, 3600);
+    const s = rows_('PushSubs').find(x => x.pull_key === key);
+    if (!s) throw new Error('الجهاز غير مسجّل');
+    const cache = CacheService.getScriptCache(), ck = 'pq:' + s.sub_id;
+    const items = JSON.parse(cache.get(ck) || '[]');
+    cache.remove(ck);
+    return { items };
+  }
+});
+
+function cleanPlan_(plan) {
+  if (!Array.isArray(plan)) return [];
+  const now = Math.floor(Date.now() / 1000), out = [];
+  plan.slice(0, PUSH_MAX_PLAN * 2).forEach(e => {
+    if (!Array.isArray(e)) return;
+    const ts = Math.floor(Number(e[0])), kind = String(e[1] || ''), idx = Math.max(0, Math.min(99, Math.floor(Number(e[2]) || 0)));
+    if (!isFinite(ts) || ts < now - 86400 || ts > now + 16 * 86400 || !PUSH_KINDS.test(kind)) return;
+    out.push([ts, kind, idx]);
+  });
+  out.sort((a, b) => a[0] - b[0]);
+  const kept = [], perDay = {};
+  let last = -Infinity;
+  out.forEach(e => {
+    const day = Math.floor(e[0] / 86400);
+    if (e[0] - last < 600 || (perDay[day] || 0) >= 14) return;
+    kept.push(e); last = e[0]; perDay[day] = (perDay[day] || 0) + 1;
+  });
+  return kept.slice(0, PUSH_MAX_PLAN);
+}
+function cleanPrefs_(v) { const o = v && typeof v === 'object' ? v : {}; return { tasks: o.tasks !== false && o.tasks !== 'false' }; }
+
+// يضيف رسالة لطابور الجهاز (يسحبها عامل الخدمة عند وصول الإشعار)
+function queuePush_(sub_id, item) {
+  const cache = CacheService.getScriptCache(), ck = 'pq:' + sub_id;
+  const items = JSON.parse(cache.get(ck) || '[]');
+  items.push(item);
+  cache.put(ck, JSON.stringify(items.slice(-10)), 6 * 3600);
+}
+
+// اختبار أو واجب جديد: إشعار لأطفال الفصل الذين فعّلوا إشعارات المهام (يُرسل في الدورة التالية)
+function notifyClassTask_(class_id, kind, title) {
+  try {
+    const cache = CacheService.getScriptCache(), rk = 'ntf:' + class_id, n = Number(cache.get(rk) || 0) + 1;
+    cache.put(rk, String(n), 3600);
+    if (n > 10) return;
+    const users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
+    const subs = rows_('PushSubs').filter(s => { const u = users[s.user_id]; return u && !inactive_(u) && String(u.class_id) === String(class_id) && JSON.parse(s.prefs || '{}').tasks !== false; });
+    const due = JSON.parse(cache.get('push:due') || '[]');
+    subs.forEach(s => {
+      queuePush_(s.sub_id, kind === 'quiz' ? { kind: 'quiz', title: 'اختبار جديد ✨', body: String(title).slice(0, 80), url: '/kid/tasks/' }
+        : { kind: 'hw', title: 'واجب جديد 📝', body: String(title).slice(0, 80), url: '/kid/tasks/' });
+      if (due.indexOf(s.sub_id) < 0) due.push(s.sub_id);
+    });
+    cache.put('push:due', JSON.stringify(due.slice(-500)), 6 * 3600);
+  } catch (e) { console.error(e); }
+}
+
+/** مشغّل كل ٥ دقائق: يرسل الإشعارات التي حان وقتها. تُنشأ مرة واحدة بـ installPushTrigger */
+function pushTick() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return;
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const last = Number(prop_('PUSH_LAST') || now - 300);
+    props_().setProperty('PUSH_LAST', String(now));
+    const cache = CacheService.getScriptCache();
+    const due = JSON.parse(cache.get('push:due') || '[]'); cache.remove('push:due');
+    const send = [], users = {};
+    rows_('Users').forEach(u => { users[u.user_id] = u; });
+    rows_('PushSubs').forEach(s => {
+      if (inactive_(users[s.user_id]) || users[s.user_id].role !== 'student' || Number(s.fails || 0) >= 5) { remove_('PushSubs', 'sub_id', s.sub_id); return; }
+      let plan = [];
+      try { plan = JSON.parse(s.plan || '[]'); } catch (e) {}
+      // لا نرسل إلا آخر موعد فات منذ الدورة السابقة (حتى لا تتراكم الإشعارات لو توقف المشغّل)
+      const hits = plan.filter(e => e[0] > Math.max(last, now - 1800) && e[0] <= now);
+      if (hits.length) queuePush_(s.sub_id, { kind: hits[hits.length - 1][1], idx: hits[hits.length - 1][2] });
+      if (hits.length || due.indexOf(s.sub_id) >= 0) send.push(s);
+    });
+    if (!send.length) return;
+    const reqs = send.map(s => pushRequest_(s.endpoint));
+    const res = UrlFetchApp.fetchAll(reqs);
+    res.forEach((r, i) => {
+      const code = r.getResponseCode();
+      if (code === 404 || code === 410) remove_('PushSubs', 'sub_id', send[i].sub_id); // الجهاز ألغى الاشتراك
+      else if (code >= 400) update_('PushSubs', 'sub_id', send[i].sub_id, { fails: Number(send[i].fails || 0) + 1 });
+    });
+  } finally { lock.releaseLock(); }
+}
+
+function installPushTrigger() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'pushTick').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('pushTick').timeBased().everyMinutes(5).create();
+}
+
+// إشعار بلا محتوى (لا يحتاج تشفيرًا): عامل الخدمة يسحب النص بمفتاح الجهاز
+function pushRequest_(endpoint) {
+  const aud = endpoint.match(/^https:\/\/[^/]+/)[0];
+  return { url: endpoint, method: 'post', muteHttpExceptions: true, payload: '',
+    headers: { Authorization: 'vapid t=' + vapidJwt_(aud) + ', k=' + vapid_().pub, TTL: '3600', Urgency: 'high' } };
+}
+
+/* ===== VAPID (ES256 على منحنى P-256) بدون مكتبات: Apps Script لا يوفر توقيع ECDSA =====
+ * المفتاح الخاص يُولَّد هنا ويُحفظ في Script Properties فقط، ولا يخرج من الخادم. */
+const P256 = {
+  p: BigInt('0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff'),
+  n: BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551'),
+  G: [BigInt('0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296'), BigInt('0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5')]
+};
+function ecMod_(a, m) { const r = a % m; return r < 0n ? r + m : r; }
+function ecInv_(a, m) { // معكوس ضربي بخوارزمية إقليدس الموسّعة
+  let [r0, r1, s0, s1] = [ecMod_(a, m), m, 1n, 0n];
+  while (r1 !== 0n) { const q = r0 / r1; [r0, r1] = [r1, r0 - q * r1]; [s0, s1] = [s1, s0 - q * s1]; }
+  return ecMod_(s0, m);
+}
+// إحداثيات جاكوبي: بلا معكوس في كل خطوة (أسرع بكثير في Apps Script)
+function ecDbl_(P) {
+  const p = P256.p; if (!P || P[1] === 0n) return null;
+  const [X, Y, Z] = P, YY = Y * Y % p, S = 4n * X * YY % p, ZZ = Z * Z % p;
+  const M = ecMod_(3n * (X - ZZ) * (X + ZZ), p); // a = -3
+  const X3 = ecMod_(M * M - 2n * S, p);
+  return [X3, ecMod_(M * (S - X3) - 8n * YY * YY, p), 2n * Y * Z % p];
+}
+function ecAdd_(P, Q) {
+  const p = P256.p; if (!P) return Q; if (!Q) return P;
+  const Z1Z1 = P[2] * P[2] % p, Z2Z2 = Q[2] * Q[2] % p;
+  const U1 = P[0] * Z2Z2 % p, U2 = Q[0] * Z1Z1 % p, S1 = P[1] * Q[2] % p * Z2Z2 % p, S2 = Q[1] * P[2] % p * Z1Z1 % p;
+  if (U1 === U2) return S1 === S2 ? ecDbl_(P) : null;
+  const H = ecMod_(U2 - U1, p), R = ecMod_(S2 - S1, p), HH = H * H % p, HHH = H * HH % p, V = U1 * HH % p;
+  const X3 = ecMod_(R * R - HHH - 2n * V, p);
+  return [X3, ecMod_(R * (V - X3) - S1 * HHH, p), P[2] * Q[2] % p * H % p];
+}
+function ecMul_(k, A) {
+  let R = null, Q = [A[0], A[1], 1n];
+  while (k > 0n) { if (k & 1n) R = ecAdd_(R, Q); Q = ecDbl_(Q); k >>= 1n; }
+  if (!R) throw new Error('ec');
+  const zi = ecInv_(R[2], P256.p), zi2 = zi * zi % P256.p;
+  return [R[0] * zi2 % P256.p, R[1] * zi2 % P256.p * zi % P256.p];
+}
+function bytesToBig_(b) { let h = '0x'; b.forEach(x => { h += ((x & 255) + 256).toString(16).slice(1); }); return BigInt(h === '0x' ? '0' : h); }
+function bigToBytes_(v, len) { let h = v.toString(16); while (h.length < len * 2) h = '0' + h; const out = []; for (let i = 0; i < len * 2; i += 2) out.push(parseInt(h.substr(i, 2), 16)); return out; }
+function signedBytes_(a) { return a.map(x => (x > 127 ? x - 256 : x)); }
+
+function vapid_() {
+  if (!prop_('VAPID_D') || !prop_('VAPID_PUB')) withLock_(() => { if (!prop_('VAPID_D') || !prop_('VAPID_PUB')) genVapid_(); });
+  return { d: BigInt('0x' + prop_('VAPID_D')), pub: prop_('VAPID_PUB') };
+}
+// يُستدعى والقفل محجوز (من migrate_ أو vapid_)
+function genVapid_() {
+  let d, pub;
+  {
+    const seed = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid() + Date.now());
+    const k = ecMod_(bytesToBig_(seed), P256.n - 1n) + 1n;
+    const Q = ecMul_(k, P256.G);
+    d = k.toString(16);
+    pub = Utilities.base64EncodeWebSafe(signedBytes_([4].concat(bigToBytes_(Q[0], 32), bigToBytes_(Q[1], 32)))).replace(/=+$/, '');
+    props_().setProperties({ VAPID_D: d, VAPID_PUB: pub }); // كتابة واحدة: المفتاحان معًا دائمًا
+  }
+}
+
+function es256_(msg) {
+  const { d } = vapid_(), n = P256.n;
+  const h = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, msg);
+  const e = bytesToBig_(h);
+  const dKey = signedBytes_(bigToBytes_(d, 32));
+  for (let ctr = 0; ctr < 100; ctr++) {
+    // nonce حتمي: HMAC بالمفتاح الخاص على بصمة الرسالة (لا يحتاج مولّد أرقام عشوائية آمن)
+    const k = bytesToBig_(Utilities.computeHmacSha256Signature(signedBytes_(h.map(x => x & 255).concat([ctr])), dKey));
+    if (k === 0n || k >= n) continue;
+    const r = ecMod_(ecMul_(k, P256.G)[0], n);
+    if (r === 0n) continue;
+    const s = ecMod_(ecInv_(k, n) * ecMod_(e + r * d, n), n);
+    if (s === 0n) continue;
+    return Utilities.base64EncodeWebSafe(signedBytes_(bigToBytes_(r, 32).concat(bigToBytes_(s, 32)))).replace(/=+$/, '');
+  }
+  throw new Error('sign');
+}
+
+function vapidJwt_(aud) {
+  const cache = CacheService.getScriptCache(), ck = 'vjwt:' + aud;
+  const hit = cache.get(ck); if (hit) return hit;
+  const b64 = (o) => Utilities.base64EncodeWebSafe(JSON.stringify(o)).replace(/=+$/, '');
+  const body = b64({ typ: 'JWT', alg: 'ES256' }) + '.' + b64({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: 'https://mrvoroo.github.io/Serah/' });
+  const jwt = body + '.' + es256_(body);
+  cache.put(ck, jwt, 6 * 3600);
+  return jwt;
+}
+
 
 /* ============ 7) تحويل رسائل تيليجرام الصوتية (Ogg/Opus) إلى WebM/Opus ============
  * سفاري (آيفون) لا يشغّل Opus داخل Ogg إطلاقًا، لكنه يشغّله داخل WebM. نعيد تغليف نفس الصوت بدون إعادة ترميز:

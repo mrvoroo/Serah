@@ -37,7 +37,7 @@ export default function JourneyAdmin() {
   const refresh = () => { invalidate("journey"); invalidate("prophet"); return reload(); };
   const run = async (key: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(key);
-    try { await fn(); toast.success(ok); await refresh(); } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
+    try { await fn(); toast.success(ok); await refresh(); return true; } catch (e) { toast.error((e as Error).message); return false; } finally { setBusy(null); }
   };
   const saveOrder = (next: ProphetAdminRow[]) => {
     setOrder(next);
@@ -48,7 +48,7 @@ export default function JourneyAdmin() {
     const next = list.slice(); const [x] = next.splice(i, 1); next.splice(to, 0, x); saveOrder(next);
   };
   const bulk = (visible: boolean, all = false) => run("bulk", () => api("setProphetsVisible", all ? { all: true, visible } : { ids: [...sel], visible }),
-    all ? (visible ? "كل الأنبياء ظاهرين للأطفال" : "تم إخفاء كل الأنبياء") : visible ? `ظهر ${sel.size.toLocaleString("ar-EG")} للأطفال` : `تم إخفاء ${sel.size.toLocaleString("ar-EG")}`).then(() => setSel(new Set()));
+    all ? (visible ? "كل الأنبياء ظاهرين للأطفال" : "تم إخفاء كل الأنبياء") : visible ? `ظهر ${sel.size.toLocaleString("ar-EG")} للأطفال` : `تم إخفاء ${sel.size.toLocaleString("ar-EG")}`).then((done) => { if (done) setSel(new Set()); });
   const save = () => form && run("form", () => api("saveProphet", { ...form }), form.prophet_id ? "تم حفظ التعديل" : "تمت إضافة القسم").then(() => setForm(null));
 
   return (
@@ -69,9 +69,9 @@ export default function JourneyAdmin() {
             </Button>
           </div>
         ) : (<>
-          <div role="toolbar" aria-label="إظهار وإخفاء مجمّع" className="z-10 flex sm:sticky sm:top-2 flex-wrap items-center gap-2 rounded-[24px] border bg-card/95 p-3 shadow-soft backdrop-blur">
+          <div role="toolbar" aria-label="إظهار وإخفاء مجمّع" className="sticky top-[76px] z-20 flex flex-wrap items-center gap-2 rounded-[24px] border bg-card/95 p-3 shadow-soft backdrop-blur">
             <label className="flex items-center gap-2 font-bold">
-              <input type="checkbox" className="size-5 accent-[var(--primary)]" aria-label="تحديد الكل"
+              <input type="checkbox" className="size-5 accent-[var(--primary)]" aria-label="تحديد الكل" ref={(el) => { if (el) el.indeterminate = sel.size > 0 && sel.size < list.length; }}
                 checked={list.length > 0 && sel.size === list.length} onChange={(e) => setSel(e.target.checked ? new Set(list.map((p) => p.prophet_id)) : new Set())} />
               {sel.size ? `تم تحديد ${sel.size.toLocaleString("ar-EG")}` : "تحديد الكل"}
             </label>
@@ -81,7 +81,7 @@ export default function JourneyAdmin() {
               <Button variant="secondary" size="lg2" disabled={!!busy} onClick={() => bulk(false)}><EyeOff /> إخفاء المحدد</Button>
             </>) : (<>
               <Button variant="secondary" size="lg2" disabled={!!busy} onClick={() => bulk(true, true)}><Eye /> إظهار الكل</Button>
-              <Button variant="secondary" size="lg2" disabled={!!busy} onClick={() => bulk(false, true)}><EyeOff /> إخفاء الكل</Button>
+              <Button variant="secondary" size="lg2" disabled={!!busy} onClick={() => window.confirm("إخفاء كل الأنبياء عن الأطفال؟") && bulk(false, true)}><EyeOff /> إخفاء الكل</Button>
             </>)}
             {busy === "bulk" && <Loader2 className="animate-spin" />}
           </div>
@@ -95,7 +95,7 @@ export default function JourneyAdmin() {
                 </label>
                 <GripVertical className="hidden size-5 cursor-grab text-muted-foreground sm:block" aria-hidden />
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-sm font-bold">{(i + 1).toLocaleString("ar-EG")}</span>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 basis-[calc(100%-7rem)] sm:basis-auto">
                   <p className="truncate font-bold">{p.name} {p.symbol && <span className="ms-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">{symbolLabel(p.symbol)}</span>}</p>
                   <p className="truncate text-xs text-muted-foreground">{p.items.toLocaleString("ar-EG")} عنصر{p.pending ? ` · ${p.pending.toLocaleString("ar-EG")} بانتظار الاعتماد` : ""}</p>
                 </div>

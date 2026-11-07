@@ -17,8 +17,8 @@ export function AboutBackdrop() {
       <div aria-hidden className="pointer-events-none absolute inset-0">
         {[["#7B5CFF", "-10%", "-10%"], ["#FFB020", "60%", "10%"], ["#1FA37F", "10%", "60%"], ["#FF6FB5", "70%", "70%"]].map(([c, l, t], i) => (
           <motion.div key={i} className="absolute size-[55vmax] rounded-full opacity-40 blur-[90px]" style={{ background: c, left: l, top: t }}
-            animate={animate ? { x: [0, 60, -40, 0], y: [0, -50, 30, 0], scale: [1, 1.15, 0.95, 1] } : undefined}
-            transition={{ duration: 18 + i * 4, repeat: Infinity, ease: "easeInOut" }} />
+            animate={animate ? { x: [0, 60, -40, 0], y: [0, -50, 30, 0], scale: [1, 1.15, 0.95, 1] } : { x: 0, y: 0, scale: 1 }}
+            transition={animate ? { duration: 18 + i * 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }} />
         ))}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#0B0620_75%)]" />
       </div>
@@ -26,7 +26,7 @@ export function AboutBackdrop() {
       <div aria-hidden className="pointer-events-none absolute inset-0 hidden sm:block">
         {FLOATERS.map((f) => (
           <motion.div key={f.name} className="absolute" style={{ left: f.x, top: f.y }}
-            animate={animate ? { y: [0, -18, 0], rotate: [0, 8, -6, 0] } : undefined} transition={{ duration: 6 + f.d * 2, repeat: Infinity, ease: "easeInOut", delay: f.d }}>
+            animate={animate ? { y: [0, -18, 0], rotate: [0, 8, -6, 0] } : { y: 0, rotate: 0 }} transition={animate ? { duration: 6 + f.d * 2, repeat: Infinity, ease: "easeInOut", delay: f.d } : { duration: 0.3 }}>
             <Icon3D name={f.name} size={f.size} />
           </motion.div>
         ))}

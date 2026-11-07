@@ -91,7 +91,10 @@ export function TeacherShell({ children, roles = ["teacher", "admin", "superadmi
               <SheetContent side="right" className="w-72 gap-4 overflow-hidden p-4">
                 <SheetHeader className="p-0"><SheetTitle className="sr-only">القائمة</SheetTitle><Brand role={role} /></SheetHeader>
                 <div className="-mx-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2"><NavList id="sheet" role={role} onNavigate={() => setOpen(false)} /></div>
-                <button type="button" onClick={logout} className="flex h-12 shrink-0 items-center gap-3 rounded-2xl px-4 font-bold text-destructive hover:bg-destructive/10"><LogOut className="size-5" /> خروج</button>
+                <div className="flex shrink-0 items-center justify-between rounded-2xl bg-secondary/60 p-3">
+                  <div className="min-w-0"><p className="truncate font-bold">{teacherTitle(user?.name, user?.role)}</p><p className="text-xs text-muted-foreground">{role ? ROLE_LABEL[role] : ""}</p></div>
+                  <button type="button" onClick={logout} className="flex h-10 items-center gap-2 rounded-xl px-3 font-bold text-destructive hover:bg-destructive/10"><LogOut className="size-5" /> خروج</button>
+                </div>
               </SheetContent>
             </Sheet>
             <div className="lg:hidden"><Brand role={role} /></div>

@@ -1,4 +1,5 @@
 "use client";
+import { disablePush } from "@/lib/push";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -49,7 +50,8 @@ export function KidShell({ children }: { children: ReactNode }) {
   const nav = staff ? [...STAFF_NAV, { href: homeOf(user.role), label: "لوحتي", icon: LayoutDashboard }] : NAV;
   const router = useRouter();
   const animate = useMotionAllowed();
-  const logout = () => { if (viewAsInfo()) return stopViewAs(); session.clear(); router.replace(staff ? "/teacher/login/" : "/"); };
+  // الخروج يوقف إشعارات الجهاز (حتى لا تصل إشعارات طفل لطفل آخر على نفس الجهاز)
+  const logout = async () => { if (viewAsInfo()) return stopViewAs(); if (!staff) await Promise.race([disablePush().catch(() => {}), new Promise((r) => setTimeout(r, 3000))]); session.clear(); router.replace(staff ? "/teacher/login/" : "/"); };
   // التخطيط يبقى مركّبًا بين صفحات /kid، وفحص الدور يجري مرة واحدة: لو خرجت المعلمة من الرحلة/النبي/القرآن
   // (مثل رابط محاضرة في صفحة النبي) لصفحات الطفل فقط نرجعها للوحتها ولا نعرض الصفحة (حتى لا تُسجَّل لها حضور ونقاط)
   const staffBlocked = staff && !STAFF_PATHS.test(path);
