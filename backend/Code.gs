@@ -5,7 +5,7 @@
  */
 
 // رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
-const VERSION = 22;
+const VERSION = 24;
 
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
@@ -2080,24 +2080,26 @@ function pushRequest_(endpoint) {
 
 /* ===== VAPID (ES256 على منحنى P-256) بدون مكتبات: Apps Script لا يوفر توقيع ECDSA =====
  * المفتاح الخاص يُولَّد هنا ويُحفظ في Script Properties فقط، ولا يخرج من الخادم. */
+// محلل Apps Script يرفض صيغة 0n، فنعرّف ثوابت BigInt بالدالة
+const B0_ = BigInt(0), B1_ = BigInt(1), B2_ = BigInt(2), B3_ = BigInt(3), B4_ = BigInt(4), B8_ = BigInt(8);
 const P256 = {
   p: BigInt('0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff'),
   n: BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551'),
   G: [BigInt('0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296'), BigInt('0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5')]
 };
-function ecMod_(a, m) { const r = a % m; return r < 0n ? r + m : r; }
+function ecMod_(a, m) { const r = a % m; return r < B0_ ? r + m : r; }
 function ecInv_(a, m) { // معكوس ضربي بخوارزمية إقليدس الموسّعة
-  let [r0, r1, s0, s1] = [ecMod_(a, m), m, 1n, 0n];
-  while (r1 !== 0n) { const q = r0 / r1; [r0, r1] = [r1, r0 - q * r1]; [s0, s1] = [s1, s0 - q * s1]; }
+  let [r0, r1, s0, s1] = [ecMod_(a, m), m, B1_, B0_];
+  while (r1 !== B0_) { const q = r0 / r1; [r0, r1] = [r1, r0 - q * r1]; [s0, s1] = [s1, s0 - q * s1]; }
   return ecMod_(s0, m);
 }
 // إحداثيات جاكوبي: بلا معكوس في كل خطوة (أسرع بكثير في Apps Script)
 function ecDbl_(P) {
-  const p = P256.p; if (!P || P[1] === 0n) return null;
-  const [X, Y, Z] = P, YY = Y * Y % p, S = 4n * X * YY % p, ZZ = Z * Z % p;
-  const M = ecMod_(3n * (X - ZZ) * (X + ZZ), p); // a = -3
-  const X3 = ecMod_(M * M - 2n * S, p);
-  return [X3, ecMod_(M * (S - X3) - 8n * YY * YY, p), 2n * Y * Z % p];
+  const p = P256.p; if (!P || P[1] === B0_) return null;
+  const [X, Y, Z] = P, YY = Y * Y % p, S = B4_ * X * YY % p, ZZ = Z * Z % p;
+  const M = ecMod_(B3_ * (X - ZZ) * (X + ZZ), p); // a = -3
+  const X3 = ecMod_(M * M - B2_ * S, p);
+  return [X3, ecMod_(M * (S - X3) - B8_ * YY * YY, p), B2_ * Y * Z % p];
 }
 function ecAdd_(P, Q) {
   const p = P256.p; if (!P) return Q; if (!Q) return P;
@@ -2105,12 +2107,12 @@ function ecAdd_(P, Q) {
   const U1 = P[0] * Z2Z2 % p, U2 = Q[0] * Z1Z1 % p, S1 = P[1] * Q[2] % p * Z2Z2 % p, S2 = Q[1] * P[2] % p * Z1Z1 % p;
   if (U1 === U2) return S1 === S2 ? ecDbl_(P) : null;
   const H = ecMod_(U2 - U1, p), R = ecMod_(S2 - S1, p), HH = H * H % p, HHH = H * HH % p, V = U1 * HH % p;
-  const X3 = ecMod_(R * R - HHH - 2n * V, p);
+  const X3 = ecMod_(R * R - HHH - B2_ * V, p);
   return [X3, ecMod_(R * (V - X3) - S1 * HHH, p), P[2] * Q[2] % p * H % p];
 }
 function ecMul_(k, A) {
-  let R = null, Q = [A[0], A[1], 1n];
-  while (k > 0n) { if (k & 1n) R = ecAdd_(R, Q); Q = ecDbl_(Q); k >>= 1n; }
+  let R = null, Q = [A[0], A[1], B1_];
+  while (k > B0_) { if (k & B1_) R = ecAdd_(R, Q); Q = ecDbl_(Q); k >>= B1_; }
   if (!R) throw new Error('ec');
   const zi = ecInv_(R[2], P256.p), zi2 = zi * zi % P256.p;
   return [R[0] * zi2 % P256.p, R[1] * zi2 % P256.p * zi % P256.p];
@@ -2128,7 +2130,7 @@ function genVapid_() {
   let d, pub;
   {
     const seed = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid() + Date.now());
-    const k = ecMod_(bytesToBig_(seed), P256.n - 1n) + 1n;
+    const k = ecMod_(bytesToBig_(seed), P256.n - B1_) + B1_;
     const Q = ecMul_(k, P256.G);
     d = k.toString(16);
     pub = Utilities.base64EncodeWebSafe(signedBytes_([4].concat(bigToBytes_(Q[0], 32), bigToBytes_(Q[1], 32)))).replace(/=+$/, '');
@@ -2144,11 +2146,11 @@ function es256_(msg) {
   for (let ctr = 0; ctr < 100; ctr++) {
     // nonce حتمي: HMAC بالمفتاح الخاص على بصمة الرسالة (لا يحتاج مولّد أرقام عشوائية آمن)
     const k = bytesToBig_(Utilities.computeHmacSha256Signature(signedBytes_(h.map(x => x & 255).concat([ctr])), dKey));
-    if (k === 0n || k >= n) continue;
+    if (k === B0_ || k >= n) continue;
     const r = ecMod_(ecMul_(k, P256.G)[0], n);
-    if (r === 0n) continue;
+    if (r === B0_) continue;
     const s = ecMod_(ecInv_(k, n) * ecMod_(e + r * d, n), n);
-    if (s === 0n) continue;
+    if (s === B0_) continue;
     return Utilities.base64EncodeWebSafe(signedBytes_(bigToBytes_(r, 32).concat(bigToBytes_(s, 32)))).replace(/=+$/, '');
   }
   throw new Error('sign');
