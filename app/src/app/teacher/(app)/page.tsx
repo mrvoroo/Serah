@@ -14,9 +14,11 @@ import { AnimatedCircularProgressBar } from "@/components/ui/animated-circular-p
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { KidAvatar } from "@/components/kid/kid-avatar";
 import { teacherTitle } from "@/lib/utils";
+import { LiveBanner } from "@/components/live/live-banner";
 
 const QUICK: { href: string; label: string; icon: Icon3DName; hint: string }[] = [
-  { href: "/teacher/upload/", label: "رفع تسجيل", icon: "mic", hint: "محاضرة جديدة" },
+  { href: "/teacher/live/", label: "محاضرة مباشرة", icon: "mic", hint: "ابدئي بضغطة واحدة" },
+  { href: "/teacher/upload/", label: "رفع تسجيل", icon: "headphone", hint: "محاضرة جديدة" },
   { href: "/teacher/lectures/", label: "مراجعة ونشر", icon: "check", hint: "المسودات" },
   { href: "/teacher/students/", label: "إضافة طفل", icon: "cap", hint: "الطلاب" },
   { href: "/teacher/suggestions/", label: "الاقتراحات", icon: "speech", hint: "صندوق الأفكار" },
@@ -61,8 +63,9 @@ export default function TeacherHome() {
         </div>
       </BlurFade>
 
+      <LiveBanner teacher />
       {/* الوصول السريع أولًا */}
-      <section aria-label="الوصول السريع" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section aria-label="الوصول السريع" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {QUICK.map((q, i) => (
           <BlurFade key={q.href} delay={0.05 + i * 0.04}>
             <Link href={q.href} className="block h-full rounded-[24px] focus-visible:outline-2">

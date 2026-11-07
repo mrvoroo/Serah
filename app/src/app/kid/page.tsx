@@ -17,9 +17,11 @@ import SpotlightCard from "@/components/SpotlightCard";
 import { cn } from "@/lib/utils";
 import { g } from "@/lib/kid-text";
 import { toast } from "sonner";
+import { LiveBanner } from "@/components/live/live-banner";
 
 const TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] = [
   { href: "/kid/journey/", label: "رحلة الأنبياء", icon: "rocket", tone: "from-[#7B5CFF] to-[#4B2FD1]" },
+  { href: "/kid/live/", label: "المحاضرة المباشرة", icon: "mic", tone: "from-[#E5484D] to-[#B4237A]" },
   { href: "/kid/lectures/", label: "المحاضرات", icon: "headphone", tone: "from-[#2FB5A3] to-[#167A6E]" },
   { href: "/kid/stars/", label: "لوحة النجوم", icon: "trophy", tone: "from-[#FFB020] to-[#E07A00]" },
   { href: "/kid/quran/", label: "القرآن الكريم", icon: "open-book", tone: "from-[#1FA37F] to-[#0E6B52]" },
@@ -44,6 +46,7 @@ export default function KidHome() {
 
   return (
     <div className="flex flex-col gap-4">
+      <LiveBanner teacher={false} />
       <BlurFade delay={0.05}>
         <section className="relative overflow-hidden rounded-[32px] bg-hero p-5 text-white shadow-soft">
           <div className="flex items-center gap-3">

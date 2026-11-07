@@ -32,6 +32,12 @@ const SCHEMA = {
   // المرحلة 6: سجل الصلوات (day رقم yyyymmdd، key = user_id:day) وأجهزة الإشعارات
   PrayerLog:    ['key', 'user_id', 'day', 'prayers', 'updated_at'],
   PushSubs:     ['sub_id', 'user_id', 'class_id', 'endpoint', 'pull_key', 'plan', 'prefs', 'created_at', 'last_seen', 'fails'],
+  // المرحلة 9: المحاضرات المباشرة (مواعيد أسبوعية، جلسات، حضور بالنبضات)
+  // week_min = الدقيقة من بداية الأسبوع بالتوقيت المحلي لمنطقة tz (لا يتغير مع التوقيت الصيفي)
+  LiveSlots:    ['slot_id', 'class_id', 'title', 'week_min', 'minutes', 'created_by', 'created_at', 'tz'],
+  // teacher_seen: آخر نبضة من صفحة المعلمة (لإنهاء المحاضرة المنسية)
+  LiveSessions: ['live_id', 'class_id', 'title', 'room', 'status', 'started_at', 'ended_at', 'started_by', 'lecture_id', 'teacher_seen'],
+  LiveAttend:   ['key', 'live_id', 'user_id', 'first_at', 'last_at', 'seconds', 'status', 'points', 'override'],
   ProphetContent:['item_id', 'prophet_id', 'kind', 'title', 'body', 'file_id', 'url', 'sort', 'visible', 'approved', 'created_by', 'created_at']
 };
 const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من تيليجرام (20MB)
@@ -2040,6 +2046,7 @@ function pushTick() {
   if (!lock.tryLock(5000)) return;
   try {
     const now = Math.floor(Date.now() / 1000);
+    try { autoEndLive_(); } catch (e) { console.error(e); }
     const last = Number(prop_('PUSH_LAST') || now - 300);
     props_().setProperty('PUSH_LAST', String(now));
     const cache = CacheService.getScriptCache();
@@ -2166,6 +2173,231 @@ function vapidJwt_(aud) {
   return jwt;
 }
 
+
+/* ============ المرحلة 9: المحاضرات المباشرة (سيرفر Jitsi خاص بالمنصة) ============
+ * الأدمن تحدد مواعيد أسبوعية، والمعلمة تضغط «ابدئي المحاضرة» فتُنشأ غرفة عشوائية ويصل للأطفال إشعار فوري.
+ * الدخول بتوكن JWT يوقّعه الخادم (JITSI_SECRET في Script Properties) فلا يدخل الغرفة إلا أطفال الفصل ومعلماته.
+ * الحضور: صفحة الطفل ترسل نبضة كل دقيقة أثناء وجوده في المحاضرة، ويُحسب «حاضر/حضر جزءًا» عند الإنهاء.
+ * التسجيل: صوت المعلمة من متصفحها يُرفع لدرايف أثناء المحاضرة، ويصبح محاضرة «مسودة» تعتمدها الأدمن. */
+const LIVE_PRESENT_PTS = 15, LIVE_PARTIAL_PTS = 5, LIVE_MAX_SEC = 4 * 3600;
+
+Object.assign(POLICY, {
+  liveState: { min: 'student' }, liveJoin: { min: 'student' }, liveBeat: { min: 'student', write: 1 },
+  liveStart: { min: 'teacher', write: 1, audit: 1 }, liveEnd: { min: 'teacher', write: 1, audit: 1 }, liveAttach: { min: 'teacher', write: 1, audit: 1 },
+  liveAttendance: { min: 'teacher' }, liveSetAttend: { min: 'teacher', write: 1, audit: 1 },
+  liveSlotSave: { min: 'admin', write: 1, audit: 1 }, liveSlotDelete: { min: 'admin', write: 1, audit: 1 }
+});
+
+function liveCfg_() { const d = String(prop_('JITSI_DOMAIN') || '').trim().toLowerCase(); return /^[a-z0-9.-]{3,100}$/.test(d) ? d : ''; }
+function liveNow_(class_id) { return rows_('LiveSessions').find(s => s.class_id === class_id && s.status === 'live') || null; }
+function liveOut_(s, users) {
+  const u = users && users[s.started_by];
+  return { live_id: s.live_id, title: s.title, status: s.status, started_at: s.started_at, ended_at: s.ended_at || '', lecture_id: s.lecture_id || '', teacher: u ? teacherTitle_(u) : '' };
+}
+function slotOut_(s) { return { slot_id: s.slot_id, title: s.title, week_min: Number(s.week_min), minutes: Number(s.minutes) || 60, tz: s.tz || 'Asia/Riyadh' }; }
+function cleanTz_(v) { const t = String(v || ''); return /^[A-Za-z]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(t) && t.length <= 40 ? t : 'Asia/Riyadh'; }
+function ownLive_(me, p) {
+  const s = rows_('LiveSessions').find(x => x.live_id === String(p.live_id || '') && (me.role === 'superadmin' || x.class_id === me.class_id));
+  if (!s) throw new Error('المحاضرة غير موجودة');
+  return s;
+}
+// توكن دخول الغرفة (HS256) بالصيغة التي يقرؤها Jitsi (prosody token auth)
+function jitsiJwt_(room, me) {
+  const secret = prop_('JITSI_SECRET');
+  if (!secret || String(secret).length < 32 || !liveCfg_()) throw new Error('سيرفر المحاضرات لم يُجهَّز بعد');
+  const now = Math.floor(Date.now() / 1000), mod = me.role !== 'student', u = rows_('Users').find(x => x.user_id === me.user_id) || { name: '', role: me.role };
+  const b64 = (o) => Utilities.base64EncodeWebSafe(JSON.stringify(o)).replace(/=+$/, '');
+  const body = b64({ alg: 'HS256', typ: 'JWT' }) + '.' + b64({
+    aud: 'jitsi', iss: prop_('JITSI_APP') || 'muntaha', sub: liveCfg_(), room, nbf: now - 60, exp: now + (mod ? LIVE_MAX_SEC : 1800), // الطفل: توكن ٣٠ دقيقة (يُفحص عند الدخول فقط) حتى لا يُستعمل بعد انتهاء المحاضرة
+   
+    moderator: mod, context: { user: { id: me.user_id, name: mod ? teacherTitle_(u) : String(u.name || ''), moderator: mod, affiliation: mod ? 'owner' : 'member' } }
+  });
+  return body + '.' + Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(body, secret)).replace(/=+$/, '');
+}
+// إشعار فوري (بدون انتظار مشغّل الخمس دقائق) لأطفال الفصل
+function pushClassNow_(class_id, item) {
+  try {
+    const users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
+    const subs = rows_('PushSubs').filter(s => { const u = users[s.user_id]; return u && !inactive_(u) && u.role === 'student' && String(u.class_id) === String(class_id); });
+    if (!subs.length) return;
+    subs.forEach(s => queuePush_(s.sub_id, item));
+    UrlFetchApp.fetchAll(subs.map(s => pushRequest_(s.endpoint)));
+  } catch (e) { console.error(e); }
+}
+// ينهي الجلسة ويحسب الحضور والنجوم (يُستدعى والقفل محجوز)
+function closeLive_(s, at) {
+  const end = at || new Date(), len = Math.max(60, (end - new Date(s.started_at)) / 1000);
+  update_('LiveSessions', 'live_id', s.live_id, { status: 'ended', ended_at: end.toISOString() });
+  rows_('LiveAttend').filter(a => a.live_id === s.live_id && !truthy_(a.override)).forEach(a => {
+    const sec = Number(a.seconds) || 0, st = sec >= len * 0.5 ? 'present' : sec >= 60 ? 'partial' : 'absent';
+    // محاضرة أقل من ١٠ دقائق (بدء خاطئ أو تجربة): الحضور يتسجل بدون نجوم
+    const pts = len < 600 ? 0 : st === 'present' ? LIVE_PRESENT_PTS : st === 'partial' ? LIVE_PARTIAL_PTS : 0;
+    update_('LiveAttend', 'key', a.key, { status: st, points: pts });
+    if (pts) addPoints_(a.user_id, pts, 'حضور محاضرة مباشرة');
+  });
+}
+// تسجيل المعلمة يصبح محاضرة «مسودة» تراجعها الأدمن وتنشرها
+function liveLecture_(s0, me, fileId, dur) {
+  const f = platformFile_(fileId);
+  return withLock_(() => {
+  const s = rows_('LiveSessions').find(x => x.live_id === s0.live_id);
+  if (s.lecture_id) return s.lecture_id; // ضغطتان متزامنتان لا تنشئان مسودتين
+  const l = append_('Lectures', { lecture_id: id_('L'), class_id: s.class_id, title: String(s.title).slice(0, 120), date: String(s.started_at).slice(0, 10),
+    audio_file_id: playableAudio_(f), duration_sec: Math.max(0, Math.min(LIVE_MAX_SEC, Math.floor(Number(dur) || 0))) || '',
+    status: 'draft', notes: 'تسجيل محاضرة مباشرة', created_by: me.user_id, created_at: now_() });
+  share_(l.audio_file_id);
+  update_('LiveSessions', 'live_id', s.live_id, { lecture_id: l.lecture_id });
+  return l.lecture_id;
+  });
+}
+
+Object.assign(ACTIONS, {
+  // حالة المحاضرات للفصل: الجارية الآن والمواعيد الأسبوعية، وللمعلمات آخر المحاضرات
+  liveState: (p, me) => {
+    const c = cls_(me, p), users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
+    const live = liveNow_(c);
+    const out = { ready: !!(liveCfg_() && prop_('JITSI_SECRET')), domain: liveCfg_(), live: live ? liveOut_(live, users) : null,
+      slots: rows_('LiveSlots').filter(s => s.class_id === c).map(slotOut_).sort((a, b) => a.week_min - b.week_min) };
+    if (RANK[me.role] >= RANK.teacher) {
+      const att = rows_('LiveAttend');
+      out.recent = rows_('LiveSessions').filter(s => s.class_id === c && s.status === 'ended').sort((a, b) => String(b.started_at).localeCompare(String(a.started_at))).slice(0, 20)
+        .map(s => Object.assign(liveOut_(s, users), { present: att.filter(a => a.live_id === s.live_id && a.status === 'present').length, partial: att.filter(a => a.live_id === s.live_id && a.status === 'partial').length }));
+    } else if (live) {
+      const a = att_(live.live_id, me.user_id); out.mine = a ? Number(a.seconds) || 0 : 0;
+    }
+    return out;
+  },
+
+  // المعلمة تبدأ المحاضرة (لو فيه محاضرة جارية في الفصل ترجعها بدل إنشاء غرفة ثانية)
+  liveStart: (p, me) => {
+    if (!liveCfg_() || !prop_('JITSI_SECRET')) throw new Error('سيرفر المحاضرات لم يُجهَّز بعد');
+    const c = cls_(me, p);
+    if (!rows_('Classes').some(x => x.class_id === c)) throw new Error('الفصل غير موجود');
+    const res = withLock_(() => {
+      const cur = liveNow_(c);
+      if (!cur) rate_('ls:' + c, 6, 3600); // ٦ محاضرات في الساعة كحد (كل بدء يرسل إشعارًا لكل الفصل)
+      if (cur) return { s: cur, fresh: false };
+      const title = String(p.title || '').trim().slice(0, 120) || 'محاضرة مباشرة';
+      const room = 'muntaha' + Utilities.getUuid().replace(/-/g, '').slice(0, 20);
+      return { s: append_('LiveSessions', { live_id: id_('V'), class_id: c, title, room, status: 'live', started_at: now_(), ended_at: '', started_by: me.user_id, lecture_id: '', teacher_seen: now_() }), fresh: true };
+    });
+    if (res.fresh) pushClassNow_(c, { kind: 'live', title: 'المحاضرة بدأت الآن 🎙️', body: res.s.title + ' — اضغط للدخول', url: '/kid/live/' });
+    return { live_id: res.s.live_id, domain: liveCfg_(), room: res.s.room, jwt: jitsiJwt_(res.s.room, me), title: res.s.title, fresh: res.fresh, started_at: res.s.started_at, mine: res.s.started_by === me.user_id };
+  },
+
+  // دخول الغرفة: أطفال الفصل ومعلماته فقط، وأثناء المحاضرة فقط
+  liveJoin: (p, me) => {
+    const s = ownLive_(me, p);
+    if (s.status !== 'live') throw new Error('المحاضرة انتهت');
+    if (me.role === 'student') {
+      rate_('lj:' + me.user_id, 30, 3600);
+      if (!att_(s.live_id, me.user_id)) withLock_(() => { if (!att_(s.live_id, me.user_id)) append_('LiveAttend', { key: s.live_id + ':' + me.user_id, live_id: s.live_id, user_id: me.user_id, first_at: now_(), last_at: now_(), seconds: 0, status: '', points: 0, override: '' }); });
+    }
+    return { live_id: s.live_id, domain: liveCfg_(), room: s.room, jwt: jitsiJwt_(s.room, me), title: s.title, started_at: s.started_at, mine: s.started_by === me.user_id };
+  },
+
+  // نبضة حضور كل دقيقة تقريبًا: تضيف الوقت الفعلي منذ النبضة السابقة (بحد ٩٠ ثانية حتى لا يُحسب الانقطاع)
+  liveBeat: (p, me) => {
+    const s = ownLive_(me, p);
+    if (me.role !== 'student') {
+      if (s.status === 'live') update_('LiveSessions', 'live_id', s.live_id, { teacher_seen: now_() });
+      return s.status === 'live' ? { seconds: 0 } : { ended: true };
+    }
+    if (s.status !== 'live') return { ended: true };
+    rate_('lb:' + me.user_id, 90, 3600);
+    const key = s.live_id + ':' + me.user_id, a0 = att_(s.live_id, me.user_id);
+    if (!a0) throw new Error('ادخل المحاضرة أولًا'); // الحضور لمن دخل الغرفة عبر liveJoin فقط
+    if ((Date.now() - new Date(a0.last_at).getTime()) / 1000 < 40) return { seconds: Number(a0.seconds) || 0 }; // بدون قفل
+    return withLock_(() => {
+      const a = att_(s.live_id, me.user_id), gap = (Date.now() - new Date(a.last_at).getTime()) / 1000;
+      if (gap < 40) return { seconds: Number(a.seconds) || 0 };
+      const sec = Math.min(LIVE_MAX_SEC, (Number(a.seconds) || 0) + Math.round(Math.min(gap, 90)));
+      update_('LiveAttend', 'key', key, { last_at: now_(), seconds: sec });
+      return { seconds: sec };
+    });
+  },
+
+  // إنهاء المحاضرة (أي معلمة في الفصل) مع ربط التسجيل إن وُجد
+  liveEnd: (p, me) => {
+    const s = ownLive_(me, p);
+    const out = withLock_(() => {
+      const cur = ownLive_(me, p);
+      if (cur.status === 'live') closeLive_(cur);
+      return { ended: true };
+    });
+    if (p.audio_file_id && !s.lecture_id) out.lecture_id = liveLecture_(s, me, p.audio_file_id, p.duration_sec);
+    return out;
+  },
+
+  // ربط التسجيل بعد الإنهاء (لو اكتمل رفعه متأخرًا)
+  liveAttach: (p, me) => {
+    const s = ownLive_(me, p);
+    if (s.status !== 'ended') throw new Error('المحاضرة لم تنتهِ بعد');
+    if (s.lecture_id) return { lecture_id: s.lecture_id };
+    return { lecture_id: liveLecture_(s, me, p.audio_file_id, p.duration_sec) };
+  },
+
+  // كشف الحضور: كل أطفال الفصل (من لم يدخل = غائب)
+  liveAttendance: (p, me) => {
+    const s = ownLive_(me, p), att = rows_('LiveAttend').filter(a => a.live_id === s.live_id);
+    return rows_('Users').filter(u => u.class_id === s.class_id && u.role === 'student' && !inactive_(u)).map(u => {
+      const a = att.find(x => x.user_id === u.user_id);
+      return { user_id: u.user_id, name: u.name, avatar: u.avatar, seconds: a ? Number(a.seconds) || 0 : 0,
+        status: a && a.status ? a.status : (s.status === 'live' ? (a && Date.now() - new Date(a.last_at).getTime() < 150000 ? 'here' : 'absent') : 'absent'), override: !!(a && truthy_(a.override)) };
+    }).sort((x, y) => y.seconds - x.seconds);
+  },
+
+  // تعديل حالة طفل يدويًا بعد الإنهاء (النجوم تتعدل بالفرق)
+  liveSetAttend: (p, me) => {
+    const s = ownLive_(me, p);
+    if (s.status !== 'ended') throw new Error('عدّلي الحضور بعد انتهاء المحاضرة');
+    if (['present', 'partial', 'absent'].indexOf(p.status) < 0) throw new Error('حالة غير صحيحة');
+    const kid = rows_('Users').find(u => u.user_id === String(p.user_id || '') && u.class_id === s.class_id && u.role === 'student');
+    if (!kid) throw new Error('الطفل غير موجود');
+    return withLock_(() => {
+      const key = s.live_id + ':' + kid.user_id, a = att_(s.live_id, kid.user_id);
+      const pts = p.status === 'present' ? LIVE_PRESENT_PTS : p.status === 'partial' ? LIVE_PARTIAL_PTS : 0, old = a ? Number(a.points) || 0 : 0;
+      if (a) update_('LiveAttend', 'key', key, { status: p.status, points: pts, override: true });
+      else append_('LiveAttend', { key, live_id: s.live_id, user_id: kid.user_id, first_at: '', last_at: '', seconds: 0, status: p.status, points: pts, override: true });
+      if (pts !== old) addPoints_(kid.user_id, pts - old, 'تعديل حضور محاضرة مباشرة');
+      return true;
+    });
+  },
+
+  // مواعيد أسبوعية: week_min = الدقيقة من بداية الأسبوع (الأحد ٠٠:٠٠) بتوقيت منطقة tz — كل جهاز يحسب اللحظة ويعرضها بتوقيته
+  liveSlotSave: (p, me) => {
+    const c = cls_(me, p), wm = Math.floor(Number(p.week_min)), minutes = Math.floor(Number(p.minutes) || 60);
+    const title = String(p.title || '').trim().slice(0, 80);
+    if (!title) throw new Error('اكتبي عنوان المحاضرة');
+    if (!(wm >= 0 && wm < 10080)) throw new Error('الموعد غير صحيح');
+    if (!(minutes >= 15 && minutes <= 240)) throw new Error('المدة بين ١٥ و٢٤٠ دقيقة');
+    const own = rows_('LiveSlots').filter(s => s.class_id === c);
+    if (p.slot_id) {
+      if (!own.some(s => s.slot_id === String(p.slot_id))) throw new Error('الموعد غير موجود');
+      update_('LiveSlots', 'slot_id', String(p.slot_id), { title, week_min: wm, minutes, tz: cleanTz_(p.tz) });
+      return true;
+    }
+    if (own.length >= 14) throw new Error('الحد ١٤ موعدًا في الأسبوع');
+    append_('LiveSlots', { slot_id: id_('W'), class_id: c, title, week_min: wm, minutes, created_by: me.user_id, created_at: now_(), tz: cleanTz_(p.tz) });
+    return true;
+  },
+  liveSlotDelete: (p, me) => {
+    const c = cls_(me, p);
+    if (!rows_('LiveSlots').some(s => s.slot_id === String(p.slot_id || '') && s.class_id === c)) throw new Error('الموعد غير موجود');
+    remove_('LiveSlots', 'slot_id', String(p.slot_id));
+    return true;
+  }
+});
+function att_(live_id, user_id) { return rows_('LiveAttend').find(a => a.key === live_id + ':' + user_id) || null; }
+// محاضرة نسيت المعلمة إنهاءها: تنتهي تلقائيًا بعد ٤ ساعات (يُستدعى من مشغّل الإشعارات)
+// وتنتهي أيضًا بعد ١٥ دقيقة من آخر ظهور لصفحة المعلمة (أغلقت الجهاز بدون «إنهاء»)، ومدتها حتى آخر ظهور
+function autoEndLive_() {
+  rows_('LiveSessions').filter(s => s.status === 'live').forEach(s => {
+    const seen = new Date(s.teacher_seen || s.started_at).getTime(), age = Date.now() - new Date(s.started_at).getTime();
+    if (Date.now() - seen > 15 * 60000) closeLive_(s, new Date(Math.max(seen, new Date(s.started_at).getTime() + 60000)));
+    else if (age > LIVE_MAX_SEC * 1000) closeLive_(s);
+  });
+}
 
 /* ============ 7) تحويل رسائل تيليجرام الصوتية (Ogg/Opus) إلى WebM/Opus ============
  * سفاري (آيفون) لا يشغّل Opus داخل Ogg إطلاقًا، لكنه يشغّله داخل WebM. نعيد تغليف نفس الصوت بدون إعادة ترميز:

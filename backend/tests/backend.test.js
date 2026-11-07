@@ -1384,6 +1384,103 @@ test('الإشعارات: حد الجدول اليومي، وحذف أجهزة �
   assert.strictEqual(t.g.rows_('PushSubs').length, 0, 'removed kid device dropped');
 });
 
+test('المحاضرات المباشرة: مواعيد للأدمن، بدء فوري بإشعار، توكن للغرفة، حضور بالنبضات، إنهاء وتسجيل مسودة', () => {
+  const t = setup();
+  const adm = t.login({ name: 'المعلمة', pin: '482615' }), tch = t.login({ name: 'معلمة ثانية', pin: '222222' });
+  const k1 = t.login({ class_code: 'SERAH1', user_id: 'S1', pin: '1111' }), k2 = t.login({ class_code: 'SERAH1', user_id: 'S2', pin: '2222' });
+  // قبل تجهيز السيرفر: رسالة واضحة
+  assert.strictEqual(t.call('liveStart', {}, tch).error, 'سيرفر المحاضرات لم يُجهَّز بعد');
+  assert.strictEqual(t.call('liveState', {}, k1).data.ready, false);
+  t.props.JITSI_DOMAIN = 'live.example.com'; t.props.JITSI_SECRET = 'jsecret-0123456789-0123456789-abc';
+  // المواعيد للأدمن فقط
+  assert.ok(!t.call('liveSlotSave', { title: 'درس', week_min: 2 * 1440 + 14 * 60, minutes: 60 }, tch).ok);
+  assert.ok(t.call('liveSlotSave', { title: 'قصص الأنبياء', week_min: 2 * 1440 + 14 * 60, minutes: 60 }, adm).ok);
+  assert.ok(!t.call('liveSlotSave', { title: 'x', week_min: 99999 }, adm).ok);
+  assert.strictEqual(t.call('liveState', {}, k1).data.slots[0].title, 'قصص الأنبياء');
+  assert.ok(t.call('liveSlotSave', { title: 'تجويد', week_min: 100, minutes: 30, tz: 'Africa/Cairo' }, adm).ok);
+  assert.strictEqual(t.call('liveState', {}, k1).data.slots.find(x => x.title === 'تجويد').tz, 'Africa/Cairo');
+  // جهاز طفل مسجّل للإشعارات يصله إشعار فوري
+  t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/k1', plan: [] }, k1);
+  t.fetches.length = 0;
+  const st = t.call('liveStart', { title: 'قصة يوسف' }, tch);
+  assert.ok(st.ok && st.data.fresh, JSON.stringify(st));
+  assert.ok(t.fetches.some(f => /fcm\/send\/k1/.test(f.url)), 'instant push');
+  // التوكن موقّع بالسر والمعلمة مشرفة
+  const [h, b, sig] = st.data.jwt.split('.');
+  assert.strictEqual(sig, crypto.createHmac('sha256', 'jsecret-0123456789-0123456789-abc').update(h + '.' + b).digest('base64url'));
+  const body = JSON.parse(Buffer.from(b, 'base64url').toString());
+  assert.strictEqual(body.room, st.data.room); assert.strictEqual(body.context.user.moderator, true); assert.strictEqual(body.sub, 'live.example.com');
+  // بدء ثانٍ يرجع نفس الغرفة
+  const again = t.call('liveStart', {}, adm);
+  assert.strictEqual(again.data.live_id, st.data.live_id); assert.strictEqual(again.data.fresh, false);
+  // الطفل يدخل كعضو عادي
+  const j = t.call('liveJoin', { live_id: st.data.live_id }, k1);
+  assert.strictEqual(JSON.parse(Buffer.from(j.data.jwt.split('.')[1], 'base64url').toString()).context.user.moderator, false);
+  assert.strictEqual(JSON.parse(Buffer.from(j.data.jwt.split('.')[1], 'base64url').toString()).context.user.name, 'يوسف');
+  assert.strictEqual(t.call('liveState', {}, k2).data.live.title, 'قصة يوسف');
+  // نبضات: الأولى تسجّل الدخول، والمتقاربة لا تزيد، والانقطاع الطويل يُحسب ١٥٠ ثانية فقط
+  assert.strictEqual(t.call('liveBeat', { live_id: st.data.live_id }, k2).error, 'ادخل المحاضرة أولًا');
+  t.call('liveJoin', { live_id: st.data.live_id }, k2);
+  assert.strictEqual(t.call('liveBeat', { live_id: st.data.live_id }, k1).data.seconds, 0);
+  const A = t.sheets.LiveAttend, col = (n) => A._data[0].indexOf(n);
+  const back = (uid, sec) => { const r = A._data.find(x => x[col('user_id')] === uid); r[col('last_at')] = new Date(Date.now() - sec * 1000).toISOString(); };
+  back('S1', 3000);
+  assert.strictEqual(t.call('liveBeat', { live_id: st.data.live_id }, k1).data.seconds, 90);
+  // نجعل المحاضرة بدأت من ٤ دقائق: يوسف حضر ١٥٠ث (> النصف) ومريم ٠ث
+  for (let i = 0; i < 39; i++) { back('S1', 100); t.call('liveBeat', { live_id: st.data.live_id }, k1); }
+  const L = t.sheets.LiveSessions; L._data[1][L._data[0].indexOf('started_at')] = new Date(Date.now() - 90 * 60000).toISOString();
+  assert.ok(!t.call('liveEnd', { live_id: st.data.live_id }, k1).ok, 'kid cannot end');
+  const end = t.call('liveEnd', { live_id: st.data.live_id, audio_file_id: 'rec1', duration_sec: 240 }, tch);
+  assert.ok(end.ok && end.data.lecture_id, JSON.stringify(end));
+  const lec = t.g.rows_('Lectures').find(l => l.lecture_id === end.data.lecture_id);
+  assert.strictEqual(lec.status, 'draft'); assert.strictEqual(lec.title, 'قصة يوسف');
+  const att = t.call('liveAttendance', { live_id: st.data.live_id }, tch).data;
+  assert.strictEqual(att.find(a => a.user_id === 'S1').status, 'present');
+  assert.strictEqual(att.find(a => a.user_id === 'S2').status, 'absent');
+  const pts = (uid) => t.g.rows_('Points').filter(p => p.user_id === uid).reduce((a, p) => a + Number(p.points), 0);
+  assert.strictEqual(pts('S1'), 15);
+  // تعديل يدوي بالفرق
+  assert.ok(t.call('liveSetAttend', { live_id: st.data.live_id, user_id: 'S2', status: 'partial' }, tch).ok);
+  assert.strictEqual(pts('S2'), 5);
+  assert.ok(t.call('liveSetAttend', { live_id: st.data.live_id, user_id: 'S1', status: 'absent' }, tch).ok);
+  assert.strictEqual(pts('S1'), 0);
+  // بعد الإنهاء: لا دخول ولا نبضات، والسجل يظهر للمعلمة
+  assert.strictEqual(t.call('liveJoin', { live_id: st.data.live_id }, k1).error, 'المحاضرة انتهت');
+  assert.strictEqual(t.call('liveBeat', { live_id: st.data.live_id }, k1).data.ended, true);
+  assert.strictEqual(t.call('liveState', {}, tch).data.recent[0].lecture_id, end.data.lecture_id);
+  // ملف من خارج المنصة يُرفض
+  const s2 = t.call('liveStart', {}, tch);
+  t.call('liveJoin', { live_id: s2.data.live_id }, k1); back('S1', 100); t.call('liveBeat', { live_id: s2.data.live_id }, k1);
+  assert.ok(!t.call('liveEnd', { live_id: s2.data.live_id, audio_file_id: 'ext1' }, tch).ok);
+  const before = pts('S1');
+  assert.ok(t.call('liveEnd', { live_id: s2.data.live_id, audio_file_id: 'rec2' }, tch).ok);
+  assert.strictEqual(pts('S1'), before, 'short lecture gives no stars');
+  t.call('liveAttach', { live_id: s2.data.live_id, audio_file_id: 'rec3' }, tch);
+  assert.strictEqual(t.g.rows_('Lectures').filter(l => l.notes === 'تسجيل محاضرة مباشرة').length, 2);
+});
+
+test('المحاضرات المباشرة: تنتهي تلقائيًا بعد ٤ ساعات، وفصل آخر لا يرى الغرفة', () => {
+  const t = setup();
+  t.props.JITSI_DOMAIN = 'live.example.com'; t.props.JITSI_SECRET = 'jsecret-0123456789-0123456789-abc';
+  t.sheets.Classes.appendRow(['C2', 'فصل آخر', 'T9', 'OTHER1', 'x']);
+  t.sheets.Users.appendRow(['S9', 'student', 'غريب', 'C2', '', t.g.hashPin_('9999'), '', '', '', true, 'x']);
+  const tch = t.login({ name: 'معلمة ثانية', pin: '222222' }), k9 = t.login({ class_code: 'OTHER1', user_id: 'S9', pin: '9999' });
+  const st = t.call('liveStart', {}, tch);
+  assert.strictEqual(t.call('liveJoin', { live_id: st.data.live_id }, k9).error, 'المحاضرة غير موجودة');
+  assert.strictEqual(t.call('liveState', {}, k9).data.live, null);
+  const L = t.sheets.LiveSessions, ci = (n) => L._data[0].indexOf(n);
+  // المعلمة تنبض: تبقى شغالة؛ بعد ٢٠ دقيقة بدون ظهور تنتهي ومدتها حتى آخر ظهور
+  L._data[1][ci('started_at')] = new Date(Date.now() - 60 * 60000).toISOString();
+  assert.ok(t.call('liveBeat', { live_id: st.data.live_id }, tch).ok);
+  t.g.pushTick();
+  assert.strictEqual(t.g.rows_('LiveSessions')[0].status, 'live');
+  L._data[1][ci('teacher_seen')] = new Date(Date.now() - 20 * 60000).toISOString();
+  t.g.pushTick();
+  const s = t.g.rows_('LiveSessions')[0];
+  assert.strictEqual(s.status, 'ended');
+  assert.ok(Math.abs(new Date(s.ended_at) - (Date.now() - 20 * 60000)) < 5000, 'ended at last teacher beat');
+});
+
 for (const [name, fn] of tests) {
   try { fn(); console.log('✔', name); } catch (e) { failed++; console.log('✘', name, '\n   ', e.message); }
 }
