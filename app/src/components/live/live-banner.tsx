@@ -3,8 +3,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Radio } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
+import { session } from "@/lib/api";
 import { nextSlot, type LiveState } from "@/lib/live";
 import { g } from "@/lib/kid-text";
+
+// المحاضرة المباشرة تظهر في القوائم فقط لما سيرفرها يكون جاهز (المطوّر يشوفها دايمًا عشان يجهّزها)
+export function useLiveReady() {
+  const { data } = useApi<LiveState>("liveState");
+  return !!data?.ready || session.user()?.role === "superadmin";
+}
 
 // شريط في الصفحة الرئيسية: يظهر لما المحاضرة شغالة (للكل) أو حان ميعادها (للمعلمة)
 export function LiveBanner({ teacher }: { teacher: boolean }) {

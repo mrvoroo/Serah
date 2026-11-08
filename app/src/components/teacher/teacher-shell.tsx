@@ -13,6 +13,7 @@ import { cn, teacherTitle } from "@/lib/utils";
 import { EncouragementCloud } from "@/components/teacher/encouragement-cloud";
 import { BrandMark } from "@/components/brand-logo";
 import { HomeBack } from "@/components/home-back";
+import { useLiveReady } from "@/components/live/live-banner";
 
 const RANK: Record<Role, number> = { student: 0, teacher: 1, admin: 2, superadmin: 3 };
 
@@ -47,9 +48,10 @@ function Brand({ role }: { role?: Role }) {
 function NavList({ onNavigate, id, role }: { onNavigate?: () => void; id: string; role?: Role }) {
   const path = usePathname();
   const rank = role ? RANK[role] : 0;
+  const live = useLiveReady();
   return (
     <nav aria-label="قائمة المعلمة" className="flex flex-col gap-1">
-      {TEACHER_NAV.filter((n) => !n.min || rank >= RANK[n.min]).map((n) => {
+      {TEACHER_NAV.filter((n) => (!n.min || rank >= RANK[n.min]) && (live || n.href !== "/teacher/live/")).map((n) => {
         const exact = n.href === "/teacher/" || n.href === "/admin/";
         const bare = n.href.replace(/\/$/, "");
         const on = exact ? path === bare || path === n.href : path.startsWith(bare);

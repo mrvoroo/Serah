@@ -17,7 +17,7 @@ import SpotlightCard from "@/components/SpotlightCard";
 import { cn } from "@/lib/utils";
 import { g } from "@/lib/kid-text";
 import { toast } from "sonner";
-import { LiveBanner } from "@/components/live/live-banner";
+import { LiveBanner, useLiveReady } from "@/components/live/live-banner";
 
 const TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] = [
   { href: "/kid/journey/", label: "رحلة الأنبياء", icon: "rocket", tone: "from-[#7B5CFF] to-[#4B2FD1]" },
@@ -32,6 +32,7 @@ const TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] =
 export default function KidHome() {
   const user = session.user();
   const me = useApi<Me>("me");
+  const live = useLiveReady();
   const lectures = useApi<Lecture[]>("lectures");
   const latest = lectures.data?.[0];
   const heard = new Set(me.data?.attended ?? []);
@@ -112,7 +113,7 @@ export default function KidHome() {
       </BlurFade>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {TILES.map((t, i) => (
+        {TILES.filter((t) => live || t.href !== "/kid/live/").map((t, i) => (
           <BlurFade key={t.href} delay={0.18 + i * 0.05} >
             <Link href={t.href} className={cn("flex flex-col items-center justify-center gap-2 rounded-[28px]", "aspect-square", " bg-gradient-to-br p-2 text-center font-bold text-white shadow-soft transition-transform active:scale-95", t.tone)}>
               <Icon3D name={t.icon} size={54} float delay={i * 0.3} />

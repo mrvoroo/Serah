@@ -14,7 +14,7 @@ import { AnimatedCircularProgressBar } from "@/components/ui/animated-circular-p
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { KidAvatar } from "@/components/kid/kid-avatar";
 import { teacherTitle } from "@/lib/utils";
-import { LiveBanner } from "@/components/live/live-banner";
+import { LiveBanner, useLiveReady } from "@/components/live/live-banner";
 
 const QUICK: { href: string; label: string; icon: Icon3DName; hint: string }[] = [
   { href: "/teacher/live/", label: "محاضرة مباشرة", icon: "mic", hint: "ابدئي بضغطة واحدة" },
@@ -38,6 +38,7 @@ function Panel({ title, children, className = "" }: { title: string; children: R
 
 export default function TeacherHome() {
   const { data, loading, error, reload } = useApi<Dashboard>("dashboard");
+  const live = useLiveReady();
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme !== "light";
   const user = session.user();
@@ -65,8 +66,8 @@ export default function TeacherHome() {
 
       <LiveBanner teacher />
       {/* الوصول السريع أولًا */}
-      <section aria-label="الوصول السريع" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {QUICK.map((q, i) => (
+      <section aria-label="الوصول السريع" className={live ? "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" : "grid grid-cols-2 gap-3 lg:grid-cols-4"}>
+        {QUICK.filter((q) => live || q.href !== "/teacher/live/").map((q, i) => (
           <BlurFade key={q.href} delay={0.05 + i * 0.04}>
             <Link href={q.href} className="block h-full rounded-[24px] focus-visible:outline-2">
               <MagicCard className="h-full rounded-[24px]" gradientColor={dark ? "#2A1D66" : "#E9E2FF"} gradientFrom="#8B6CFF" gradientTo="#FFC24D">
