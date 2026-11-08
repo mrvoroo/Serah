@@ -4,7 +4,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Mic, Pause, Play, Rota
 import { Icon3D } from "@/components/icon3d";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  RECITERS, arNum, ayahAudio, hasBasmala, loadPrefs, savePrefs, surahList, surahText,
+  RECITERS, arNum, ayahAudio, fixMode, hasBasmala, loadPrefs, savePrefs, surahList, surahText,
   type Ayah, type QuranPrefs, type SurahInfo,
 } from "@/lib/quran";
 import { cn } from "@/lib/utils";
@@ -81,7 +81,7 @@ export function QuranReader() {
     setManualPage(null); // الصفحة تتبع الشيخ وتُقلب وحدها
     if (ayah !== BASMALA) update({ ayah, page: ayahs?.find((x) => x.n === ayah)?.page ?? 0 });
     const r = RECITERS.find((x) => x.id === p.reciter) ?? RECITERS[0];
-    const folder = p.mode === "teacher" ? r.teacher : r.murattal;
+    const folder = p.mode === "teacher" && r.muallim ? r.teacher : r.murattal;
     // البسملة = أول آية في الفاتحة بصوت نفس الشيخ
     const url = ayah === BASMALA ? ayahAudio(folder, 1, 1) : ayahAudio(folder, p.surah, ayah);
     // تكرار نفس الآية: إعادة تعيين نفس الرابط لا يعيد التشغيل في بعض المتصفحات، فنرجع لأولها
@@ -135,6 +135,7 @@ export function QuranReader() {
   // تغيير السورة أو الشيخ أو الوضع يوقف التشغيل الحالي
   const change = (patch: Partial<QuranPrefs>) => {
     audio.current?.pause(); stopTimer(); setPhase("idle");
+    if (patch.reciter && fixMode({ ...prefs, ...patch }).mode !== (patch.mode ?? prefs.mode)) patch = { ...patch, mode: "turn" };
     if (patch.surah) { setAyahs(null); setCurrent(1); setManualPage(null); update({ ...patch, ayah: 1, page: 0 }); } else update(patch);
   };
 
@@ -195,7 +196,7 @@ export function QuranReader() {
               <span className="self-center text-xs text-muted-foreground">برواية حفص عن عاصم</span>
             </div>
             <div role="group" aria-label="الوضع" className="flex flex-wrap gap-2">
-              <Chip on={prefs.mode === "teacher"} onClick={() => change({ mode: "teacher" })}>📖 المصحف المعلّم</Chip>
+              {reciter.muallim && <Chip on={prefs.mode === "teacher"} onClick={() => change({ mode: "teacher" })}>📖 المصحف المعلّم</Chip>}
               <Chip on={prefs.mode === "turn"} onClick={() => change({ mode: "turn" })}>🎤 {g("دورك تقرأ", "دورك تقرئي")}</Chip>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm font-bold">

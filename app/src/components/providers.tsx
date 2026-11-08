@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TierProvider } from "@/lib/tier";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { ViewAsBanner } from "@/components/view-as-banner";
+import { UpdateBanner } from "@/components/update-banner";
 
 export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
@@ -18,6 +19,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <TierProvider>
         <ViewAsBanner />
         <SmoothScroll>{children}</SmoothScroll>
+        <UpdateBanner />
         <Toaster position="top-center" dir="rtl" richColors />
       </TierProvider>
     </ThemeProvider>

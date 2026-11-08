@@ -7,8 +7,9 @@ export type Ayah = { n: number; text: string; page: number };
 
 // الشيخ: مجلد المصحف المعلّم (الشيخ يقرأ والأطفال يرددون) ومجلد التلاوة المرتّلة (لوضع «دورك تقرأ»)
 export const RECITERS = [
-  { id: "minshawy", short: "الشيخ المنشاوي", name: "الشيخ محمد صدّيق المنشاوي", teacher: "Minshawy_Teacher_128kbps", murattal: "Minshawy_Murattal_128kbps" },
-  { id: "husary", short: "الشيخ الحصري", name: "الشيخ محمود خليل الحصري", teacher: "Husary_Muallim_128kbps", murattal: "Husary_128kbps" },
+  // المصحف المعلّم (طفل يردد وراء الشيخ) موجود بصوت المنشاوي فقط؛ تسجيل الحصري المعلّم بدون أطفال، فالحصري على «دورك يا بطل» بس
+  { id: "minshawy", short: "الشيخ المنشاوي", name: "الشيخ محمد صدّيق المنشاوي", teacher: "Minshawy_Teacher_128kbps", murattal: "Minshawy_Murattal_128kbps", muallim: true },
+  { id: "husary", short: "الشيخ الحصري", name: "الشيخ محمود خليل الحصري", teacher: "Husary_Muallim_128kbps", murattal: "Husary_128kbps", muallim: false },
 ] as const;
 export type ReciterId = (typeof RECITERS)[number]["id"];
 export type QuranMode = "teacher" | "turn";
@@ -60,7 +61,9 @@ export async function surahText(n: number): Promise<Ayah[]> {
 // آخر موضع وصل له الطفل (السورة والآية والصفحة المفتوحة) وإعداداته
 export type QuranPrefs = { surah: number; ayah: number; page: number; reciter: ReciterId; mode: QuranMode; repeat: 1 | 2 | 3; pause: 0.8 | 1.2 | 1.6 };
 export const DEFAULT_PREFS: QuranPrefs = { surah: 1, ayah: 1, page: 0, reciter: "minshawy", mode: "teacher", repeat: 1, pause: 1.2 };
-export const loadPrefs = (): QuranPrefs => ({ ...DEFAULT_PREFS, ...(cached<Partial<QuranPrefs>>("serah_q_prefs") ?? {}) });
+// الوضع الفعلي: الشيخ اللي ماعندوش مصحف معلّم يشتغل على «دورك»
+export const fixMode = (p: QuranPrefs): QuranPrefs => (RECITERS.find((r) => r.id === p.reciter)?.muallim === false && p.mode === "teacher" ? { ...p, mode: "turn" } : p);
+export const loadPrefs = (): QuranPrefs => fixMode({ ...DEFAULT_PREFS, ...(cached<Partial<QuranPrefs>>("serah_q_prefs") ?? {}) });
 export const savePrefs = (p: QuranPrefs) => store("serah_q_prefs", p);
 
 export const arNum = (n: number) => n.toLocaleString("ar-EG");

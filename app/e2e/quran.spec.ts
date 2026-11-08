@@ -129,4 +129,15 @@ test("إعدادات التلاوة مطوية افتراضيًا حتى يظه�
   await page.getByRole("button", { name: "الشيخ الحصري" }).click();
   await expect(page.getByRole("button", { name: "الشيخ الحصري" })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("serah_q_prefs")!).reciter)).toBe("husary");
+  // الحصري ماعندوش مصحف معلّم بأطفال: «دورك» بس
+  await expect(page.getByRole("button", { name: /المصحف المعلّم/ })).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("serah_q_prefs")!).mode)).toBe("turn");
+  await page.getByRole("button", { name: "الشيخ المنشاوي" }).click();
+  await expect(page.getByRole("button", { name: /المصحف المعلّم/ })).toBeVisible();
+});
+
+test("حفظ قديم على «الحصري + المصحف المعلّم» يتحول لـ«دورك» ويشغّل المرتّل", async ({ page }) => {
+  await open(page, { reciter: "husary", mode: "teacher" });
+  await page.getByRole("button", { name: /إعدادات التلاوة/ }).click();
+  await expect(page.getByRole("button", { name: /دورك/ })).toHaveAttribute("aria-pressed", "true");
 });
