@@ -1,6 +1,6 @@
 // عامل خدمة آمن مع سفاري: لا يتدخل في فتح الصفحات نهائيًا (سفاري يرفض الصفحة لو مرّت بتحويل عبر عامل الخدمة)
 // ويخزن فقط الملفات الثابتة (الخطوط، الأيقونات، ملفات الواجهة) لتسريع الفتح. لا يخزن الـ API ولا الصوت.
-const V = "serah-v10";
+const V = "serah-v11";
 // إعدادات الإشعارات (مفتاح الجهاز ورابط الخلفية ونصوص التذكير) يكتبها التطبيق هنا، ولا تُحذف مع تحديث النسخة
 const NOTIFY = "serah-notify";
 self.addEventListener("install", () => self.skipWaiting());
@@ -24,7 +24,17 @@ self.addEventListener("fetch", (e) => {
  * الخادم يرسل إشعارًا بلا محتوى، وعامل الخدمة يسحب نوع الرسالة بمفتاح الجهاز (لا يحمل رمز دخول الطفل)
  * ويختار النص من نصوص التذكير المراجَعة (salah.json) التي حفظها التطبيق. */
 const BASE = self.registration.scope.replace(/\/$/, "");
-const readJson = (c, k) => c.match(k).then((r) => (r ? r.json() : null)).catch(() => null);
+// الإعدادات محفوظة بعنوان ثابت؛ ولو الجهاز لسه عليه حفظ قديم بعنوان نسبي (صفحة التطبيق اللي كانت مفتوحة) ندور عليه بآخر الاسم
+const readJson = async (c, k) => {
+  try {
+    let r = await c.match(BASE + "/__notify/" + k);
+    if (!r) {
+      const old = (await c.keys()).filter((q) => new URL(q.url).pathname.endsWith("/" + k)).pop();
+      if (old) r = await c.match(old);
+    }
+    return r ? await r.json() : null;
+  } catch { return null; }
+};
 const pick = (arr, i) => (arr && arr.length ? arr[(i ?? Math.floor(Math.random() * arr.length)) % arr.length] : null);
 
 // إشعار الصلاة: باسم صاحب الجهاز (الطفل بصيغة تحمّسه، والمعلمة بوقار) ومعه حديث صحيح في فضل الصلاة

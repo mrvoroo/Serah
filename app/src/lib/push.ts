@@ -6,6 +6,10 @@ import { buildPlan, loadPlace, loadPrefs, PRAYER_NAMES, type NotifyPrefs } from 
 // إشعارات الجوال (Web Push): الخادم يرسل إشعارًا بلا محتوى، وعامل الخدمة يسحب نوعه بمفتاح الجهاز
 const SYNC_KEY = "serah_push_sync";
 const NOTIFY = "serah-notify";
+// مفاتيح التخزين لازم تكون عناوين كاملة ثابتة: الاسم القصير ("texts") يتحسب نسبةً لصفحة التطبيق المفتوحة
+// (/Serah/kid/prayer/texts) بينما عامل الخدمة يدور عليه في /Serah/texts، فما كانش بيلاقي النصوص ولا المفتاح ولا الجدول
+const NOTIFY_KEYS = ["plan", "texts", "cfg"] as const;
+const notifyUrl = (k: string) => `${location.origin}${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/__notify/${k}`;
 
 export type PushState = "unsupported" | "ios-install" | "denied" | "off" | "on";
 
@@ -33,12 +37,17 @@ function b64ToBytes(s: string) {
 // نصوص التذكير المراجَعة تُحفظ لعامل الخدمة (تتحدث مع كل فتح للتطبيق)
 async function saveForWorker(key?: string, plan?: unknown[]) {
   const c = await caches.open(NOTIFY);
-  if (plan) await c.put("plan", new Response(JSON.stringify(plan)));
+  // نشيل النسخ القديمة المحفوظة بعناوين نسبية غلط
+  for (const req of await c.keys()) {
+    const p = new URL(req.url).pathname;
+    if (!p.includes("/__notify/") && NOTIFY_KEYS.some((k) => p.endsWith("/" + k))) await c.delete(req);
+  }
+  if (plan) await c.put(notifyUrl("plan"), new Response(JSON.stringify(plan)));
   // اسم صاحب الجهاز ودوره (يبقى على الجهاز فقط): الطفل باسمه الأول بصيغة تحمّسه، والمعلمة بلقبها بصيغة فيها وقار
   const u = session.user(), staff = !!u && u.role !== "student", first = (u?.name ?? "").trim().split(/\s+/)[0] ?? "";
   const who = { name: staff ? teacherTitle(first, u?.role) : first, staff, mosque: staff ? u?.role === "superadmin" : u?.gender !== "f" };
-  await c.put("texts", new Response(JSON.stringify({ reminders: salah.reminders, names: PRAYER_NAMES, who })));
-  if (key) await c.put("cfg", new Response(JSON.stringify({ api: API_URL, key })));
+  await c.put(notifyUrl("texts"), new Response(JSON.stringify({ reminders: salah.reminders, names: PRAYER_NAMES, who })));
+  if (key) await c.put(notifyUrl("cfg"), new Response(JSON.stringify({ api: API_URL, key })));
 }
 
 async function send(sub: PushSubscription, prefs: NotifyPrefs, girl: boolean) {

@@ -82,6 +82,9 @@ test("تفعيل الإشعارات يرسل جدول ١٤ يومًا (صلوا�
   await expect(page.getByRole("button", { name: "إيقاف" })).toBeVisible();
   const sub = calls.find((c) => c.action === "pushSubscribe") as unknown as { plan: [number, string, number][]; endpoint: string };
   expect(sub.endpoint).toContain("fcm.googleapis.com");
+  // عامل الخدمة (scope /Serah/) يقرأ الإعدادات بعناوين ثابتة، مش نسبةً للصفحة المفتوحة
+  const keys = await page.evaluate(async () => (await (await caches.open("serah-notify")).keys()).map((r) => new URL(r.url).pathname).sort());
+  expect(keys).toEqual(["/Serah/__notify/cfg", "/Serah/__notify/plan", "/Serah/__notify/texts"]);
   const kinds = new Set(sub.plan.map((e) => e[1]));
   for (const k of ["pre:fajr", "p:fajr", "p:dhuhr", "pre:isha", "p:isha", "dhikr", "duha", "fri"]) expect(kinds.has(k)).toBe(true);
   for (const e of sub.plan.filter((x) => x[1] === "pre:isha")) expect(sub.plan.some((x) => x[1] === "p:isha" && x[0] - e[0] === 600)).toBe(true);
