@@ -58,6 +58,7 @@ export function loadPrefs(): NotifyPrefs { try { return { ...DEFAULT_PREFS, ...J
 export function savePrefs(p: NotifyPrefs) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* لا شيء */ } }
 
 type PlanEntry = [number, string, number];
+export const PRE_PRAYER_SEC = 10 * 60;
 const R = salah.reminders as { dhikr: unknown[]; duha: unknown[]; friday: { title: string; body: string; boys?: boolean }[] };
 const fridayIdx = (re: RegExp, fallback: number) => { const i = R.friday.findIndex((f) => re.test(f.title + f.body)); return i >= 0 ? i : fallback; };
 
@@ -70,7 +71,8 @@ export function buildPlan(place: Place, prefs: NotifyPrefs, girl: boolean, from 
   const at = (day: Date, h: number, m = 0) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
   for (let i = 0; i < days; i++) {
     const day = addDays(from, i), t = timesFor(day, place), r = rng(Number(iso(day).replace(/-/g, "")));
-    if (prefs.prayer) PRAYER_IDS.forEach((p) => out.push([sec(t[p]), `p:${p}`, 0]));
+    // لكل صلاة تنبيهان: قبلها بـ١٠ دقائق «اقترب وقت الصلاة»، وعند الأذان «حان وقت الصلاة»
+    if (prefs.prayer) PRAYER_IDS.forEach((p) => { out.push([sec(t[p]) - PRE_PRAYER_SEC, `pre:${p}`, i * 2]); out.push([sec(t[p]), `p:${p}`, i * 2 + 1]); });
     if (prefs.dhikr) {
       // ٣ تذكيرات في أوقات عشوائية بين ٩ صباحًا و٨ مساءً، بعيدًا عن وقت الصلاة بـ٢٠ دقيقة
       let n = 0, tries = 0;

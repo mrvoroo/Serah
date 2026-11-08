@@ -1,4 +1,5 @@
-import { api, API_URL } from "@/lib/api";
+import { api, API_URL, session } from "@/lib/api";
+import { teacherTitle } from "@/lib/utils";
 import salah from "@/content/salah.json";
 import { buildPlan, loadPlace, loadPrefs, PRAYER_NAMES, type NotifyPrefs } from "@/lib/prayer";
 
@@ -30,16 +31,20 @@ function b64ToBytes(s: string) {
 }
 
 // نصوص التذكير المراجَعة تُحفظ لعامل الخدمة (تتحدث مع كل فتح للتطبيق)
-async function saveForWorker(key?: string) {
+async function saveForWorker(key?: string, plan?: unknown[]) {
   const c = await caches.open(NOTIFY);
-  await c.put("texts", new Response(JSON.stringify({ reminders: salah.reminders, names: PRAYER_NAMES })));
+  if (plan) await c.put("plan", new Response(JSON.stringify(plan)));
+  // اسم صاحب الجهاز ودوره (يبقى على الجهاز فقط): الطفل باسمه الأول بصيغة تحمّسه، والمعلمة بلقبها بصيغة فيها وقار
+  const u = session.user(), staff = !!u && u.role !== "student", first = (u?.name ?? "").trim().split(/\s+/)[0] ?? "";
+  const who = { name: staff ? teacherTitle(first, u?.role) : first, staff, mosque: staff ? u?.role === "superadmin" : u?.gender !== "f" };
+  await c.put("texts", new Response(JSON.stringify({ reminders: salah.reminders, names: PRAYER_NAMES, who })));
   if (key) await c.put("cfg", new Response(JSON.stringify({ api: API_URL, key })));
 }
 
 async function send(sub: PushSubscription, prefs: NotifyPrefs, girl: boolean) {
   const plan = buildPlan(loadPlace(), prefs, girl);
   const r = await api<{ key: string }>("pushSubscribe", { endpoint: sub.endpoint, plan, prefs: { tasks: prefs.tasks } });
-  await saveForWorker(r.key);
+  await saveForWorker(r.key, plan);
   try { localStorage.setItem(SYNC_KEY, String(Date.now())); } catch { /* لا شيء */ }
 }
 

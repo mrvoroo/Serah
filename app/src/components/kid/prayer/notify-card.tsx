@@ -5,11 +5,12 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { g, isGirl } from "@/lib/kid-text";
+import { session } from "@/lib/api";
 import { loadPrefs, savePrefs, type NotifyPrefs } from "@/lib/prayer";
 import { disablePush, enablePush, pushState, syncPush, type PushState } from "@/lib/push";
 
 const ITEMS: { id: keyof NotifyPrefs; label: string; hint: string }[] = [
-  { id: "prayer", label: "مواعيد الصلاة", hint: "تنبيه عند دخول وقت كل صلاة" },
+  { id: "prayer", label: "مواعيد الصلاة", hint: "تنبيه قبل كل صلاة بـ١٠ دقائق، وتنبيه عند الأذان" },
   { id: "dhikr", label: "اذكر الله", hint: "٣ أذكار في أوقات مختلفة من اليوم" },
   { id: "duha", label: "صلاة الضحى", hint: "تذكير كل يوم في وقت الضحى" },
   { id: "friday", label: "يوم الجمعة", hint: "سورة الكهف والصلاة على النبي ﷺ وساعة الإجابة" },
@@ -65,7 +66,7 @@ export function NotifyCard() {
 
       {(state === "on" || state === "off") && (
         <ul className="mt-4 grid gap-2">
-          {ITEMS.map((it) => (
+          {ITEMS.filter((it) => it.id !== "tasks" || session.user()?.role === "student").map((it) => (
             <li key={it.id}>
               <Label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-secondary/40 p-3">
                 <span className="min-w-0 flex-1"><span className="block font-bold">{it.label}</span><span className="block text-xs font-normal text-muted-foreground">{it.hint}</span></span>

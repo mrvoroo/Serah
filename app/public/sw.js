@@ -1,6 +1,6 @@
 // عامل خدمة آمن مع سفاري: لا يتدخل في فتح الصفحات نهائيًا (سفاري يرفض الصفحة لو مرّت بتحويل عبر عامل الخدمة)
 // ويخزن فقط الملفات الثابتة (الخطوط، الأيقونات، ملفات الواجهة) لتسريع الفتح. لا يخزن الـ API ولا الصوت.
-const V = "serah-v7";
+const V = "serah-v9";
 // إعدادات الإشعارات (مفتاح الجهاز ورابط الخلفية ونصوص التذكير) يكتبها التطبيق هنا، ولا تُحذف مع تحديث النسخة
 const NOTIFY = "serah-notify";
 self.addEventListener("install", () => self.skipWaiting());
@@ -26,14 +26,29 @@ const BASE = self.registration.scope.replace(/\/$/, "");
 const readJson = (c, k) => c.match(k).then((r) => (r ? r.json() : null)).catch(() => null);
 const pick = (arr, i) => (arr && arr.length ? arr[(i ?? Math.floor(Math.random() * arr.length)) % arr.length] : null);
 
+// إشعار الصلاة: باسم صاحب الجهاز (الطفل بصيغة تحمّسه، والمعلمة بوقار) ومعه حديث صحيح في فضل الصلاة
+function prayerText(item, t) {
+  const r = t.reminders || {}, who = t.who || {}, pre = item.kind.startsWith("pre:");
+  const key = item.kind.slice(pre ? 4 : 2), prayer = (t.names && t.names[key]) || "";
+  const url = who.staff ? "/teacher/prayer/" : "/kid/prayer/";
+  const m = r.prayerMsg, list = (r.prayerHadith || []).filter((h) => (h.prayer === key || h.prayer === "any")
+    && (h.aud === "all" || (h.aud === "boys" && who.mosque) || (h.aud === "adults" && who.staff)));
+  if (!m || !list.length) { // نصوص قديمة محفوظة: الصيغة العامة
+    const p = (pre ? r.pre : r.prayer) || { title: pre ? "اقترب وقت صلاة {name}" : "حان وقت صلاة {name}", body: "هيا نتوضأ ونصلي" };
+    return { title: p.title.replace("{name}", prayer), body: p.body, url };
+  }
+  const tpl = (who.staff ? m.staff : m.kid)[pre ? "pre" : "at"];
+  let title = tpl.replace("{prayer}", prayer).replace("{name}", who.name || "");
+  if (!who.name) title = title.replace(/^،\s*/, "").replace(/ يا !/, "!"); // بدون اسم محفوظ
+  const h = pick(list, item.idx);
+  const body = (h.text.startsWith("«") ? m.lead : "") + h.text + " (" + h.ref + ")";
+  return { title, body, url };
+}
+
 function textFor(item, t) {
   const r = (t && t.reminders) || {};
   if (item.title) return { title: item.title, body: item.body || "", url: item.url || "/kid/" };
-  if (/^p:/.test(item.kind)) {
-    const name = (t && t.names && t.names[item.kind.slice(2)]) || "";
-    const p = r.prayer || { title: "حان وقت صلاة {name}", body: "هيا نتوضأ ونصلي" };
-    return { title: p.title.replace("{name}", name), body: p.body, url: "/kid/prayer/" };
-  }
+  if (/^(pre|p):/.test(item.kind)) return prayerText(item, t || {});
   if (item.kind === "duha") { const x = pick(r.duha, item.idx) || { title: "صلاة الضحى", body: "ركعتان من الضحى" }; return { ...x, url: "/kid/prayer/" }; }
   if (item.kind === "fri") { const x = pick(r.friday, item.idx) || { title: "جمعة مباركة", body: "اقرأ سورة الكهف" }; return { ...x, url: "/kid/prayer/" }; }
   const d = pick(r.dhikr, item.idx) || { text: "سبحان الله وبحمده" };
@@ -52,7 +67,13 @@ self.addEventListener("push", (e) => e.waitUntil((async () => {
       if (j.ok) items = j.data.items || [];
     }
   } catch { /* بدون إنترنت: نعرض ذكرًا عامًا */ }
-  if (!items.length) items = [{ kind: "dhikr" }]; // سفاري يلغي الاشتراك لو وصل إشعار ولم يُعرض شيء
+  // لو النص ما وصلش (نت ضعيف أو تأخير): نعرض الموعد المحفوظ في جدول الجهاز اللي حان وقته، وإلا ذكر عام
+  // (سفاري يلغي الاشتراك لو وصل إشعار ولم يُعرض شيء)
+  if (!items.length) {
+    const plan = (await readJson(c, "plan")) || [], now = Date.now() / 1000;
+    const hit = plan.filter((e) => e[0] <= now + 60 && e[0] > now - 15 * 60).pop();
+    items = [hit ? { kind: hit[1], idx: hit[2] } : { kind: "dhikr" }];
+  }
   await Promise.all(items.slice(-3).map((it, i) => {
     const n = textFor(it, texts);
     return self.registration.showNotification(n.title, {

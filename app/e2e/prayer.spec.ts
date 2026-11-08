@@ -83,7 +83,8 @@ test("تفعيل الإشعارات يرسل جدول ١٤ يومًا (صلوا�
   const sub = calls.find((c) => c.action === "pushSubscribe") as unknown as { plan: [number, string, number][]; endpoint: string };
   expect(sub.endpoint).toContain("fcm.googleapis.com");
   const kinds = new Set(sub.plan.map((e) => e[1]));
-  for (const k of ["p:fajr", "p:dhuhr", "p:isha", "dhikr", "duha", "fri"]) expect(kinds.has(k)).toBe(true);
+  for (const k of ["pre:fajr", "p:fajr", "p:dhuhr", "pre:isha", "p:isha", "dhikr", "duha", "fri"]) expect(kinds.has(k)).toBe(true);
+  for (const e of sub.plan.filter((x) => x[1] === "pre:isha")) expect(sub.plan.some((x) => x[1] === "p:isha" && x[0] - e[0] === 600)).toBe(true);
   expect(sub.plan.filter((e) => e[1] === "dhikr").length).toBeGreaterThanOrEqual(39); // ٣ يوميًا × ١٣+ يوم
   // الأذكار العشوائية بين ٩ص و٨م بتوقيت الجهاز
   for (const e of sub.plan.filter((x) => x[1] === "dhikr")) { const h = new Date(e[0] * 1000).toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: "Asia/Riyadh" }); expect(Number(h)).toBeGreaterThanOrEqual(9); expect(Number(h)).toBeLessThan(20); }
@@ -99,4 +100,16 @@ test("على آيفون في سفاري: شرح إضافة المنصة للشا
   await mock(page);
   await page.goto("/Serah/kid/prayer/");
   await expect(page.getByText(/إضافة إلى الشاشة الرئيسية/)).toBeVisible();
+});
+
+test("المعلمة: جدول الصلوات في قائمتها، تعلّم صلاتها بصيغة مؤنثة، ومن غير إشعارات المهام", async ({ page }) => {
+  const calls = await mock(page);
+  await page.addInitScript(() => { localStorage.setItem("serah_user", JSON.stringify({ user_id: "T1", name: "فاطمة أحمد", role: "teacher", class_id: "C1", avatar: "" })); });
+  await page.goto("/Serah/teacher/prayer/");
+  await expect(page.getByRole("heading", { name: "جدول الصلوات" })).toBeVisible();
+  await expect(page.locator("a[href=\"/Serah/teacher/prayer/\"]").first()).toBeAttached(); // في القائمة (على الموبايل داخل زر القائمة)
+  const today = page.getByRole("list", { name: "صلوات اليوم" });
+  await today.getByRole("button", { name: /صلّيتِ الفجر/ }).click();
+  expect(calls.find((c) => c.action === "markPrayer")).toMatchObject({ prayer: "fajr", done: true });
+  await expect(page.getByText("الاختبارات والواجبات")).toHaveCount(0);
 });

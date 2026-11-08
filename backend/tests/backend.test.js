@@ -1304,7 +1304,15 @@ test('جدول الصلوات: الطفل يعلّم ويلغي، ولا يوم 
   assert.deepStrictEqual(t.call('prayerLog', { from: todayIso(-7), to: todayIso() }, k2).data.days, {});
   assert.strictEqual(t.sheets.PrayerLog._data.length, 3, 'one row per day');
   const tk = t.login({ name: 'المعلمة', pin: '482615' });
-  assert.ok(!t.call('markPrayer', { date: todayIso(), prayer: 'fajr', done: true }, tk).ok, 'kids only');
+  // المعلمة لها جدول صلواتها الخاص (منفصل عن الأطفال)
+  assert.deepStrictEqual(t.call('markPrayer', { date: todayIso(), prayer: 'fajr', done: true }, tk).data, ['fajr']);
+  assert.deepStrictEqual(Object.values(t.call('prayerLog', { from: todayIso(), to: todayIso() }, tk).data.days)[0], ['fajr']);
+  // إشعارات الصلاة للمعلمة كمان، من غير إشعارات المهام
+  const now = Math.floor(Date.now() / 1000);
+  assert.ok(t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/tch', plan: [[now + 4000, 'pre:asr', 0], [now + 4600, 'p:asr', 0], [now + 9000, 'pre:isha', 0]], prefs: { tasks: true } }, tk).ok);
+  const sub = t.g.rows_('PushSubs').find(x => /tch$/.test(x.endpoint));
+  assert.strictEqual(JSON.parse(sub.prefs).tasks, false);
+  assert.deepStrictEqual(JSON.parse(sub.plan).map(e => e[1]), ['pre:asr', 'p:asr'], 'orphan pre dropped');
 });
 
 test('الإشعارات: مفتاح VAPID يُولَّد مرة ويُحفظ في الخصائص، وتوقيع ES256 صحيح', () => {
@@ -1351,6 +1359,23 @@ test('الإشعارات: الاشتراك لخوادم معروفة فقط، و
   assert.ok(!t.call('pullNotices', { key: 'f'.repeat(64) }).ok);
   t.fetches.length = 0; t.g.pushTick();
   assert.strictEqual(t.fetches.length, 0);
+  // تنبيهان للصلاة (قبلها بـ١٠ دقائق + عند الأذان) يُحفظان دائمًا، والذكر الملاصق للصلاة يُحذف
+  const isha = now + 7200;
+  t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', plan: [[isha - 600, 'pre:isha', 0], [isha - 420, 'dhikr', 1], [isha, 'p:isha', 0], [isha, 'p:isha', 0]] }, k);
+  assert.deepStrictEqual(JSON.parse(t.g.rows_('PushSubs')[0].plan).map(e => e[1]), ['pre:isha', 'p:isha']);
+  // المشغّل كل دقيقة يخرج فورًا لحد أقرب موعد، وبعدين يرسل في دقيقته
+  assert.ok(Number(t.props.PUSH_NEXT) <= isha - 600 && Number(t.props.PUSH_NEXT) > now);
+  t.fetches.length = 0; t.g.pushTick();
+  assert.strictEqual(t.fetches.length, 0, 'sleeps until next');
+  const realNow = Date.now;
+  try {
+    Date.now = () => (isha - 600 + 20) * 1000;
+    t.props.PUSH_LAST = String(isha - 600 - 40);
+    t.g.pushTick();
+    assert.strictEqual(t.fetches.filter(f => /fcm/.test(f.url)).length, 1, 'pre-prayer alert sent');
+    assert.deepStrictEqual(t.call('pullNotices', { key: r.data.key }).data.items, [{ kind: 'pre:isha', idx: 0 }]);
+    assert.strictEqual(Number(t.props.PUSH_NEXT), isha);
+  } finally { Date.now = realNow; }
 });
 
 test('الإشعارات: نشر اختبار أو إضافة واجب يرسل لأطفال الفصل المفعّلين لإشعارات المهام فقط', () => {
@@ -1380,6 +1405,7 @@ test('الإشعارات: حد الجدول اليومي، وحذف أجهزة �
   assert.ok(!t.call('prayerLog', { from: '2026-01-01', to: '2026-06-01' }, k).ok, 'too wide');
   const tk = t.login({ name: 'المعلمة', pin: '482615' });
   assert.ok(t.call('removeStudent', { user_id: 'S1' }, tk).ok);
+  delete t.props.PUSH_NEXT; // التنظيف يحصل في أول دورة كاملة
   t.g.pushTick();
   assert.strictEqual(t.g.rows_('PushSubs').length, 0, 'removed kid device dropped');
 });

@@ -94,7 +94,7 @@ test("المعلمة تفتح رحلة الأنبياء وصفحة النبي ك
   const nav = page.getByRole("navigation", { name: "التنقل الرئيسي" });
   await expect(nav.getByRole("link", { name: "لوحتي" })).toHaveAttribute("href", "/Serah/teacher/");
   await expect(nav.getByRole("link", { name: "النجوم" })).toHaveCount(0);
-  await expect(page.locator("#station-musa").getByRole("link", { name: "ادخل الصفحة" })).toHaveAttribute("href", "/Serah/kid/prophet/?id=musa");
+  await expect(page.locator("#station-musa").getByRole("link", { name: "ادخلي الصفحة" })).toHaveAttribute("href", "/Serah/kid/prophet/?id=musa");
   await page.goto("/Serah/kid/prophet/?id=musa");
   await expect(page).toHaveURL(/\/Serah\/kid\/prophet\//);
   await page.goto("/Serah/kid/stars/");

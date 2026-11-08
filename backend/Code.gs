@@ -328,9 +328,9 @@ function migrate_() {
     if (!prop_('AUDIO_WEBM')) { try { convertOldAudio_(); props_().setProperty('AUDIO_WEBM', '1'); } catch (e) { console.error(e); } }
     // اسم حساب المطوّر «احمد» (اللقب «م.» يُضاف عند العرض فقط) — مرة واحدة
     if (!prop_('SA_RENAMED')) { try { rows_('Users').filter(u => u.role === 'superadmin' && normName_(u.name) === normName_('م.احمد')).forEach(u => update_('Users', 'user_id', u.user_id, { name: 'احمد' })); props_().setProperty('SA_RENAMED', '1'); } catch (e) { console.error(e); } }
-    // مشغّل الإشعارات كل ٥ دقائق — يُنشأ مرة واحدة تلقائيًا (بدون فتح المحرر)
+    // مشغّل الإشعارات كل دقيقة — يُنشأ مرة واحدة تلقائيًا (بدون فتح المحرر)
     if (!prop_('VAPID_PUB')) { try { genVapid_(); } catch (e) { console.error(e); } }
-    if (!prop_('PUSH_TRIGGER')) { try { installPushTrigger(); props_().setProperty('PUSH_TRIGGER', '1'); } catch (e) { console.error(e); } }
+    if (prop_('PUSH_TRIGGER') !== '2') { try { installPushTrigger(); props_().setProperty('PUSH_TRIGGER', '2'); } catch (e) { console.error(e); } }
     props_().setProperty('SCHEMA_VERSION', String(VERSION));
   } finally { lock.releaseLock(); }
 }
@@ -1901,7 +1901,8 @@ function dayOffset_(n) { const d = new Date(Date.now() + n * 864e5); return Numb
 
 // خوادم الإشعارات المعروفة فقط (حتى لا يُستغل الخادم لإرسال طلبات لأي عنوان)
 const PUSH_HOSTS = /^https:\/\/(fcm\.googleapis\.com|android\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.push\.apple\.com|[a-z0-9.-]+\.notify\.windows\.com)\//;
-const PUSH_KINDS = /^(p:(fajr|dhuhr|asr|maghrib|isha)|dhikr|duha|fri)$/;
+const PUSH_KINDS = /^((p|pre):(fajr|dhuhr|asr|maghrib|isha)|dhikr|duha|fri)$/;
+const PUSH_PRAYER = /^(p|pre):/;
 const PUSH_MAX_PLAN = 400;
 
 Object.assign(POLICY, {
@@ -1926,9 +1927,8 @@ Object.assign(ACTIONS, {
     return { days };
   },
 
-  // الطفل يعلّم أنه صلّى (أو يلغي): اليوم أو ما قبله حتى ٣٥ يومًا، ولا يوم في المستقبل (يوم سماح لفرق التوقيت)
+  // الطفل أو المعلمة تعلّم أنها صلّت (أو يلغي): اليوم أو ما قبله حتى ٣٥ يومًا، ولا يوم في المستقبل (يوم سماح لفرق التوقيت)
   markPrayer: (p, me) => {
-    if (me.role !== 'student') throw new Error('للأطفال فقط');
     const day = dayNum_(p.date), prayer = String(p.prayer || '');
     if (PRAYERS.indexOf(prayer) < 0) throw new Error('صلاة غير معروفة');
     if (day > dayOffset_(1) || day < dayOffset_(-35)) throw new Error('لا يمكن تعديل هذا اليوم');
@@ -1952,16 +1952,16 @@ Object.assign(ACTIONS, {
 
   // تسجيل جهاز للإشعارات مع جدول مواعيده (يحسبه التطبيق من مواقيت الصلاة وتفضيلات الطفل)
   pushSubscribe: (p, me) => {
-    if (me.role !== 'student') throw new Error('للأطفال فقط');
     const endpoint = String(p.endpoint || '');
     if (endpoint.length > 1000 || !PUSH_HOSTS.test(endpoint)) throw new Error('خدمة إشعارات غير مدعومة');
     rate_('psub:' + me.user_id, 30, 3600);
     const plan = cleanPlan_(p.plan), prefs = cleanPrefs_(p.prefs);
+    if (me.role !== 'student') prefs.tasks = false; // إشعارات المهام للأطفال فقط
     return withLock_(() => {
       const old = rows_('PushSubs').find(s => s.endpoint === endpoint);
       if (old) {
         if (old.user_id !== me.user_id) remove_('PushSubs', 'sub_id', old.sub_id); // نفس الجهاز لطفل آخر: يبدأ من جديد
-        else { update_('PushSubs', 'sub_id', old.sub_id, { plan: JSON.stringify(plan), prefs: JSON.stringify(prefs), last_seen: now_(), fails: 0 }); return { key: old.pull_key }; }
+        else { update_('PushSubs', 'sub_id', old.sub_id, { plan: JSON.stringify(plan), prefs: JSON.stringify(prefs), last_seen: now_(), fails: 0 }); pushWake_(plan); return { key: old.pull_key }; }
       }
       // حد للأجهزة لكل طفل (يُحذف الأقدم)
       const mine = rows_('PushSubs').filter(s => s.user_id === me.user_id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
@@ -1969,6 +1969,7 @@ Object.assign(ACTIONS, {
       const key = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
       append_('PushSubs', { sub_id: id_('PS'), user_id: me.user_id, class_id: me.class_id || '', endpoint, pull_key: key,
         plan: JSON.stringify(plan), prefs: JSON.stringify(prefs), created_at: now_(), last_seen: now_(), fails: 0 });
+      pushWake_(plan);
       return { key };
     });
   },
@@ -2003,13 +2004,23 @@ function cleanPlan_(plan) {
     out.push([ts, kind, idx]);
   });
   out.sort((a, b) => a[0] - b[0]);
-  const kept = [], perDay = {};
+  // تنبيهات الصلاة: واحد لكل نوع كل ١٢ ساعة، و«قبل الصلاة» لازم يسبق أذانها بـ٨–١٢ دقيقة
+  const prayers = [], lastKind = {};
+  out.forEach(e => {
+    if (!PUSH_PRAYER.test(e[1]) || e[0] - (lastKind[e[1]] || -Infinity) < 12 * 3600) return;
+    if (/^pre:/.test(e[1]) && !out.some(x => x[1] === 'p:' + e[1].slice(4) && x[0] - e[0] >= 480 && x[0] - e[0] <= 720)) return;
+    lastKind[e[1]] = e[0]; prayers.push(e);
+  });
+  // باقي التذكيرات: بينها ١٠ دقائق، وبعيدة عن أي تنبيه صلاة بـ٥ دقائق، وحد يومي
+  const kept = prayers.slice(), perDay = {};
   let last = -Infinity;
   out.forEach(e => {
+    if (PUSH_PRAYER.test(e[1])) return;
     const day = Math.floor(e[0] / 86400);
-    if (e[0] - last < 600 || (perDay[day] || 0) >= 14) return;
-    kept.push(e); last = e[0]; perDay[day] = (perDay[day] || 0) + 1;
+    if (e[0] - last < 600 || (perDay[day] || 0) >= 8 || prayers.some(x => Math.abs(x[0] - e[0]) < 300)) return;
+    last = e[0]; perDay[day] = (perDay[day] || 0) + 1; kept.push(e);
   });
+  kept.sort((a, b) => a[0] - b[0]);
   return kept.slice(0, PUSH_MAX_PLAN);
 }
 function cleanPrefs_(v) { const o = v && typeof v === 'object' ? v : {}; return { tasks: o.tasks !== false && o.tasks !== 'false' }; }
@@ -2029,7 +2040,7 @@ function notifyClassTask_(class_id, kind, title) {
     cache.put(rk, String(n), 3600);
     if (n > 10) return;
     const users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
-    const subs = rows_('PushSubs').filter(s => { const u = users[s.user_id]; return u && !inactive_(u) && String(u.class_id) === String(class_id) && JSON.parse(s.prefs || '{}').tasks !== false; });
+    const subs = rows_('PushSubs').filter(s => { const u = users[s.user_id]; return u && !inactive_(u) && u.role === 'student' && String(u.class_id) === String(class_id) && JSON.parse(s.prefs || '{}').tasks !== false; });
     const due = JSON.parse(cache.get('push:due') || '[]');
     subs.forEach(s => {
       queuePush_(s.sub_id, kind === 'quiz' ? { kind: 'quiz', title: 'اختبار جديد ✨', body: String(title).slice(0, 80), url: '/kid/tasks/' }
@@ -2040,28 +2051,48 @@ function notifyClassTask_(class_id, kind, title) {
   } catch (e) { console.error(e); }
 }
 
-/** مشغّل كل ٥ دقائق: يرسل الإشعارات التي حان وقتها. تُنشأ مرة واحدة بـ installPushTrigger */
+// أقرب موعد قادم في جدول جهاز: المشغّل يصحى له بدل ما يقرأ الجداول كل دقيقة
+function pushWake_(plan) {
+  // أي موعد لم يُرسل بعد (حتى لو فات قبل ثوانٍ من الاشتراك) يصحّي المشغّل
+  const after = Number(prop_('PUSH_LAST') || 0), nx = (plan || []).find(e => e[0] > after);
+  if (!nx) return;
+  const cur = Number(prop_('PUSH_NEXT') || 0);
+  if (!cur || nx[0] < cur) props_().setProperty('PUSH_NEXT', String(nx[0]));
+}
+
+/** مشغّل كل دقيقة: يرسل الإشعارات التي حان وقتها (أذان الصلاة يوصل في دقيقته تقريبًا).
+ * أغلب الدقائق مفيش حاجة: يخرج فورًا من غير ما يقرأ الجداول (توفيرًا لحصة جوجل المجانية). */
 function pushTick() {
+  const now = Math.floor(Date.now() / 1000);
+  const cache0 = CacheService.getScriptCache();
+  const next = Number(prop_('PUSH_NEXT') || 0);
+  const pushDue = !next || now >= next || !!cache0.get('push:due');
+  if (!pushDue && !prop_('LIVE_ON')) return;
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return;
   try {
-    const now = Math.floor(Date.now() / 1000);
     try { autoEndLive_(); } catch (e) { console.error(e); }
+    if (!pushDue) return; // صحيان للمحاضرة فقط
+    props_().setProperty('PUSH_NEXT', String(now + 300)); // لو الدورة فشلت: نعيد بعد ٥ دقائق مش كل دقيقة
     const last = Number(prop_('PUSH_LAST') || now - 300);
     props_().setProperty('PUSH_LAST', String(now));
     const cache = CacheService.getScriptCache();
     const due = JSON.parse(cache.get('push:due') || '[]'); cache.remove('push:due');
     const send = [], users = {};
+    let soonest = now + 6 * 3600; // لو مفيش مواعيد: نصحى كل ٦ ساعات للاطمئنان
     rows_('Users').forEach(u => { users[u.user_id] = u; });
     rows_('PushSubs').forEach(s => {
-      if (inactive_(users[s.user_id]) || users[s.user_id].role !== 'student' || Number(s.fails || 0) >= 5) { remove_('PushSubs', 'sub_id', s.sub_id); return; }
+      if (inactive_(users[s.user_id]) || Number(s.fails || 0) >= 5) { remove_('PushSubs', 'sub_id', s.sub_id); return; }
       let plan = [];
       try { plan = JSON.parse(s.plan || '[]'); } catch (e) {}
+      const nx = plan.find(e => e[0] > now);
+      if (nx && nx[0] < soonest) soonest = nx[0];
       // لا نرسل إلا آخر موعد فات منذ الدورة السابقة (حتى لا تتراكم الإشعارات لو توقف المشغّل)
       const hits = plan.filter(e => e[0] > Math.max(last, now - 1800) && e[0] <= now);
       if (hits.length) queuePush_(s.sub_id, { kind: hits[hits.length - 1][1], idx: hits[hits.length - 1][2] });
       if (hits.length || due.indexOf(s.sub_id) >= 0) send.push(s);
     });
+    props_().setProperty('PUSH_NEXT', String(soonest));
     if (!send.length) return;
     const reqs = send.map(s => pushRequest_(s.endpoint));
     const res = UrlFetchApp.fetchAll(reqs);
@@ -2075,7 +2106,7 @@ function pushTick() {
 
 function installPushTrigger() {
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'pushTick').forEach(t => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('pushTick').timeBased().everyMinutes(5).create();
+  ScriptApp.newTrigger('pushTick').timeBased().everyMinutes(1).create();
 }
 
 // إشعار بلا محتوى (لا يحتاج تشفيرًا): عامل الخدمة يسحب النص بمفتاح الجهاز
@@ -2279,6 +2310,7 @@ Object.assign(ACTIONS, {
       if (cur) return { s: cur, fresh: false };
       const title = String(p.title || '').trim().slice(0, 120) || 'محاضرة مباشرة';
       const room = 'muntaha' + Utilities.getUuid().replace(/-/g, '').slice(0, 20);
+      props_().setProperty('LIVE_ON', '1');
       return { s: append_('LiveSessions', { live_id: id_('V'), class_id: c, title, room, status: 'live', started_at: now_(), ended_at: '', started_by: me.user_id, lecture_id: '', teacher_seen: now_() }), fresh: true };
     });
     if (res.fresh) pushClassNow_(c, { kind: 'live', title: 'المحاضرة بدأت الآن 🎙️', body: res.s.title + ' — اضغط للدخول', url: '/kid/live/' });
@@ -2392,7 +2424,10 @@ function att_(live_id, user_id) { return rows_('LiveAttend').find(a => a.key ===
 // محاضرة نسيت المعلمة إنهاءها: تنتهي تلقائيًا بعد ٤ ساعات (يُستدعى من مشغّل الإشعارات)
 // وتنتهي أيضًا بعد ١٥ دقيقة من آخر ظهور لصفحة المعلمة (أغلقت الجهاز بدون «إنهاء»)، ومدتها حتى آخر ظهور
 function autoEndLive_() {
-  rows_('LiveSessions').filter(s => s.status === 'live').forEach(s => {
+  if (!prop_('LIVE_ON')) return;
+  const live = rows_('LiveSessions').filter(s => s.status === 'live');
+  if (!live.length) { props_().deleteProperty('LIVE_ON'); return; }
+  live.forEach(s => {
     const seen = new Date(s.teacher_seen || s.started_at).getTime(), age = Date.now() - new Date(s.started_at).getTime();
     if (Date.now() - seen > 15 * 60000) closeLive_(s, new Date(Math.max(seen, new Date(s.started_at).getTime() + 60000)));
     else if (age > LIVE_MAX_SEC * 1000) closeLive_(s);
