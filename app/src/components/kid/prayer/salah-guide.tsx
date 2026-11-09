@@ -8,16 +8,20 @@ import { cn } from "@/lib/utils";
 import { g } from "@/lib/kid-text";
 import { useMotionAllowed } from "@/lib/tier";
 import { loadPlace, PRAYER_IDS, PRAYER_NAMES, timesFor, type PrayerId } from "@/lib/prayer";
+import { useApi } from "@/hooks/use-api";
+import { times, videoFor, ytId, type SalahExtras } from "@/lib/salah-extras";
 
 // أذكار ما بعد الصلاة كاملة، وعدد الركعات، وكيفية الصلاة (مع أماكن لفيديوهات يوتيوب)
 // المحتوى مراجَع من الشيخ: content/salah.json
 // countAfter: عدد مختلف بعد صلوات معينة (المعوذات ٣ بعد الفجر والمغرب)، only: ذكر خاص بصلوات معينة
-type Zikr = { id: string; text: string; count: number; ref: string; virtue?: string; countAfter?: Partial<Record<PrayerId, number>>; only?: PrayerId[] };
+// extra: ذكر إضافي أضافته الأدمن (يظهر بعد الأذكار الأصلية)
+type Zikr = { id: string; text: string; count: number; ref: string; virtue?: string; countAfter?: Partial<Record<PrayerId, number>>; only?: PrayerId[]; extra?: boolean; grade?: string };
 type Prayer = { id: string; name: string; fard: number; before: number; after: number; note: string };
-type Step = { title: string; text: string; ref?: string; video?: string };
-type Video = { title: string; youtubeId: string };
+type Step = { id: string; title: string; text: string; ref?: string; video?: string };
+type Video = { id: string; title: string; youtubeId: string };
 const S = salah as unknown as { meta: { note: string }; azkar: Zikr[]; prayers: Prayer[]; howTo: Step[]; videos: Video[] };
 const ar = (n: number) => n.toLocaleString("ar-EG");
+
 const TABS = [{ id: "azkar", label: "أذكار بعد الصلاة" }, { id: "rakat", label: "عدد الركعات" }, { id: "how", label: "كيفية الصلاة" }] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -31,7 +35,6 @@ function lastPrayer(now = new Date()): PrayerId {
   } catch { return "fajr"; }
 }
 
-const ytId = (v?: string) => { const m = /(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/.exec(v || "") ?? /^([\w-]{11})$/.exec(v || ""); return m ? m[1] : ""; };
 function VideoSlot({ id, title }: { id?: string; title: string }) {
   const v = ytId(id);
   if (!v) return <div className="flex aspect-video w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed text-sm text-muted-foreground"><PlayCircle className="size-8" /> فيديو «{title}» قريبًا</div>;
@@ -43,12 +46,40 @@ export function SalahGuide() {
   const [tab, setTab] = useState<Tab>("azkar");
   const [after, setAfter] = useState<PrayerId>(() => lastPrayer());
   const [left, setLeft] = useState<Record<string, number>>({});
-  const list = S.azkar.filter((z) => !z.only || z.only.includes(after));
+  // الإضافات من الأدمن (لو فشل التحميل تبقى الأذكار والفيديوهات الأصلية كما هي)
+  const { data: extras } = useApi<SalahExtras>("salahExtras");
+  // الأذكار التي اختارتها المعلمة في قسم مستقل بعد أذكار السنة (مراجعة الشيخ: لا تختلط بها ولا تدخل في رسالة الإتمام)
+  const added: Zikr[] = (Array.isArray(extras?.azkar) ? extras.azkar : []).map((z) => ({ id: z.zikr_id, text: z.text, count: z.count, ref: z.ref, virtue: z.virtue || undefined, grade: z.grade || undefined, only: z.after?.length ? z.after : undefined, extra: true }));
+  const fits = (z: Zikr) => !z.only || z.only.includes(after);
+  const list = S.azkar.filter(fits), chosen = added.filter(fits);
   const countOf = (z: Zikr) => z.countAfter?.[after] ?? z.count;
-  const remaining = (z: Zikr) => left[z.id] ?? countOf(z);
+  const remaining = (z: Zikr) => Math.min(left[z.id] ?? countOf(z), countOf(z)); // لو قلّ عدد ذكر بعد التحديث
   const tap = (z: Zikr) => setLeft((l) => ({ ...l, [z.id]: Math.max(0, remaining(z) - 1) }));
   const doneAll = list.every((z) => remaining(z) === 0);
   const pick = (p: PrayerId) => { setAfter(p); setLeft({}); };
+  const renderZikr = (z: Zikr, i: number) => {
+    const r = remaining(z), done = r === 0, c = countOf(z);
+    return (
+      <motion.li key={z.id} initial={animate ? { opacity: 0, y: 10 } : false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+        <div className={cn("rounded-[24px] border p-4 shadow-soft transition", done ? "border-emerald-500/40 bg-emerald-500/5" : "bg-card")}>
+          <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-muted-foreground">
+            <span className="grid size-6 place-items-center rounded-full bg-secondary">{ar(i + 1)}</span>
+            {c > 1 && <span>{times(c)}</span>}
+            {z.extra && <span className="rounded-full bg-gold/20 px-2 py-0.5 text-[#7A4D00] dark:text-gold">اختارته المعلمة</span>}
+          </div>
+          <p className="mt-2 text-lg leading-[2.1]"><RT text={z.text} /></p>
+          {z.virtue && <p className="mt-2 rounded-2xl bg-gold/10 p-2 text-sm leading-7">{z.virtue}</p>}
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <span className="min-w-0 text-xs text-muted-foreground">{z.ref}{z.grade && ` — ${z.grade}`}</span>
+            <button type="button" onClick={() => tap(z)} disabled={done} aria-label={`عدّ: ${ar(r)} متبقية`}
+              className={cn("flex h-11 min-w-24 shrink-0 items-center justify-center gap-1 rounded-2xl px-4 font-bold transition active:scale-95", done ? "bg-emerald-500 text-white" : "bg-primary text-primary-foreground")}>
+              {done ? <><Check className="size-5" /> تم</> : c > 1 ? `${ar(r)} ✋` : "قلته"}
+            </button>
+          </div>
+        </div>
+      </motion.li>
+    );
+  };
 
   return (
     <section aria-labelledby="guide-title" className="flex flex-col gap-3">
@@ -75,29 +106,19 @@ export function SalahGuide() {
           </div>
           {doneAll && <p className="rounded-2xl bg-emerald-500/15 p-3 text-center font-bold text-emerald-700 dark:text-emerald-300">ما شاء الله! {g("أتممت", "أتممتِ")} أذكار الصلاة 🌟</p>}
           <ol className="grid gap-3" aria-label="أذكار ما بعد الصلاة">
-            {list.map((z, i) => {
-              const r = remaining(z), done = r === 0, c = countOf(z);
-              return (
-                <motion.li key={z.id} initial={animate ? { opacity: 0, y: 10 } : false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-                  <div className={cn("rounded-[24px] border p-4 shadow-soft transition", done ? "border-emerald-500/40 bg-emerald-500/5" : "bg-card")}>
-                    <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
-                      <span className="grid size-6 place-items-center rounded-full bg-secondary">{ar(i + 1)}</span>
-                      {c > 1 && <span>{ar(c)} مرات</span>}
-                    </div>
-                    <p className="mt-2 text-lg leading-[2.1]"><RT text={z.text} /></p>
-                    {z.virtue && <p className="mt-2 rounded-2xl bg-gold/10 p-2 text-sm leading-7">{z.virtue}</p>}
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <span className="text-xs text-muted-foreground">{z.ref}</span>
-                      <button type="button" onClick={() => tap(z)} disabled={done} aria-label={`عدّ: ${ar(r)} متبقية`}
-                        className={cn("flex h-11 min-w-24 items-center justify-center gap-1 rounded-2xl px-4 font-bold transition active:scale-95", done ? "bg-emerald-500 text-white" : "bg-primary text-primary-foreground")}>
-                        {done ? <><Check className="size-5" /> تم</> : c > 1 ? `${ar(r)} ✋` : "قلته"}
-                      </button>
-                    </div>
-                  </div>
-                </motion.li>
-              );
-            })}
+            {list.map((z, i) => renderZikr(z, i))}
           </ol>
+          {chosen.length > 0 && (
+            <section aria-labelledby="chosen-title" className="mt-2 flex flex-col gap-3">
+              <div>
+                <h3 id="chosen-title" className="font-heading text-lg font-extrabold">أذكار اختارتها لك المعلمة</h3>
+                <p className="text-sm leading-7 text-muted-foreground">هذه أذكار ثابتة من السنة اختارتها المعلمة، وليست من أذكار ما بعد الصلاة المعروفة.</p>
+              </div>
+              <ol className="grid gap-3" aria-label="أذكار اختارتها المعلمة">
+                {chosen.map((z, i) => renderZikr(z, i))}
+              </ol>
+            </section>
+          )}
         </div>
       )}
 
@@ -121,13 +142,13 @@ export function SalahGuide() {
                 <h3 className="flex items-center gap-2 font-heading text-lg font-extrabold"><span className="grid size-8 place-items-center rounded-full bg-hero text-sm text-white">{ar(i + 1)}</span>{s.title}</h3>
                 <p className="mt-2 leading-8"><RT text={s.text} /></p>
                 {s.ref && <p className="mt-1 text-xs text-muted-foreground"><RT text={s.ref} /></p>}
-                {ytId(s.video) && <div className="mt-3"><VideoSlot id={s.video} title={s.title} /></div>}
+                {videoFor(`how:${s.id}`, s.video, extras) && <div className="mt-3"><VideoSlot id={videoFor(`how:${s.id}`, s.video, extras)} title={s.title} /></div>}
               </li>
             ))}
           </ol>
           <h3 className="font-heading text-lg font-extrabold">فيديوهات</h3>
           <div className="grid gap-3 sm:grid-cols-3">
-            {S.videos.map((v) => <figure key={v.title} className="flex flex-col gap-2"><VideoSlot id={v.youtubeId} title={v.title} /><figcaption className="text-center text-sm font-bold">{v.title}</figcaption></figure>)}
+            {S.videos.map((v) => <figure key={v.id} className="flex flex-col gap-2"><VideoSlot id={videoFor(`vid:${v.id}`, v.youtubeId, extras)} title={v.title} /><figcaption className="text-center text-sm font-bold">{v.title}</figcaption></figure>)}
           </div>
         </div>
       )}

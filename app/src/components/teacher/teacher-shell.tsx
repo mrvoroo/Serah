@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles, ClipboardCheck, NotebookPen, Info, Radio, Clock } from "lucide-react";
+import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles, ClipboardCheck, NotebookPen, Info, Radio, Clock, BookHeart } from "lucide-react";
 import { session, type Role } from "@/lib/api";
 import { ROLE_LABEL, stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useRequireRole } from "@/components/kid/kid-shell";
@@ -26,6 +26,7 @@ export const TEACHER_NAV: { href: string; label: string; icon: typeof Users; min
   { href: "/teacher/team/", label: "المعلمات", icon: UserCog, min: "admin" },
   { href: "/teacher/live/", label: "المحاضرة المباشرة", icon: Radio },
   { href: "/teacher/prayer/", label: "جدول الصلوات", icon: Clock },
+  { href: "/teacher/prayer-content/", label: "محتوى الصلاة", icon: BookHeart, min: "admin" },
   { href: "/teacher/lectures/", label: "المحاضرات", icon: Headphones },
   { href: "/teacher/upload/", label: "رفع تسجيل", icon: Upload },
   { href: "/teacher/quizzes/", label: "الاختبارات", icon: ClipboardCheck },
@@ -55,7 +56,7 @@ function NavList({ onNavigate, id, role }: { onNavigate?: () => void; id: string
       {TEACHER_NAV.filter((n) => (!n.min || rank >= RANK[n.min]) && (live || n.href !== "/teacher/live/")).map((n) => {
         const exact = n.href === "/teacher/" || n.href === "/admin/";
         const bare = n.href.replace(/\/$/, "");
-        const on = exact ? path === bare || path === n.href : path.startsWith(bare);
+        const on = exact ? path === bare || path === n.href : path === bare || path.startsWith(n.href); // حتى لا يُضاء «جدول الصلوات» داخل «محتوى الصلاة»
         const Icon = n.icon;
         return (
           <Link key={n.href} href={n.href} onClick={onNavigate} aria-current={on ? "page" : undefined}

@@ -1,0 +1,140 @@
+import { test, expect, type Page, type Route } from "@playwright/test";
+
+// محتوى الصلاة: الأدمن تضيف فيديو يوتيوب وذكرًا إضافيًا، والطفل يراهما في صفحة الصلاة
+test.use({ timezoneId: "Asia/Riyadh", locale: "ar-SA" });
+
+type Call = { action: string; [k: string]: unknown };
+type Z = { zikr_id: string; text: string; count: number; ref: string; virtue: string; grade: string; after: string[]; visible: boolean };
+const ADMIN = { user_id: "A1", name: "المعلمة", role: "admin", class_id: "C1", avatar: "" };
+const TEACHER = { user_id: "T1", name: "فاطمة", role: "teacher", class_id: "C1", avatar: "" };
+const KID = { user_id: "S1", name: "زيد", role: "student", class_id: "C1", avatar: "🌙", gender: "m" };
+
+// خادم وهمي بحالة مشتركة بين الصفحات (مثل الشيت)
+function backend() {
+  const db = { videos: {} as Record<string, string>, azkar: [] as Z[] };
+  const calls: Call[] = [];
+  let n = 0;
+  const handler = async (route: Route) => {
+    const b = JSON.parse(route.request().postData() || "{}") as Call;
+    calls.push(b);
+    let data: unknown = [];
+    if (b.action === "salahExtras") data = { videos: db.videos, azkar: b.all ? db.azkar : db.azkar.filter((z) => z.visible) };
+    if (b.action === "saveSalahVideo") {
+      const m = /([\w-]{11})$/.exec(String(b.url || ""));
+      if (m) db.videos[String(b.key)] = m[1]; else delete db.videos[String(b.key)];
+      data = m?.[1] ?? "";
+    }
+    if (b.action === "saveExtraZikr") {
+      const z = { zikr_id: String(b.zikr_id || `z${++n}`), text: String(b.text), count: Number(b.count), ref: String(b.ref), virtue: String(b.virtue || ""), grade: String(b.grade || ""), after: (b.after as string[]) ?? [], visible: b.visible !== false };
+      const i = db.azkar.findIndex((x) => x.zikr_id === z.zikr_id);
+      if (i >= 0) db.azkar[i] = z; else db.azkar.push(z);
+      data = z.zikr_id;
+    }
+    if (b.action === "setExtraZikrVisible") { const z = db.azkar.find((x) => x.zikr_id === b.zikr_id); if (z) z.visible = b.visible === true; data = true; }
+    if (b.action === "deleteExtraZikr") { db.azkar = db.azkar.filter((z) => z.zikr_id !== b.zikr_id); data = true; }
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data }) });
+  };
+  return { db, calls, handler };
+}
+async function as(page: Page, be: ReturnType<typeof backend>, user: object) {
+  await page.clock.setFixedTime(new Date("2026-11-07T10:00:00+03:00")); // بعد الفجر وقبل الظهر
+  await page.route(/script\.google\.com\/macros/, be.handler);
+  await page.addInitScript((u) => { localStorage.setItem("serah_token", "t"); localStorage.setItem("serah_user", JSON.stringify(u)); }, user);
+}
+
+test("الأدمن تضيف فيديو وذكرًا إضافيًا بعد الفجر، والطفل يراهما في قسم «اختارتها لك المعلمة»", async ({ page }) => {
+  const be = backend();
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await as(page, be, ADMIN);
+  await page.goto("/Serah/teacher/prayer-content/");
+  await expect(page.getByRole("heading", { name: "محتوى الصلاة" })).toBeVisible();
+  await expect(page.locator('a[href="/Serah/teacher/prayer-content/"]').first()).toBeAttached();
+
+  // فيديو الوضوء: رابط خاطئ ثم صحيح
+  await expect(page.getByTestId("video-slot")).toHaveCount(17);
+  await page.getByRole("button", { name: "إضافة فيديو كيفية الوضوء" }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.getByLabel("رابط الفيديو").fill("https://example.com/x");
+  await expect(dlg.getByText(/الرابط غير صحيح/)).toBeVisible();
+  await expect(dlg.getByRole("button", { name: "حفظ" })).toBeDisabled();
+  await dlg.getByLabel("رابط الفيديو").fill("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  await expect(dlg.locator("iframe")).toHaveAttribute("src", /dQw4w9WgXcQ/);
+  await dlg.getByRole("button", { name: "حفظ" }).click();
+  await expect(dlg).toBeHidden();
+  expect(be.db.videos).toEqual({ "vid:wudu": "dQw4w9WgXcQ" });
+  await expect(page.getByRole("button", { name: "تغيير فيديو كيفية الوضوء" })).toBeVisible();
+
+  // ذكر إضافي بعد الفجر فقط: المصدر مطلوب
+  await page.getByRole("tab", { name: "أذكار إضافية" }).click();
+  await page.getByRole("button", { name: "إضافة ذكر" }).click();
+  const z = page.getByRole("dialog");
+  await z.getByLabel("نص الذكر (بالتشكيل)").fill("اللهم أعني");
+  await expect(z.getByText(/النص بلا تشكيل/)).toBeVisible();
+  await z.getByLabel("نص الذكر (بالتشكيل)").fill("اللَّهُمَّ أَعِنِّي عَلَى ذِكْرِكَ");
+  await expect(z.getByText(/النص بلا تشكيل/)).toHaveCount(0);
+  const save = z.getByRole("button", { name: "حفظ" });
+  await expect(save).toBeDisabled();
+  await z.getByLabel("المصدر", { exact: true }).fill("أبو داود");
+  await expect(z.getByRole("status")).toHaveText("اكتبي المصدر كاملًا: اسم الكتاب ورقم الحديث");
+  await z.getByLabel("المصدر", { exact: true }).fill("أبو داود ١٥٢٢");
+  await z.getByLabel("العدد").fill("٣"); // أرقام عربية من الكيبورد
+  await expect(z.getByLabel("العدد")).toHaveValue("3");
+  await z.getByRole("button", { name: "الفجر" }).click();
+  await expect(z.getByRole("status")).toHaveText("اختاري درجة الحديث");
+  await z.getByRole("radio", { name: "صحيح" }).click();
+  await expect(save).toBeDisabled();
+  await z.getByRole("checkbox").check();
+  await save.click();
+  await expect(z).toBeHidden();
+  expect(be.db.azkar[0]).toMatchObject({ count: 3, ref: "أبو داود ١٥٢٢", grade: "صحيح", after: ["fajr"], visible: true });
+  expect(be.calls.find((c) => c.action === "saveExtraZikr")).toMatchObject({ confirmed: true, count: 3 });
+  await expect(page.getByTestId("extra-zikr")).toContainText("بعد: الفجر");
+
+  // معاينة كطفل داخل الصفحة
+  await page.getByRole("tab", { name: "معاينة كطفل" }).click();
+  await expect(page.getByText("اختارته المعلمة")).toBeVisible();
+
+  // الطفل في جهاز آخر
+  const kid = await page.context().newPage(); // نفس السياق (الإعدادات والجهاز)، وكل صفحة بحسابها
+  await as(kid, be, KID);
+  await kid.goto("/Serah/kid/prayer/");
+  const az = kid.getByRole("list", { name: "أذكار ما بعد الصلاة" });
+  await kid.getByRole("radio", { name: "الفجر" }).click();
+  await expect(az.getByText("اختارته المعلمة")).toHaveCount(0); // ليس داخل أذكار السنة
+  await expect(kid.getByRole("heading", { name: "أذكار اختارتها لك المعلمة" })).toBeVisible();
+  const extra = kid.getByRole("list", { name: "أذكار اختارتها المعلمة" }).getByRole("listitem");
+  await expect(extra).toHaveCount(1);
+  await expect(extra).toContainText("اختارته المعلمة");
+  await expect(extra).toContainText("أبو داود ١٥٢٢ — صحيح");
+  await expect(extra).toContainText("٣ مرات");
+  const btn = extra.getByRole("button");
+  for (let i = 0; i < 3; i++) await btn.click();
+  await expect(btn).toHaveText(/تم/);
+  await kid.getByRole("radio", { name: "الظهر" }).click();
+  await expect(kid.getByText("اختارته المعلمة")).toHaveCount(0);
+  await kid.getByRole("tab", { name: "كيفية الصلاة" }).click();
+  await expect(kid.locator('iframe[title="كيفية الوضوء"]')).toHaveAttribute("src", /dQw4w9WgXcQ/);
+  await expect(kid.getByText("فيديو «كيفية الصلاة كاملة» قريبًا")).toBeVisible();
+  expect(await kid.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+
+  // الإخفاء يشيله عند الطفل
+  await page.getByRole("tab", { name: "أذكار إضافية" }).click();
+  await page.getByRole("switch", { name: "ظاهر للأطفال: الذكر ١" }).click();
+  await expect(page.getByTestId("extra-zikr")).toContainText("مخفي");
+  await kid.reload();
+  await kid.getByRole("radio", { name: "الفجر" }).click();
+  await expect(kid.getByText("اختارته المعلمة")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  expect(errors).toEqual([]);
+  await kid.close();
+});
+
+test("المعلمة العادية: لا ترى «محتوى الصلاة» ولا تفتحه", async ({ page }) => {
+  const be = backend();
+  await as(page, be, TEACHER);
+  await page.goto("/Serah/teacher/prayer-content/");
+  await expect(page).toHaveURL(/\/Serah\/teacher\/$/);
+  await expect(page.locator('a[href="/Serah/teacher/prayer-content/"]')).toHaveCount(0);
+  expect(be.calls.some((c) => c.action === "salahExtras" && c.all)).toBe(false);
+});

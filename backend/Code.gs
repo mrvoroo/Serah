@@ -38,7 +38,11 @@ const SCHEMA = {
   // teacher_seen: آخر نبضة من صفحة المعلمة (لإنهاء المحاضرة المنسية)
   LiveSessions: ['live_id', 'class_id', 'title', 'room', 'status', 'started_at', 'ended_at', 'started_by', 'lecture_id', 'teacher_seen'],
   LiveAttend:   ['key', 'live_id', 'user_id', 'first_at', 'last_at', 'seconds', 'status', 'points', 'override'],
-  ProphetContent:['item_id', 'prophet_id', 'kind', 'title', 'body', 'file_id', 'url', 'sort', 'visible', 'approved', 'created_by', 'created_at']
+  ProphetContent:['item_id', 'prophet_id', 'kind', 'title', 'body', 'file_id', 'url', 'sort', 'visible', 'approved', 'created_by', 'created_at'],
+  // محتوى الصلاة من الأدمن: روابط فيديوهات يوتيوب لأماكن ثابتة (key = how:<id> أو vid:<id>)، وأذكار إضافية للأطفال
+  // (أذكار salah.json الأصلية ثابتة لا تُعدَّل من هنا)
+  SalahVideos:  ['key', 'youtube_id', 'updated_by', 'updated_at'],
+  ExtraAzkar:   ['zikr_id', 'text', 'count', 'ref', 'virtue', 'after', 'sort', 'visible', 'created_by', 'created_at', 'updated_at', 'grade']
 };
 const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من تيليجرام (20MB)
 
@@ -308,7 +312,7 @@ function handle_(action, p, token) {
     const data = fn(p, me);
     if (pol.audit) {
       const details = {}; Object.keys(p || {}).forEach(k => { if (!SECRET_PARAMS[k]) details[k] = p[k]; });
-      audit_(me, action, '', p.user_id || p.quiz_id || p.assignment_id || p.lecture_id || p.class_id || p.item_id || p.prophet_id || p.image_id || '', details);
+      audit_(me, action, '', p.user_id || p.quiz_id || p.assignment_id || p.lecture_id || p.class_id || p.item_id || p.prophet_id || p.image_id || p.zikr_id || p.key || '', details);
     }
     return json_({ ok: true, data });
   } catch (err) {
@@ -2512,3 +2516,127 @@ function ebmlUint_(id, v, width) {
   return ebml_(id, Uint8Array.from(b));
 }
 function ebmlFloat_(id, v) { const b = new Uint8Array(8); new DataView(b.buffer).setFloat64(0, v); return ebml_(id, b); }
+
+/* ============ محتوى الصلاة: فيديوهات يوتيوب وأذكار إضافية (الأدمن فقط تعدّل) ============ */
+const SALAH_VIDEO_KEY = /^(how|vid):[a-z0-9_]{2,24}$/;
+const MAX_EXTRA_AZKAR = 40;
+
+Object.assign(POLICY, {
+  salahExtras: { min: 'student' },
+  saveSalahVideo: { min: 'admin', write: 1, audit: 1 },
+  saveExtraZikr: { min: 'admin', write: 1, audit: 1 },
+  setExtraZikrVisible: { min: 'admin', write: 1, audit: 1 },
+  deleteExtraZikr: { min: 'admin', write: 1, audit: 1 },
+  reorderExtraAzkar: { min: 'admin', write: 1, audit: 1 }
+});
+
+function shown_(v) { return v !== false && String(v).toUpperCase() !== 'FALSE'; }
+function cleanAfter_(v) {
+  const list = Array.isArray(v) ? v.map(String) : String(v || '').split(',');
+  const set = PRAYERS.filter(x => list.indexOf(x) >= 0);
+  return set.length === PRAYERS.length ? '' : set.join(','); // فاضي = بعد كل الصلوات
+}
+function zikrOut_(z) {
+  return { zikr_id: String(z.zikr_id), text: String(z.text || ''), count: Number(z.count) || 1, ref: String(z.ref || ''),
+    virtue: String(z.virtue || ''), grade: String(z.grade || ''), after: String(z.after || '').split(',').filter(x => PRAYERS.indexOf(x) >= 0), visible: shown_(z.visible) };
+}
+const ZIKR_ID = /^z[0-9a-f-]{8}$/;
+// قراءة الأطفال مخزّنة دقيقة (حتى لا يُقرأ الشيت مع كل فتح لصفحة الصلاة)، وتُمسح مع أي تعديل
+function salahWrite_(me) { rate_('salah:' + me.user_id, 60, 600); try { CacheService.getScriptCache().remove('salahx'); } catch (e) { console.error(e); } }
+function salahPublic_() {
+  const c = CacheService.getScriptCache(), hit = c.get('salahx');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* نقرأ من جديد */ } }
+  const videos = {};
+  rows_('SalahVideos').forEach(r => { const k = String(r.key), v = String(r.youtube_id || ''); if (SALAH_VIDEO_KEY.test(k) && /^[A-Za-z0-9_-]{11}$/.test(v)) videos[k] = v; });
+  const out = { videos, azkar: sortedAzkar_().map(zikrOut_) };
+  try { c.put('salahx', JSON.stringify(out), 60); } catch (e) { console.error(e); }
+  return out;
+}
+function sortedAzkar_() {
+  return rows_('ExtraAzkar').sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.created_at).localeCompare(String(b.created_at)));
+}
+
+Object.assign(ACTIONS, {
+  // للطفل والمعلمة: روابط الفيديو والأذكار الإضافية الظاهرة (الأدمن ترى المخفية أيضًا مع all)
+  salahExtras: (p, me) => {
+    const d = salahPublic_();
+    const admin = RANK[me.role] >= RANK.admin && (p.all === true || p.all === 'true');
+    return { videos: d.videos, azkar: d.azkar.filter(z => admin || z.visible) };
+  },
+
+  // رابط فاضي = حذف الفيديو من هذا المكان
+  saveSalahVideo: (p, me) => {
+    const key = String(p.key || '');
+    if (!SALAH_VIDEO_KEY.test(key)) throw new Error('مكان الفيديو غير معروف');
+    const url = String(p.url || '').trim();
+    const v = url ? youtubeId_(url) : '';
+    if (url && !v) throw new Error('رابط يوتيوب غير صحيح');
+    salahWrite_(me);
+    return withLock_(() => {
+      const old = rows_('SalahVideos').find(r => String(r.key) === key);
+      if (!v) { if (old) remove_('SalahVideos', 'key', key); return ''; }
+      if (old) update_('SalahVideos', 'key', key, { youtube_id: v, updated_by: me.user_id, updated_at: now_() });
+      else {
+        if (rows_('SalahVideos').length >= 80) throw new Error('عدد الفيديوهات كبير');
+        append_('SalahVideos', { key, youtube_id: v, updated_by: me.user_id, updated_at: now_() });
+      }
+      return v;
+    });
+  },
+
+  // ذكر إضافي (مراجعة الشيخ): النص والمصدر الكامل (كتاب ورقم) ودرجة صحيح/حسن مطلوبة، وتأكيد الأدمن أنه ثابت، والعدد ١..١٠٠
+  saveExtraZikr: (p, me) => {
+    const text = String(p.text || '').trim().slice(0, 1500), ref = String(p.ref || '').trim().slice(0, 200);
+    if (!text) throw new Error('اكتبي نص الذكر');
+    if (ref.length < 4 || !/[0-9٠-٩]/.test(ref)) throw new Error('اكتبي المصدر كاملًا: اسم الكتاب ورقم الحديث');
+    const grade = String(p.grade || '');
+    if (['صحيح', 'حسن'].indexOf(grade) < 0) throw new Error('اختاري درجة الحديث: صحيح أو حسن');
+    if (p.confirmed !== true && p.confirmed !== 'true') throw new Error('أكّدي أن الذكر ثابت وأن نصه وعدده كما وردت');
+    const count = Math.floor(Number(p.count));
+    if (!(count >= 1 && count <= 100)) throw new Error('العدد من ١ إلى ١٠٠');
+    const f = { text, ref, grade, count, virtue: String(p.virtue || '').trim().slice(0, 800), after: cleanAfter_(p.after), updated_at: now_() };
+    if (p.visible !== undefined) f.visible = p.visible === true || p.visible === 'true';
+    if (p.zikr_id && !ZIKR_ID.test(String(p.zikr_id))) throw new Error('الذكر غير موجود');
+    salahWrite_(me);
+    return withLock_(() => {
+      if (p.zikr_id) {
+        if (!update_('ExtraAzkar', 'zikr_id', String(p.zikr_id), f)) throw new Error('الذكر غير موجود');
+        return String(p.zikr_id);
+      }
+      const all = rows_('ExtraAzkar');
+      if (all.length >= MAX_EXTRA_AZKAR) throw new Error('وصلتِ للحد الأقصى من الأذكار الإضافية');
+      const z = append_('ExtraAzkar', Object.assign({ zikr_id: id_('z'), sort: all.length, visible: f.visible !== false, created_by: me.user_id, created_at: now_() }, f));
+      return z.zikr_id;
+    });
+  },
+
+  setExtraZikrVisible: (p, me) => withLock_(() => {
+    salahWrite_(me);
+    if (!ZIKR_ID.test(String(p.zikr_id || '')) || !update_('ExtraAzkar', 'zikr_id', String(p.zikr_id || ''), { visible: p.visible === true || p.visible === 'true', updated_at: now_() })) throw new Error('الذكر غير موجود');
+    return true;
+  }),
+
+  deleteExtraZikr: (p, me) => withLock_(() => {
+    const id = String(p.zikr_id || '');
+    if (!ZIKR_ID.test(id) || !rows_('ExtraAzkar').some(r => String(r.zikr_id) === id)) throw new Error('الذكر غير موجود');
+    salahWrite_(me);
+    remove_('ExtraAzkar', 'zikr_id', id);
+    return true;
+  }),
+
+  // الترتيب لازم يشمل كل الأذكار مرة واحدة (حتى لا تتكرر قيم sort)
+  reorderExtraAzkar: (p, me) => withLock_(() => {
+    if (!Array.isArray(p.ids) || p.ids.length > MAX_EXTRA_AZKAR) throw new Error('ترتيب غير صحيح');
+    const have = rows_('ExtraAzkar').map(r => String(r.zikr_id));
+    const ids = p.ids.map(String).filter((id, i, a) => a.indexOf(id) === i && have.indexOf(id) >= 0);
+    if (ids.length !== have.length) throw new Error('ترتيب غير صحيح — حدّثي الصفحة');
+    salahWrite_(me);
+    reorder_('ExtraAzkar', 'zikr_id', ids);
+    return true;
+  })
+});
+// تُمسح نسخة الأطفال المخزّنة بعد الكتابة أيضًا (قراءة بين المسح والكتابة كانت ستخزّن القديم دقيقة)
+['saveSalahVideo', 'saveExtraZikr', 'setExtraZikrVisible', 'deleteExtraZikr', 'reorderExtraAzkar'].forEach(k => {
+  const f = ACTIONS[k];
+  ACTIONS[k] = (p, me) => { try { return f(p, me); } finally { try { CacheService.getScriptCache().remove('salahx'); } catch (e) { console.error(e); } } };
+});
