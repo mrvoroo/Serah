@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Radio } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { session } from "@/lib/api";
 import { nextSlot, type LiveState } from "@/lib/live";
 import { g } from "@/lib/kid-text";
@@ -10,7 +11,9 @@ import { g } from "@/lib/kid-text";
 // المحاضرة المباشرة تظهر في القوائم فقط لما سيرفرها يكون جاهز (المطوّر يشوفها دايمًا عشان يجهّزها)
 export function useLiveReady() {
   const { data } = useApi<LiveState>("liveState");
-  return !!data?.ready || session.user()?.role === "superadmin";
+  // الدور من التخزين المحلي بعد التحميل فقط (وإلا قائمة السيرفر تختلف عن المتصفح وتطلع رسالة hydration)
+  const hydrated = useHydrated();
+  return !!data?.ready || (hydrated && session.user()?.role === "superadmin");
 }
 
 // شريط في الصفحة الرئيسية: يظهر لما المحاضرة شغالة (للكل) أو حان ميعادها (للمعلمة)

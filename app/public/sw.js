@@ -1,6 +1,6 @@
 // عامل خدمة آمن مع سفاري: لا يتدخل في فتح الصفحات نهائيًا (سفاري يرفض الصفحة لو مرّت بتحويل عبر عامل الخدمة)
 // ويخزن فقط الملفات الثابتة (الخطوط، الأيقونات، ملفات الواجهة) لتسريع الفتح. لا يخزن الـ API ولا الصوت.
-const V = "serah-v11";
+const V = "serah-v12";
 // إعدادات الإشعارات (مفتاح الجهاز ورابط الخلفية ونصوص التذكير) يكتبها التطبيق هنا، ولا تُحذف مع تحديث النسخة
 const NOTIFY = "serah-notify";
 self.addEventListener("install", () => self.skipWaiting());
@@ -29,7 +29,7 @@ const readJson = async (c, k) => {
   try {
     let r = await c.match(BASE + "/__notify/" + k);
     if (!r) {
-      const old = (await c.keys()).filter((q) => new URL(q.url).pathname.endsWith("/" + k)).pop();
+      const old = (await c.keys()).filter((q) => q.url.startsWith(BASE + "/") && new URL(q.url).pathname.endsWith("/" + k)).pop();
       if (old) r = await c.match(old);
     }
     return r ? await r.json() : null;
@@ -72,7 +72,8 @@ self.addEventListener("push", (e) => e.waitUntil((async () => {
   const texts = await readJson(c, "texts");
   let items = [];
   try {
-    if (cfg.api && cfg.key) {
+    // لا نرسل مفتاح الجهاز إلا لخلفية Apps Script الحقيقية
+    if (cfg.key && /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(cfg.api || "")) {
       const res = await fetch(cfg.api, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "pullNotices", key: cfg.key }) });
       const j = await res.json();
       if (j.ok) items = j.data.items || [];
@@ -98,7 +99,7 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const url = (e.notification.data && e.notification.data.url) || BASE + "/kid/";
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ws) => {
-    const w = ws.find((x) => x.url.startsWith(BASE));
+    const w = ws.find((x) => x.url.startsWith(BASE + "/"));
     if (w) return w.focus().then(() => w.navigate ? w.navigate(url) : null).catch(() => self.clients.openWindow(url));
     return self.clients.openWindow(url);
   }));

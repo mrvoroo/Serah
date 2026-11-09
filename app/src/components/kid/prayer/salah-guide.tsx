@@ -7,10 +7,12 @@ import { RT } from "@/components/religious-text";
 import { cn } from "@/lib/utils";
 import { g } from "@/lib/kid-text";
 import { useMotionAllowed } from "@/lib/tier";
+import { loadPlace, PRAYER_IDS, PRAYER_NAMES, timesFor, type PrayerId } from "@/lib/prayer";
 
 // أذكار ما بعد الصلاة كاملة، وعدد الركعات، وكيفية الصلاة (مع أماكن لفيديوهات يوتيوب)
 // المحتوى مراجَع من الشيخ: content/salah.json
-type Zikr = { id: string; text: string; count: number; ref: string; virtue?: string };
+// countAfter: عدد مختلف بعد صلوات معينة (المعوذات ٣ بعد الفجر والمغرب)، only: ذكر خاص بصلوات معينة
+type Zikr = { id: string; text: string; count: number; ref: string; virtue?: string; countAfter?: Partial<Record<PrayerId, number>>; only?: PrayerId[] };
 type Prayer = { id: string; name: string; fard: number; before: number; after: number; note: string };
 type Step = { title: string; text: string; ref?: string; video?: string };
 type Video = { title: string; youtubeId: string };
@@ -18,6 +20,16 @@ const S = salah as unknown as { meta: { note: string }; azkar: Zikr[]; prayers: 
 const ar = (n: number) => n.toLocaleString("ar-EG");
 const TABS = [{ id: "azkar", label: "أذكار بعد الصلاة" }, { id: "rakat", label: "عدد الركعات" }, { id: "how", label: "كيفية الصلاة" }] as const;
 type Tab = (typeof TABS)[number]["id"];
+
+// آخر صلاة دخل وقتها (حسب مواقيت مكان الطفل) — بعدها نعرض أذكارها مباشرة
+function lastPrayer(now = new Date()): PrayerId {
+  try {
+    const t = timesFor(now, loadPlace());
+    let last: PrayerId = "isha";
+    for (const p of PRAYER_IDS) if (t[p] <= now) last = p;
+    return last;
+  } catch { return "fajr"; }
+}
 
 const ytId = (v?: string) => { const m = /(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/.exec(v || "") ?? /^([\w-]{11})$/.exec(v || ""); return m ? m[1] : ""; };
 function VideoSlot({ id, title }: { id?: string; title: string }) {
@@ -29,10 +41,14 @@ function VideoSlot({ id, title }: { id?: string; title: string }) {
 export function SalahGuide() {
   const animate = useMotionAllowed();
   const [tab, setTab] = useState<Tab>("azkar");
+  const [after, setAfter] = useState<PrayerId>(() => lastPrayer());
   const [left, setLeft] = useState<Record<string, number>>({});
-  const remaining = (z: Zikr) => left[z.id] ?? z.count;
+  const list = S.azkar.filter((z) => !z.only || z.only.includes(after));
+  const countOf = (z: Zikr) => z.countAfter?.[after] ?? z.count;
+  const remaining = (z: Zikr) => left[z.id] ?? countOf(z);
   const tap = (z: Zikr) => setLeft((l) => ({ ...l, [z.id]: Math.max(0, remaining(z) - 1) }));
-  const doneAll = S.azkar.every((z) => remaining(z) === 0);
+  const doneAll = list.every((z) => remaining(z) === 0);
+  const pick = (p: PrayerId) => { setAfter(p); setLeft({}); };
 
   return (
     <section aria-labelledby="guide-title" className="flex flex-col gap-3">
@@ -50,16 +66,23 @@ export function SalahGuide() {
             <span>{g("اضغط", "اضغطي")} على الذكر بعد ما {g("تقوله", "تقوليه")} ليعدّ لك</span>
             <button type="button" onClick={() => setLeft({})} className="flex items-center gap-1 rounded-xl px-2 py-1 font-bold hover:bg-secondary"><RotateCcw className="size-4" /> من جديد</button>
           </div>
+          <div role="radiogroup" aria-label="أذكار بعد صلاة" className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold">بعد صلاة:</span>
+            {PRAYER_IDS.map((p) => (
+              <button key={p} type="button" role="radio" aria-checked={after === p} onClick={() => pick(p)}
+                className={cn("h-10 rounded-2xl px-3 text-sm font-bold transition", after === p ? "bg-gold text-[#3D2600] shadow-soft" : "bg-secondary text-secondary-foreground")}>{PRAYER_NAMES[p]}</button>
+            ))}
+          </div>
           {doneAll && <p className="rounded-2xl bg-emerald-500/15 p-3 text-center font-bold text-emerald-700 dark:text-emerald-300">ما شاء الله! {g("أتممت", "أتممتِ")} أذكار الصلاة 🌟</p>}
           <ol className="grid gap-3" aria-label="أذكار ما بعد الصلاة">
-            {S.azkar.map((z, i) => {
-              const r = remaining(z), done = r === 0;
+            {list.map((z, i) => {
+              const r = remaining(z), done = r === 0, c = countOf(z);
               return (
                 <motion.li key={z.id} initial={animate ? { opacity: 0, y: 10 } : false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
                   <div className={cn("rounded-[24px] border p-4 shadow-soft transition", done ? "border-emerald-500/40 bg-emerald-500/5" : "bg-card")}>
                     <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                       <span className="grid size-6 place-items-center rounded-full bg-secondary">{ar(i + 1)}</span>
-                      {z.count > 1 && <span>{ar(z.count)} مرات</span>}
+                      {c > 1 && <span>{ar(c)} مرات</span>}
                     </div>
                     <p className="mt-2 text-lg leading-[2.1]"><RT text={z.text} /></p>
                     {z.virtue && <p className="mt-2 rounded-2xl bg-gold/10 p-2 text-sm leading-7">{z.virtue}</p>}
@@ -67,7 +90,7 @@ export function SalahGuide() {
                       <span className="text-xs text-muted-foreground">{z.ref}</span>
                       <button type="button" onClick={() => tap(z)} disabled={done} aria-label={`عدّ: ${ar(r)} متبقية`}
                         className={cn("flex h-11 min-w-24 items-center justify-center gap-1 rounded-2xl px-4 font-bold transition active:scale-95", done ? "bg-emerald-500 text-white" : "bg-primary text-primary-foreground")}>
-                        {done ? <><Check className="size-5" /> تم</> : z.count > 1 ? `${ar(r)} ✋` : "قلته"}
+                        {done ? <><Check className="size-5" /> تم</> : c > 1 ? `${ar(r)} ✋` : "قلته"}
                       </button>
                     </div>
                   </div>

@@ -44,3 +44,5 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 public/version.json
+# صور مرجعية للتصميم فقط (كبيرة، لا تُنشر)
+public/ref/

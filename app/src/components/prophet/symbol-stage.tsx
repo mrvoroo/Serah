@@ -14,10 +14,16 @@ import { g } from "@/lib/kid-text";
 // (موسى: عصا ← حيّة تسعى ← عصا ← انفلاق البحر)، مع جملة ومرجعها تحت كل شكل
 type World = { morph: (id: string, o?: Record<string, number>) => void; setTheme: (t: string) => void; dispose: () => void; debug: () => Record<string, unknown> };
 const sid = (i: number) => `s${i}`;
-const SCALE = 1.2;
+// الرمز يملأ الصندوق: حجم الرسم (≈5.4 عرض × 4.9 ارتفاع) مقابل مساحة الرؤية (8.28 ارتفاع × نسبة العرض)
+const fitScale = (el: HTMLElement | null) => {
+  const w = el?.clientWidth || 360, h = el?.clientHeight || 340, aspect = w / h;
+  return Math.min(8.28 * 0.92 / 4.9, (8.28 * aspect * 0.94) / 5.4);
+};
+// مشاهد واقعية بمجسمات حقيقية لبعض الأنبياء بدل النقاط (تبدأ بسفينة سيدنا نوح عليه السلام)
+export type StageScene = "noah";
 
 // title: اسم المنطقة لقارئ الشاشة (مثل «رمز سيدنا موسى عليه السلام»)
-export function SymbolStage({ steps, title }: { steps: ShapeStep[]; title: string }) {
+export function SymbolStage({ steps, title, scene }: { steps: ShapeStep[]; title: string; scene?: StageScene }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const world = useRef<World | null>(null);
   const [i, setI] = useState(0);
@@ -30,32 +36,50 @@ export function SymbolStage({ steps, title }: { steps: ShapeStep[]; title: strin
 
   useEffect(() => {
     let disposed = false;
+    const ready = (w: World | null) => {
+      if (disposed) { w?.dispose(); return; }
+      if (!w) { setFailed(true); return; }
+      world.current = w;
+      w.morph(sid(iRef.current), { scale: fitScale(canvas.current) });
+      // للاختبارات فقط (خادم التطوير)
+      if (process.env.NODE_ENV !== "production") (window as unknown as { __symbol?: unknown }).__symbol = { debug: () => world.current?.debug() ?? null };
+    };
+    if (scene === "noah") {
+      import("@/lib/scenes/noah-scene.js").then(({ createNoahScene }) => {
+        if (disposed || !canvas.current) return;
+        ready(createNoahScene(canvas.current, { tier, initial: iRef.current }) as World | null);
+      }).catch(() => setFailed(true));
+      return () => { disposed = true; world.current?.dispose(); world.current = null; };
+    }
     Promise.all([import("@/lib/particles/world.js"), ruqaaFont()]).then(([{ createWorld }, font]) => {
       if (disposed || !canvas.current) return;
       const stations = steps.map((s, k) => ({ id: sid(k), label: "", symbol: s.shape, layout: "symbol" }));
-      const w = createWorld(canvas.current, { tier, contained: true, theme: themeRef.current === "light" ? "light" : "dark", stations, font, initial: sid(iRef.current) }) as World | null;
-      if (!w) { setFailed(true); return; }
-      world.current = w;
-      w.morph(sid(iRef.current), { scale: SCALE });
-      // للاختبارات فقط (خادم التطوير)
-      if (process.env.NODE_ENV !== "production") (window as unknown as { __symbol?: unknown }).__symbol = { debug: () => world.current?.debug() ?? null };
+      ready(createWorld(canvas.current, { tier, contained: true, theme: themeRef.current === "light" ? "light" : "dark", stations, font, initial: sid(iRef.current) }) as World | null);
     });
     return () => { disposed = true; world.current?.dispose(); world.current = null; };
-  }, [steps, tier]);
+  }, [steps, tier, scene]);
+
+  // الصندوق اتغير حجمه (دوران الموبايل مثلًا): الرمز يفضل مالي الصندوق
+  useEffect(() => {
+    if (scene || !canvas.current || !window.ResizeObserver) return;
+    const ro = new ResizeObserver(() => world.current?.morph(sid(iRef.current), { scale: fitScale(canvas.current) }));
+    ro.observe(canvas.current);
+    return () => ro.disconnect();
+  }, [scene]);
 
   useEffect(() => { themeRef.current = resolvedTheme; world.current?.setTheme(resolvedTheme === "light" ? "light" : "dark"); }, [resolvedTheme]);
 
   const go = (k: number) => {
     const next = (k + steps.length) % steps.length;
     iRef.current = next; setI(next); setTapped(true);
-    world.current?.morph(sid(next), { scale: SCALE });
+    world.current?.morph(sid(next), { scale: fitScale(canvas.current) });
   };
   const step = steps[i];
 
   return (
     <section aria-label={title} className="overflow-hidden rounded-[32px] border bg-[radial-gradient(ellipse_at_center,#2a1f63_0%,#120d33_70%)] text-white shadow-soft">
       <button type="button" onClick={() => go(i + 1)} aria-label={steps.length > 1 ? `${step.label} — ${g("اضغط", "اضغطي")} للشكل التالي` : step.label}
-        className="relative block h-[300px] w-full cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/60 sm:h-[360px]">
+        className={cn("relative block w-full cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/60", scene ? "h-[320px] sm:h-[440px]" : "h-[320px] sm:h-[400px]")}>
         <canvas ref={canvas} aria-hidden className="absolute inset-0 size-full" />
         {failed && <span className="absolute inset-0 grid place-items-center font-heading text-3xl font-extrabold text-gold">{step.label}</span>}
         {steps.length > 1 && <span className="absolute start-3 top-3 rounded-full bg-white/15 px-3 py-1 text-xs font-bold backdrop-blur">{arNum(i + 1)} / {arNum(steps.length)}</span>}

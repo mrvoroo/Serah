@@ -58,6 +58,18 @@ test("أذكار ما بعد الصلاة كاملة بالعدّاد، وآية
   const first = az.getByRole("listitem").first().getByRole("button");
   for (let i = 0; i < 3; i++) await first.click();
   await expect(first).toHaveText(/تم/);
+  // المعوذات: مرة بعد الظهر، وثلاثًا بعد الفجر والمغرب؛ والتهليل عشرًا بعد الفجر والمغرب فقط
+  const item = (re: RegExp) => az.getByRole("listitem").filter({ hasText: re });
+  const after = page.getByRole("radiogroup", { name: "أذكار بعد صلاة" });
+  await after.getByRole("radio", { name: "الظهر" }).click();
+  await expect(item(/قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ/).getByRole("button")).toHaveText("قلته");
+  await expect(item(/يُحْيِي وَيُمِيتُ/)).toHaveCount(0);
+  await after.getByRole("radio", { name: "المغرب" }).click();
+  await expect(after.getByRole("radio", { name: "المغرب" })).toHaveAttribute("aria-checked", "true");
+  for (const re of [/قُلْ هُوَ اللَّهُ أَحَدٌ/, /قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ/, /قُلْ أَعُوذُ بِرَبِّ النَّاسِ/]) await expect(item(re)).toContainText("٣ مرات");
+  await expect(item(/يُحْيِي وَيُمِيتُ/)).toHaveCount(1);
+  // تغيير الصلاة يبدأ العدّ من جديد
+  await expect(first).not.toHaveText(/تم/);
   await page.getByRole("tab", { name: "عدد الركعات" }).click();
   await expect(page.getByText("الفجر").last()).toBeVisible();
   await page.getByRole("tab", { name: "كيفية الصلاة" }).click();

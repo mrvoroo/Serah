@@ -51,18 +51,41 @@ function buildShape(name, n, r, font = 'serif') {
     const fill = () => { let x, y, t = 0; do { const th = r() * TAU, rad = 2.0 * Math.sqrt(r()); x = Math.cos(th) * rad; y = Math.sin(th) * rad; t++; } while (((x - 0.85) ** 2 + y * y) < 1.75 ** 2 && t < 40); return [x, y, J(0.1)]; };
     parts = [[0.30, outer], [0.16, inner], [0.16, fill], [0.12, starOutline(1.45, 0.35, 0.5)], [0.04, starOutline(2.25, -0.75, 0.24)], [0.22, dust(4.5)]];
   } else if (name === 'ark') {
-    // السفينة: خطوط البدن (السطح، القاع، أضلاع) + بيت بالحواف + سقف + نوافذ، وموج خطي
-    const L = 2.6;
-    const deckY = (u) => -0.3 + Math.pow(Math.abs(u), 2.4) * 0.55;
-    const deck = (side) => curve((t) => { const u = t * 2 - 1; return [u * L, deckY(u), side * 0.92 * Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(u), 3)))]; }, 0.016);
-    const keel = curve((t) => { const u = t * 2 - 1; return [u * L * 0.92, -1.05 + Math.pow(Math.abs(u), 2.2) * 0.75, 0]; }, 0.016);
-    const ribs = () => { const u = Math.round((r() * 2 - 1) * 6) / 6, side = r() < 0.5 ? -1 : 1, v = r(); const half = 0.92 * Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(u), 3)));
-      const top = deckY(u), bot = -1.05 + Math.pow(Math.abs(u), 2.2) * 0.75; return [u * L, top + (bot - top) * v, side * half * Math.cos(v * Math.PI / 2) + J(0.01)]; };
-    const house = boxEdges(-1.25, 1.25, -0.3, 0.45, -0.55, 0.55, 0.012);
-    const roof = many([seg([-1.38, 0.45, -0.62], [-1.38, 0.95, 0]), seg([-1.38, 0.95, 0], [-1.38, 0.45, 0.62]), seg([1.38, 0.45, -0.62], [1.38, 0.95, 0]), seg([1.38, 0.95, 0], [1.38, 0.45, 0.62]), seg([-1.38, 0.95, 0], [1.38, 0.95, 0], 0.012)]);
-    const windows = () => { const wx = [-0.85, -0.3, 0.3, 0.85][Math.floor(r() * 4)]; const a = r() * TAU; return [wx + Math.cos(a) * 0.1, 0.08 + Math.sin(a) * 0.1, 0.56]; };
-    parts = [[0.12, deck(1)], [0.12, deck(-1)], [0.09, keel], [0.12, ribs], [0.12, house], [0.07, roof], [0.04, windows], [0.06, dust(4.2)]];
-    parts.waves = [0.26, () => { const row = Math.floor(r() * 5), z = -1.8 + row * 0.9 + J(0.05); return [(r() - 0.5) * 12, -1.25 + J(0.02), z]; }];
+    // سفينة نوح كما في الصور المرجعية: بدن طويل بألواح متراكبة تتبع انحناء السطح، عمود مقدمة قائم مرتفع،
+    // بيت طويل بسقف جملوني وبيت أعلى في الخلف، صف نوافذ مضيئة (flow 6 دافئ)، حبال متدلية على الجانب، وموج تحتها
+    const K = 0.5, OY = -1.3, HL = 6, B = 1.55, H = 2.35;
+    const hb = (u) => Math.max(0.04, B * (u > 0 ? Math.pow(Math.max(0, 1 - Math.pow(u, 2.3)), 0.52) : Math.pow(Math.max(0, 1 - Math.pow(-u, 4)), 0.5)));
+    const top = (u) => H + 0.22 * u * u + (u > 0 ? 0.6 : 0.28) * Math.pow(Math.abs(u), 4);
+    const bot = (u) => (u > 0 ? 1.15 : 0.75) * Math.pow(Math.abs(u), 3);
+    const sec = (v) => Math.pow(Math.sin(Math.min(1, v * 1.45) * Math.PI / 2), 0.62);
+    const hp = (u, v, side, out = 0) => [u * HL * K, OY + (bot(u) + (top(u) - bot(u)) * v) * K, side * (hb(u) * sec(v) + out) * K];
+    const W = (x, y, z) => [x * K, OY + y * K, z * K];
+    // صفوف الألواح: الجانب المواجه كثيف، والخلفي أخف
+    const strakes = () => { const side = r() < 0.72 ? 1 : -1, v = Math.round(r() * 11) / 11, u = r() * 1.98 - 0.99; return hp(u, Math.max(0.03, v), side); };
+    const seams = () => { const side = r() < 0.75 ? 1 : -1, u = Math.round((r() * 2 - 1) * 9) / 9 + (r() - 0.5) * 0.01, v = r(); return hp(u, v, side); };
+    const gunwale = () => { const side = r() < 0.6 ? 1 : -1, u = r() * 1.98 - 0.99; return hp(u, 1, side, 0.03); };
+    const keel = () => { const u = r() * 2 - 1; return hp(u, 0, 1); };
+    // عمود المقدمة: أطول خط قائم في الصورة، وعمود المؤخرة أقصر
+    const stem = () => { const y0 = bot(1) - 0.15, y1 = top(1) + 1.25, v = r(); return W(HL + 0.08 - v * 0.15 + J(0.02), y0 + (y1 - y0) * v, (r() - 0.5) * 0.3); };
+    const stern = () => { const y0 = bot(-1) - 0.1, y1 = top(-1) + 0.45, v = r(); return W(-HL - 0.03 + J(0.02), y0 + (y1 - y0) * v, (r() - 0.5) * 0.26); };
+    const y0 = H - 0.12;
+    const cabin = boxEdges(-4.3 * K, 3.7 * K, OY + y0 * K, OY + (y0 + 0.92) * K, -0.98 * K, 0.98 * K, 0.008);
+    const upper = boxEdges(-3.3 * K, -1.3 * K, OY + (y0 + 0.92) * K, OY + (y0 + 1.67) * K, -0.72 * K, 0.72 * K, 0.008);
+    const gable = (x0, x1, yb, hw, rh) => many([seg(W(x0, yb, -hw - 0.18), W(x0, yb + rh, 0)), seg(W(x0, yb + rh, 0), W(x0, yb, hw + 0.18)), seg(W(x1, yb, -hw - 0.18), W(x1, yb + rh, 0)), seg(W(x1, yb + rh, 0), W(x1, yb, hw + 0.18)), seg(W(x0, yb + rh, 0), W(x1, yb + rh, 0), 0.008), seg(W(x0, yb, hw + 0.18), W(x1, yb, hw + 0.18), 0.008)]);
+    const roof = many([gable(-4.45, 3.85, y0 + 0.92, 0.98, 0.42), gable(-3.45, -1.15, y0 + 1.67, 0.72, 0.5)]);
+    // ألواح السقف (خطوط على طول السقف المائل المواجه)
+    const roofBoards = () => { const t = Math.floor(r() * 5) / 5, x = -4.45 + r() * 8.3; return W(x, y0 + 0.92 + 0.42 * (1 - t), (0.98 + 0.18) * t); };
+    const win = (x, y, z) => () => { const a = r() * TAU, q = Math.sqrt(r()) * 0.13; return W(x + Math.cos(a) * q, y + Math.sin(a) * q * 0.85, z); };
+    const wins = [];
+    for (let x = -3.95; x < 3.5; x += 0.56) wins.push(win(x, y0 + 0.53, 0.99));
+    for (let x = -3.0; x < -1.4; x += 0.62) wins.push(win(x, y0 + 1.36, 0.73));
+    const windows = many(wins);
+    const swag = (ua, ub, sag) => curve((t) => { const u = ua + (ub - ua) * t; return hp(u, Math.max(0.05, 1 - sag * Math.sin(Math.PI * t)), 1, 0.06); }, 0.008);
+    const ropes = many([swag(0.86, 0.5, 0.42), swag(0.47, 0.08, 0.5), swag(0.05, -0.38, 0.4)]);
+    const door = boxEdges(-0.22 * HL * K - 0.18, -0.22 * HL * K + 0.18, OY + 1.0 * K, OY + 2.0 * K, B * K + 0.01, B * K + 0.02, 0.006);
+    // معظم النقاط على الخطوط المميزة (حافة السطح، القاع، عمود المقدمة، حواف البيت والسقف، النوافذ) حتى يُقرأ الشكل بوضوح
+    parts = [[0.13, strakes], [0.025, seams], [0.13, gunwale], [0.05, keel], [0.075, stem], [0.02, stern], [0.12, cabin], [0.05, upper], [0.1, roof], [0.025, roofBoards], [0.09, windows, 6], [0.045, ropes], [0.01, door], [0.025, dust(4.2)]];
+    parts.waves = [0.16, () => { const row = Math.floor(r() * 6), z = -1.6 + row * 0.7 + J(0.05); return [(r() - 0.5) * 7.2, -1.3 + J(0.03) + Math.sin(row * 1.7) * 0.05, z]; }];
   } else if (name === 'staff') {
     // العصا غصن شجرة: ساق متعرّج بلحاء وعُقد، فرعان صغيران وأوراق في الأعلى + ستائر ماء على الجانبين + طريق
     const c = (u) => [0.1 * Math.sin(u * 4.2 + 0.5) - 0.05 + 0.08 * u, -2.5 + u * 4.1, 0.06 * Math.sin(u * 3)];
@@ -212,6 +235,16 @@ function buildShape(name, n, r, font = 'serif') {
   if (name === 'crescent') for (let i = 0; i < n; i++) pos[i * 3] -= 0.35;
   if (name === 'sword') for (let i = 0; i < n; i++) { const x = pos[i * 3], y = pos[i * 3 + 1], c = Math.cos(-0.3), s2 = Math.sin(-0.3); pos[i * 3] = x * c - y * s2; pos[i * 3 + 1] = x * s2 + y * c; }
   if (name === 'dome') for (let i = 0; i < n; i++) pos[i * 3] -= 0.3;
+  // السفينة بزاوية ثلاثة أرباع من أعلى قليلًا (المقدمة تجاه المشاهد يمينًا) حتى يظهر الجانب والسقف ونوافذ البيت مثل الصور
+  if (name === 'ark') {
+    const cy = Math.cos(-0.55), sy = Math.sin(-0.55), cx = Math.cos(0.22), sx = Math.sin(0.22);
+    for (let i = 0; i < n; i++) {
+      let x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+      const y2 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
+      pos[i * 3] = x1 * 1.05; pos[i * 3 + 1] = y2 + 0.15; pos[i * 3 + 2] = z2;
+    }
+  }
   if (name === 'mushaf') for (let i = 0; i < n * 3; i++) pos[i] *= 1.2;
   // الحوت: زاوية ثلاثة أرباع من أعلى قليلًا حتى تظهر زعنفة الذيل الأفقية الضخمة والظهر، والرأس متجه نحو المشاهد
   if (name === 'whale') {
@@ -410,7 +443,9 @@ const fragment = /* glsl */`
     // اسم النبي: ذهبي دافئ موحّد حتى يُقرأ الخط بوضوح، مع لمعة خفيفة
     if (vFlow > 3.5 && vFlow < 4.5) col = mix(mix(uA, uB, 0.35 + vRand * 0.5), uD, step(0.93, vRand) * 0.6);
     // الحوت الأزرق: درجات أزرق حقيقية مع لمعة فاتحة، وأغمق في الثيم الفاتح
-    if (vFlow > 4.5) col = mix(mix(vec3(0.24, 0.52, 0.92), vec3(0.62, 0.84, 1.0), vRand), mix(vec3(0.1, 0.3, 0.72), vec3(0.2, 0.48, 0.86), vRand), uLight);
+    if (vFlow > 4.5 && vFlow < 5.5) col = mix(mix(vec3(0.24, 0.52, 0.92), vec3(0.62, 0.84, 1.0), vRand), mix(vec3(0.1, 0.3, 0.72), vec3(0.2, 0.48, 0.86), vRand), uLight);
+    // نوافذ السفينة: ضوء دافئ برتقالي
+    if (vFlow > 5.5) col = mix(vec3(1.0, 0.68, 0.28), vec3(0.85, 0.42, 0.05), uLight);
     float fa = vFlow > 2.5 && vFlow < 3.5 ? mix(0.8, 0.5, uLight) : 1.0;
     gl_FragColor = vec4(col, clamp(glow, 0.0, 1.0) * fa * uOpacity * (1.0 - vDepth * 0.4));
   }

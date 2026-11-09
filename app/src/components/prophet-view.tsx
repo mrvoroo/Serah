@@ -1,4 +1,5 @@
 "use client";
+import { useMemo } from "react";
 import Link from "next/link";
 import { Headphones, PlayCircle } from "lucide-react";
 import { driveImage, type Lecture } from "@/lib/api";
@@ -53,7 +54,8 @@ export function ProphetView({ prophet, items, lectures, lectureHref = (id) => `/
   const related = (lectures ?? []).filter((l) => l.prophet_id === prophet.prophet_id || String(l.title).includes(name));
   const content = prophetContent(prophet.prophet_id);
   const symbolName = content?.symbol.unified ? content.symbol.label : prophet.symbol_name;
-  const steps = shapeSequence(prophet.prophet_id);
+  // ثابتة طول ما النبي نفسه (وإلا المشهد يتبني من جديد مع كل تحديث للصفحة)
+  const steps = useMemo(() => shapeSequence(prophet.prophet_id), [prophet.prophet_id]);
   const images = items.filter((it) => it.kind === "image");
   const firstImage = images[0]?.item_id;
   return (
@@ -64,7 +66,7 @@ export function ProphetView({ prophet, items, lectures, lectureHref = (id) => `/
         <p className="mt-3 text-base leading-8 text-white/85"><RT text={prophet.text} /></p>
       </header>
 
-      {steps.length > 0 && <SymbolStage steps={steps} title={`رمز سيدنا ${honored}`} />}
+      {steps.length > 0 && <SymbolStage key={prophet.prophet_id} steps={steps} title={`رمز سيدنا ${honored}`} scene={prophet.prophet_id === "noah" ? "noah" : undefined} />}
       {content && <ProphetBio content={content} />}
 
       {items.map((it) => it.kind !== "image" ? <Item key={it.item_id} it={it} />

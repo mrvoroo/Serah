@@ -98,7 +98,7 @@ export default function TeacherHome() {
         ))}
       </section>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <Panel title="نسبة الحضور" className="flex flex-col items-center">
           {loading && !data ? <Skeleton className="size-36 rounded-full" /> : (
             <AnimatedCircularProgressBar value={data?.attendanceRate ?? 0} gaugePrimaryColor="var(--primary)" gaugeSecondaryColor="var(--secondary)" className="size-36 font-heading text-2xl" />
@@ -120,7 +120,7 @@ export default function TeacherHome() {
         </Panel>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <Panel title="نشاط الاستماع (١٤ يومًا)" className="lg:col-span-2">
           {loading && !data ? <Skeleton className="h-48" /> : (
             <ChartContainer config={areaCfg} className="h-48 w-full">
