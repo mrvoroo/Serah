@@ -77,6 +77,25 @@ test("أذكار ما بعد الصلاة كاملة بالعدّاد، وآية
   await expect(page.getByText(/فيديو «كيفية الوضوء» قريبًا/)).toBeVisible();
 });
 
+test("كارت آية الكرسي مميّز بالحديث الصحيح وشرح مبسّط، والضغط يعدّها ويحفّز", async ({ page }) => {
+  await mock(page);
+  await page.goto("/Serah/kid/prayer/");
+  const card = page.getByTestId("kursi-card");
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("أعظم آية في القرآن");
+  await expect(card).toContainText("لم يمنعه من دخول الجنة إلا أن يموت");
+  await expect(card).toContainText("صححه الألباني");
+  await expect(card.locator("[data-ayah-text]").first()).toBeAttached();
+  const meanings = card.getByRole("list", { name: "معاني الآية" });
+  await expect(meanings).toBeHidden();
+  await card.getByText("معنى الآية ببساطة").click();
+  await expect(meanings.getByRole("listitem")).toHaveCount(10);
+  await card.getByRole("button", { name: "قرأتها: آية الكرسي" }).click();
+  await expect(card.getByRole("button", { name: "تم: آية الكرسي" })).toBeDisabled();
+  await expect(card.getByRole("status")).toHaveText(/أحسنتِ! حافظي على آية الكرسي/); // الطفلة: صيغة مؤنثة
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+});
+
 test("تفعيل الإشعارات يرسل جدول ١٤ يومًا (صلوات وأذكار وضحى وجمعة) للخادم", async ({ page, browserName }, info) => {
   test.skip(info.project.name !== "desktop" || browserName !== "chromium", "محاكاة PushManager على كروم المكتب");
   const calls = await mock(page);
@@ -100,6 +119,9 @@ test("تفعيل الإشعارات يرسل جدول ١٤ يومًا (صلوا�
   const kinds = new Set(sub.plan.map((e) => e[1]));
   for (const k of ["pre:fajr", "p:fajr", "p:dhuhr", "pre:isha", "p:isha", "dhikr", "duha", "fri"]) expect(kinds.has(k)).toBe(true);
   for (const e of sub.plan.filter((x) => x[1] === "pre:isha")) expect(sub.plan.some((x) => x[1] === "p:isha" && x[0] - e[0] === 600)).toBe(true);
+  // «صليت العشاء؟» بعد الأذان بنصف ساعة
+  for (const e of sub.plan.filter((x) => x[1] === "ask:isha")) expect(sub.plan.some((x) => x[1] === "p:isha" && e[0] - x[0] === 1800)).toBe(true);
+  expect(kinds.has("ask:dhuhr")).toBe(true);
   expect(sub.plan.filter((e) => e[1] === "dhikr").length).toBeGreaterThanOrEqual(39); // ٣ يوميًا × ١٣+ يوم
   // الأذكار العشوائية بين ٩ص و٨م بتوقيت الجهاز
   for (const e of sub.plan.filter((x) => x[1] === "dhikr")) { const h = new Date(e[0] * 1000).toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: "Asia/Riyadh" }); expect(Number(h)).toBeGreaterThanOrEqual(9); expect(Number(h)).toBeLessThan(20); }

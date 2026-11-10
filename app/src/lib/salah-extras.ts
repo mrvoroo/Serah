@@ -1,9 +1,9 @@
 import salah from "@/content/salah.json";
-import type { PrayerId } from "@/lib/prayer";
 
 // محتوى الصلاة الذي تضيفه الأدمن من لوحة المعلمات: روابط فيديوهات لأماكن ثابتة، وأذكار إضافية
 // نصوص salah.json الأصلية (المراجَعة من الشيخ) ثابتة ولا تُعدَّل من هنا
-export type ExtraZikr = { zikr_id: string; text: string; count: number; ref: string; virtue: string; grade: string; after: PrayerId[]; visible: boolean };
+// الذكر الإضافي يظهر بعد كل الصلوات (لا يُربط بصلاة معيّنة)، ولا يراه الطفل حتى يُعتمد
+export type ExtraZikr = { zikr_id: string; text: string; count: number; ref: string; virtue: string; grade: string; visible: boolean; approved: boolean; created_by?: string; updated_by?: string; updated_at?: string };
 export type SalahExtras = { videos: Record<string, string>; azkar: ExtraZikr[] };
 
 type Step = { id: string; title: string; video?: string };

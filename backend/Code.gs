@@ -42,7 +42,7 @@ const SCHEMA = {
   // محتوى الصلاة من الأدمن: روابط فيديوهات يوتيوب لأماكن ثابتة (key = how:<id> أو vid:<id>)، وأذكار إضافية للأطفال
   // (أذكار salah.json الأصلية ثابتة لا تُعدَّل من هنا)
   SalahVideos:  ['key', 'youtube_id', 'updated_by', 'updated_at'],
-  ExtraAzkar:   ['zikr_id', 'text', 'count', 'ref', 'virtue', 'after', 'sort', 'visible', 'created_by', 'created_at', 'updated_at', 'grade']
+  ExtraAzkar:   ['zikr_id', 'text', 'count', 'ref', 'virtue', 'after', 'sort', 'visible', 'created_by', 'created_at', 'updated_at', 'grade', 'approved', 'approved_by', 'updated_by']
 };
 const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من تيليجرام (20MB)
 
@@ -1905,8 +1905,9 @@ function dayOffset_(n) { const d = new Date(Date.now() + n * 864e5); return Numb
 
 // خوادم الإشعارات المعروفة فقط (حتى لا يُستغل الخادم لإرسال طلبات لأي عنوان)
 const PUSH_HOSTS = /^https:\/\/(fcm\.googleapis\.com|android\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.push\.apple\.com|[a-z0-9.-]+\.notify\.windows\.com)\//;
-const PUSH_KINDS = /^((p|pre):(fajr|dhuhr|asr|maghrib|isha)|dhikr|duha|fri)$/;
-const PUSH_PRAYER = /^(p|pre):/;
+// ask: «صليت الظهر؟» بعد الأذان بنصف ساعة (يفتح جدول الصلاة ليعلّم عليها)
+const PUSH_KINDS = /^((p|pre|ask):(fajr|dhuhr|asr|maghrib|isha)|dhikr|duha|fri)$/;
+const PUSH_PRAYER = /^(p|pre|ask):/;
 const PUSH_MAX_PLAN = 400;
 
 Object.assign(POLICY, {
@@ -1946,6 +1947,8 @@ Object.assign(ACTIONS, {
       if (done && i < 0) set.push(prayer);
       if (!done && i >= 0) set.splice(i, 1);
       const prayers = PRAYERS.filter(x => set.indexOf(x) >= 0).join(',');
+      // لإشعار «صليت؟»: تعليم صلاة اليوم يمنعه (لا صلاة أمس)، والإلغاء يرجّعه
+      if (day >= dayOffset_(0)) { const ck = 'pm:' + me.user_id + ':' + prayer; try { if (done) CacheService.getScriptCache().put(ck, String(Math.floor(Date.now() / 1000)), 3 * 3600); else CacheService.getScriptCache().remove(ck); } catch (e) { console.error(e); } }
       if (row) update_('PrayerLog', 'key', key, { prayers, updated_at: now_() });
       else append_('PrayerLog', { key, user_id: me.user_id, day, prayers, updated_at: now_() });
       return prayers ? prayers.split(',') : [];
@@ -2093,8 +2096,10 @@ function pushTick() {
       if (nx && nx[0] < soonest) soonest = nx[0];
       // لا نرسل إلا آخر موعد فات منذ الدورة السابقة (حتى لا تتراكم الإشعارات لو توقف المشغّل)
       const hits = plan.filter(e => e[0] > Math.max(last, now - 1800) && e[0] <= now);
-      if (hits.length) queuePush_(s.sub_id, { kind: hits[hits.length - 1][1], idx: hits[hits.length - 1][2] });
-      if (hits.length || due.indexOf(s.sub_id) >= 0) send.push(s);
+      let hit = hits.length ? hits[hits.length - 1] : null;
+      if (hit && /^ask:/.test(hit[1]) && markedSince_(s.user_id, hit[1].slice(4), hit[0] - 1800)) hit = null; // علّم عليها خلاص
+      if (hit) queuePush_(s.sub_id, { kind: hit[1], idx: hit[2] });
+      if (hit || due.indexOf(s.sub_id) >= 0) send.push(s);
     });
     props_().setProperty('PUSH_NEXT', String(soonest));
     if (!send.length) return;
@@ -2106,6 +2111,13 @@ function pushTick() {
       else if (code >= 400) update_('PushSubs', 'sub_id', send[i].sub_id, { fails: Number(send[i].fails || 0) + 1 });
     });
   } finally { lock.releaseLock(); }
+}
+
+// هل علّم صاحب الجهاز على هذه الصلاة بعد أذانها؟ (لا يُعلَّم على صلاة قبل وقتها، فالتعديل بعد الأذان يعني أنه صلّاها)
+// markPrayer يكتب وقت التعليم في الذاكرة المؤقتة (٣ ساعات)، فلا نقرأ سجل الصلوات كله في كل دورة
+function markedSince_(user_id, prayer, sinceSec) {
+  const at = Number(CacheService.getScriptCache().get('pm:' + user_id + ':' + prayer) || 0);
+  return at >= sinceSec;
 }
 
 function installPushTrigger() {
@@ -2526,19 +2538,32 @@ Object.assign(POLICY, {
   saveSalahVideo: { min: 'admin', write: 1, audit: 1 },
   saveExtraZikr: { min: 'admin', write: 1, audit: 1 },
   setExtraZikrVisible: { min: 'admin', write: 1, audit: 1 },
+  approveExtraZikr: { min: 'admin', write: 1, audit: 1 },
   deleteExtraZikr: { min: 'admin', write: 1, audit: 1 },
   reorderExtraAzkar: { min: 'admin', write: 1, audit: 1 }
 });
 
 function shown_(v) { return v !== false && String(v).toUpperCase() !== 'FALSE'; }
-function cleanAfter_(v) {
-  const list = Array.isArray(v) ? v.map(String) : String(v || '').split(',');
-  const set = PRAYERS.filter(x => list.indexOf(x) >= 0);
-  return set.length === PRAYERS.length ? '' : set.join(','); // فاضي = بعد كل الصلوات
-}
+// قرار المطوّر: لا يُربط ذكر إضافي بصلاة معيّنة (يظهر بعد كل الصلوات)، ولا يظهر للأطفال حتى يُعتمد
 function zikrOut_(z) {
   return { zikr_id: String(z.zikr_id), text: String(z.text || ''), count: Number(z.count) || 1, ref: String(z.ref || ''),
-    virtue: String(z.virtue || ''), grade: String(z.grade || ''), after: String(z.after || '').split(',').filter(x => PRAYERS.indexOf(x) >= 0), visible: shown_(z.visible) };
+    virtue: String(z.virtue || ''), grade: String(z.grade || ''), visible: shown_(z.visible), approved: truthy_(z.approved),
+    created_by: String(z.created_by || ''), updated_by: String(z.updated_by || z.created_by || ''), updated_at: String(z.updated_at || '') };
+}
+// إشعار للأدمن والمطوّر (عدا من أضاف) بأن هناك ذكرًا ينتظر المراجعة
+function notifyZikrReview_(me, text) {
+  try {
+    // تجميع: إشعار واحد كل ٥ دقائق مهما كثرت التعديلات
+    const c = CacheService.getScriptCache();
+    if (c.get('zrev')) return;
+    c.put('zrev', '1', 300);
+    const staff = {}; rows_('Users').forEach(u => { if (!inactive_(u) && (u.role === 'admin' || u.role === 'superadmin') && u.user_id !== me.user_id) staff[u.user_id] = 1; });
+    const subs = rows_('PushSubs').filter(s => staff[s.user_id]);
+    if (!subs.length) return;
+    const item = { kind: 'review', title: 'ذكر جديد ينتظر المراجعة', body: String(text).replace(/\s+/g, ' ').slice(0, 90), url: '/teacher/prayer-content/' };
+    subs.forEach(s => queuePush_(s.sub_id, item));
+    UrlFetchApp.fetchAll(subs.map(s => pushRequest_(s.endpoint)));
+  } catch (e) { console.error(e); }
 }
 const ZIKR_ID = /^z[0-9a-f-]{8}$/;
 // قراءة الأطفال مخزّنة دقيقة (حتى لا يُقرأ الشيت مع كل فتح لصفحة الصلاة)، وتُمسح مع أي تعديل
@@ -2561,7 +2586,9 @@ Object.assign(ACTIONS, {
   salahExtras: (p, me) => {
     const d = salahPublic_();
     const admin = RANK[me.role] >= RANK.admin && (p.all === true || p.all === 'true');
-    return { videos: d.videos, azkar: d.azkar.filter(z => admin || z.visible) };
+    // الطفل والمعلمة يرون المعتمد الظاهر فقط، وبدون اسم من أضافه
+    const azkar = admin ? d.azkar : d.azkar.filter(z => z.visible && z.approved).map(z => { const o = Object.assign({}, z); delete o.created_by; delete o.updated_by; delete o.updated_at; return o; });
+    return { videos: d.videos, azkar };
   },
 
   // رابط فاضي = حذف الفيديو من هذا المكان
@@ -2594,25 +2621,43 @@ Object.assign(ACTIONS, {
     if (p.confirmed !== true && p.confirmed !== 'true') throw new Error('أكّدي أن الذكر ثابت وأن نصه وعدده كما وردت');
     const count = Math.floor(Number(p.count));
     if (!(count >= 1 && count <= 100)) throw new Error('العدد من ١ إلى ١٠٠');
-    const f = { text, ref, grade, count, virtue: String(p.virtue || '').trim().slice(0, 800), after: cleanAfter_(p.after), updated_at: now_() };
+    // أي تعديل يُرجع الذكر لانتظار المراجعة
+    const f = { text, ref, grade, count, virtue: String(p.virtue || '').trim().slice(0, 800), after: '', approved: false, approved_by: '', updated_by: me.user_id, updated_at: now_() };
     if (p.visible !== undefined) f.visible = p.visible === true || p.visible === 'true';
     if (p.zikr_id && !ZIKR_ID.test(String(p.zikr_id))) throw new Error('الذكر غير موجود');
     salahWrite_(me);
-    return withLock_(() => {
-      if (p.zikr_id) {
-        if (!update_('ExtraAzkar', 'zikr_id', String(p.zikr_id), f)) throw new Error('الذكر غير موجود');
-        return String(p.zikr_id);
+    const saved = withLock_(() => {
+      let id = String(p.zikr_id || '');
+      if (id) {
+        if (!update_('ExtraAzkar', 'zikr_id', id, f)) throw new Error('الذكر غير موجود');
+      } else {
+        const all = rows_('ExtraAzkar');
+        if (all.length >= MAX_EXTRA_AZKAR) throw new Error('وصلتِ للحد الأقصى من الأذكار الإضافية');
+        id = append_('ExtraAzkar', Object.assign({ zikr_id: id_('z'), sort: all.length, visible: f.visible !== false, created_by: me.user_id, created_at: now_() }, f)).zikr_id;
       }
-      const all = rows_('ExtraAzkar');
-      if (all.length >= MAX_EXTRA_AZKAR) throw new Error('وصلتِ للحد الأقصى من الأذكار الإضافية');
-      const z = append_('ExtraAzkar', Object.assign({ zikr_id: id_('z'), sort: all.length, visible: f.visible !== false, created_by: me.user_id, created_at: now_() }, f));
-      return z.zikr_id;
+      return id;
     });
+    notifyZikrReview_(me, text); // خارج القفل (طلبات الشبكة لا تعطّل باقي العمليات)
+    return saved;
   },
 
   setExtraZikrVisible: (p, me) => withLock_(() => {
     salahWrite_(me);
     if (!ZIKR_ID.test(String(p.zikr_id || '')) || !update_('ExtraAzkar', 'zikr_id', String(p.zikr_id || ''), { visible: p.visible === true || p.visible === 'true', updated_at: now_() })) throw new Error('الذكر غير موجود');
+    return true;
+  }),
+
+  // الاعتماد: أدمن غير التي أضافته أو عدّلته آخر مرة، أو المطوّر
+  approveExtraZikr: (p, me) => withLock_(() => {
+    const id = String(p.zikr_id || '');
+    const z = ZIKR_ID.test(id) && rows_('ExtraAzkar').find(r => String(r.zikr_id) === id);
+    if (!z) throw new Error('الذكر غير موجود');
+    const ok = p.approved !== false && p.approved !== 'false';
+    if (ok && me.role !== 'superadmin' && (String(z.created_by) === me.user_id || String(z.updated_by) === me.user_id)) throw new Error('يعتمده المطوّر أو أدمن أخرى (ليس من أضافته أو عدّلته)');
+    // لا يُعتمد نص لم تره المراجِعة (تعدّل بعد فتح الصفحة)
+    if (ok && p.seen !== undefined && String(p.seen) !== String(z.updated_at)) throw new Error('الذكر تعدّل — حدّثي الصفحة وراجعيه');
+    salahWrite_(me);
+    update_('ExtraAzkar', 'zikr_id', id, { approved: ok, approved_by: ok ? me.user_id : '', updated_at: now_() });
     return true;
   }),
 
@@ -2636,7 +2681,7 @@ Object.assign(ACTIONS, {
   })
 });
 // تُمسح نسخة الأطفال المخزّنة بعد الكتابة أيضًا (قراءة بين المسح والكتابة كانت ستخزّن القديم دقيقة)
-['saveSalahVideo', 'saveExtraZikr', 'setExtraZikrVisible', 'deleteExtraZikr', 'reorderExtraAzkar'].forEach(k => {
+['saveSalahVideo', 'saveExtraZikr', 'setExtraZikrVisible', 'approveExtraZikr', 'deleteExtraZikr', 'reorderExtraAzkar'].forEach(k => {
   const f = ACTIONS[k];
   ACTIONS[k] = (p, me) => { try { return f(p, me); } finally { try { CacheService.getScriptCache().remove('salahx'); } catch (e) { console.error(e); } } };
 });

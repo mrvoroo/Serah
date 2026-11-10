@@ -20,10 +20,12 @@ const fitScale = (el: HTMLElement | null) => {
   return Math.min(8.28 * 0.92 / 4.9, (8.28 * aspect * 0.94) / 5.4);
 };
 // مشاهد واقعية بمجسمات حقيقية لبعض الأنبياء بدل النقاط (تبدأ بسفينة سيدنا نوح عليه السلام)
-export type StageScene = "noah";
+// image: مشهد من صور المالك (آدم وإدريس وصالح) بتحوّل ناعم بين الصور
+export type StageScene = "noah" | "image";
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 // title: اسم المنطقة لقارئ الشاشة (مثل «رمز سيدنا موسى عليه السلام»)
-export function SymbolStage({ steps, title, scene }: { steps: ShapeStep[]; title: string; scene?: StageScene }) {
+export function SymbolStage({ steps, title, scene, sceneId }: { steps: ShapeStep[]; title: string; scene?: StageScene; sceneId?: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const world = useRef<World | null>(null);
   const [i, setI] = useState(0);
@@ -51,13 +53,20 @@ export function SymbolStage({ steps, title, scene }: { steps: ShapeStep[]; title
       }).catch(() => setFailed(true));
       return () => { disposed = true; world.current?.dispose(); world.current = null; };
     }
+    if (scene === "image" && sceneId) {
+      import("@/lib/scenes/image-scene.js").then(({ createImageScene }) => {
+        if (disposed || !canvas.current) return;
+        ready(createImageScene(canvas.current, { id: sceneId, tier, initial: iRef.current, onFail: () => { if (!disposed) setFailed(true); } }) as World | null);
+      }).catch(() => setFailed(true));
+      return () => { disposed = true; world.current?.dispose(); world.current = null; };
+    }
     Promise.all([import("@/lib/particles/world.js"), ruqaaFont()]).then(([{ createWorld }, font]) => {
       if (disposed || !canvas.current) return;
       const stations = steps.map((s, k) => ({ id: sid(k), label: "", symbol: s.shape, layout: "symbol" }));
       ready(createWorld(canvas.current, { tier, contained: true, theme: themeRef.current === "light" ? "light" : "dark", stations, font, initial: sid(iRef.current) }) as World | null);
     });
     return () => { disposed = true; world.current?.dispose(); world.current = null; };
-  }, [steps, tier, scene]);
+  }, [steps, tier, scene, sceneId]);
 
   // الصندوق اتغير حجمه (دوران الموبايل مثلًا): الرمز يفضل مالي الصندوق
   useEffect(() => {
@@ -79,9 +88,15 @@ export function SymbolStage({ steps, title, scene }: { steps: ShapeStep[]; title
   return (
     <section aria-label={title} className="overflow-hidden rounded-[32px] border bg-[radial-gradient(ellipse_at_center,#2a1f63_0%,#120d33_70%)] text-white shadow-soft">
       <button type="button" onClick={() => go(i + 1)} aria-label={steps.length > 1 ? `${step.label} — ${g("اضغط", "اضغطي")} للشكل التالي` : step.label}
-        className={cn("relative block w-full cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/60", scene ? "h-[320px] sm:h-[440px]" : "h-[320px] sm:h-[400px]")}>
+        className={cn("relative block w-full cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/60", scene === "image" ? "h-[340px] max-h-[85svh] sm:h-[520px]" : scene ? "h-[320px] sm:h-[440px]" : "h-[320px] sm:h-[400px]")}>
         <canvas ref={canvas} aria-hidden className="absolute inset-0 size-full" />
-        {failed && <span className="absolute inset-0 grid place-items-center font-heading text-3xl font-extrabold text-gold">{step.label}</span>}
+        {/* بدون WebGL: صورة المرحلة نفسها بدل المشهد */}
+        {failed && scene === "image" && <span className="absolute inset-0 grid place-items-center font-heading text-3xl font-extrabold text-gold">{step.label}</span>}
+        {failed && scene === "image" && sceneId && /^[a-z_]+$/.test(sceneId) && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`${BASE}/scenes/${sceneId}/${i + 1}-960.webp`} alt="" className="absolute inset-0 size-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+        )}
+        {failed && scene !== "image" && <span className="absolute inset-0 grid place-items-center font-heading text-3xl font-extrabold text-gold">{step.label}</span>}
         {steps.length > 1 && <span className="absolute start-3 top-3 rounded-full bg-white/15 px-3 py-1 text-xs font-bold backdrop-blur">{arNum(i + 1)} / {arNum(steps.length)}</span>}
         {!tapped && steps.length > 1 && (
           <span className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto flex w-fit items-center gap-1 rounded-full bg-gold px-3 py-1.5 text-sm font-extrabold text-[#3D2600] shadow-soft motion-safe:animate-bounce">

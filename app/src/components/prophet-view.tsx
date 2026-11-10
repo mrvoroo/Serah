@@ -5,7 +5,7 @@ import { Headphones, PlayCircle } from "lucide-react";
 import { driveImage, type Lecture } from "@/lib/api";
 import { AudioPlayer } from "@/components/audio-player";
 import type { ContentItem, ProphetRow } from "@/lib/prophets";
-import { prophetContent, shapeSequence } from "@/content/prophets";
+import { imageSceneSteps, prophetContent, shapeSequence } from "@/content/prophets";
 import { SymbolStage } from "@/components/prophet/symbol-stage";
 import { ProphetBio } from "@/components/prophet/prophet-bio";
 import { ImageGallery } from "@/components/prophet/image-gallery";
@@ -55,7 +55,10 @@ export function ProphetView({ prophet, items, lectures, lectureHref = (id) => `/
   const content = prophetContent(prophet.prophet_id);
   const symbolName = content?.symbol.unified ? content.symbol.label : prophet.symbol_name;
   // ثابتة طول ما النبي نفسه (وإلا المشهد يتبني من جديد مع كل تحديث للصفحة)
-  const steps = useMemo(() => shapeSequence(prophet.prophet_id), [prophet.prophet_id]);
+  const imageSteps = useMemo(() => imageSceneSteps(prophet.prophet_id), [prophet.prophet_id]);
+  const shapeSteps = useMemo(() => shapeSequence(prophet.prophet_id), [prophet.prophet_id]);
+  const steps = imageSteps ?? shapeSteps;
+  const scene = prophet.prophet_id === "noah" ? "noah" : imageSteps ? "image" : undefined;
   const images = items.filter((it) => it.kind === "image");
   const firstImage = images[0]?.item_id;
   return (
@@ -66,7 +69,7 @@ export function ProphetView({ prophet, items, lectures, lectureHref = (id) => `/
         <p className="mt-3 text-base leading-8 text-white/85"><RT text={prophet.text} /></p>
       </header>
 
-      {steps.length > 0 && <SymbolStage key={prophet.prophet_id} steps={steps} title={`رمز سيدنا ${honored}`} scene={prophet.prophet_id === "noah" ? "noah" : undefined} />}
+      {steps.length > 0 && <SymbolStage key={prophet.prophet_id} steps={steps} title={`رمز سيدنا ${honored}`} scene={scene} sceneId={prophet.prophet_id} />}
       {content && <ProphetBio content={content} />}
 
       {items.map((it) => it.kind !== "image" ? <Item key={it.item_id} it={it} />

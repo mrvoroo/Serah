@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { Check, PlayCircle, RotateCcw } from "lucide-react";
 import salah from "@/content/salah.json";
 import { RT } from "@/components/religious-text";
+import { KursiCard } from "./kursi-card";
 import { cn } from "@/lib/utils";
 import { g } from "@/lib/kid-text";
 import { useMotionAllowed } from "@/lib/tier";
@@ -49,7 +50,7 @@ export function SalahGuide() {
   // الإضافات من الأدمن (لو فشل التحميل تبقى الأذكار والفيديوهات الأصلية كما هي)
   const { data: extras } = useApi<SalahExtras>("salahExtras");
   // الأذكار التي اختارتها المعلمة في قسم مستقل بعد أذكار السنة (مراجعة الشيخ: لا تختلط بها ولا تدخل في رسالة الإتمام)
-  const added: Zikr[] = (Array.isArray(extras?.azkar) ? extras.azkar : []).map((z) => ({ id: z.zikr_id, text: z.text, count: z.count, ref: z.ref, virtue: z.virtue || undefined, grade: z.grade || undefined, only: z.after?.length ? z.after : undefined, extra: true }));
+  const added: Zikr[] = (Array.isArray(extras?.azkar) ? extras.azkar : []).map((z) => ({ id: z.zikr_id, text: z.text, count: z.count, ref: z.ref, virtue: z.virtue || undefined, grade: z.grade || undefined, extra: true }));
   const fits = (z: Zikr) => !z.only || z.only.includes(after);
   const list = S.azkar.filter(fits), chosen = added.filter(fits);
   const countOf = (z: Zikr) => z.countAfter?.[after] ?? z.count;
@@ -59,6 +60,11 @@ export function SalahGuide() {
   const pick = (p: PrayerId) => { setAfter(p); setLeft({}); };
   const renderZikr = (z: Zikr, i: number) => {
     const r = remaining(z), done = r === 0, c = countOf(z);
+    if (z.id === "kursi" && !z.extra) return (
+      <motion.li key={z.id} initial={animate ? { opacity: 0, y: 10 } : false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+        <KursiCard index={ar(i + 1)} text={z.text} quranRef={z.ref} remaining={r} onTap={() => tap(z)} />
+      </motion.li>
+    );
     return (
       <motion.li key={z.id} initial={animate ? { opacity: 0, y: 10 } : false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
         <div className={cn("rounded-[24px] border p-4 shadow-soft transition", done ? "border-emerald-500/40 bg-emerald-500/5" : "bg-card")}>

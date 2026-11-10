@@ -1507,9 +1507,9 @@ test('المحاضرات المباشرة: تنتهي تلقائيًا بعد ٤
   assert.ok(Math.abs(new Date(s.ended_at) - (Date.now() - 20 * 60000)) < 5000, 'ended at last teacher beat');
 });
 
-test('محتوى الصلاة: الأدمن فقط تضيف فيديوهات وأذكارًا إضافية، والطفل يرى الظاهر فقط', () => {
+test('محتوى الصلاة: الأدمن فقط تضيف فيديوهات وأذكارًا إضافية، والطفل يرى المعتمد الظاهر فقط', () => {
   const t = setup();
-  const tok = { kid: t.login({ user_id: 'S1', pin: '1111' }), teacher: t.login({ name: 'معلمة ثانية', pin: '222222' }), admin: t.login({ name: 'المعلمة', pin: '482615' }) };
+  const tok = { kid: t.login({ user_id: 'S1', pin: '1111' }), teacher: t.login({ name: 'معلمة ثانية', pin: '222222' }), admin: t.login({ name: 'المعلمة', pin: '482615' }), dev: t.login({ name: 'م.احمد', pin: '987654' }) };
   // المعلمة العادية والطفل لا يعدّلان
   assert.ok(!t.call('saveSalahVideo', { key: 'vid:wudu', url: 'https://youtu.be/dQw4w9WgXcQ' }, tok.teacher).ok);
   assert.ok(!t.call('saveExtraZikr', { text: 'سبحان الله', ref: 'مسلم ٥٩١', grade: 'صحيح', confirmed: true, count: 1 }, tok.kid).ok);
@@ -1532,10 +1532,31 @@ test('محتوى الصلاة: الأدمن فقط تضيف فيديوهات و�
   assert.ok(!t.call('saveExtraZikr', { ...ok, text: 'سبحان الله', ref: 'مسلم ٥٩١', count: 101 }, tok.admin).ok);
   const a = t.call('saveExtraZikr', { ...ok, text: '=HYPERLINK("x")', ref: 'مسلم ٢٦٩٢', count: 100, after: ['fajr', 'maghrib', 'bad'] }, tok.admin).data;
   const b = t.call('saveExtraZikr', { ...ok, grade: 'حسن', text: 'اللهم أعني على ذكرك', ref: 'أبو داود 1522', count: 1, after: ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] }, tok.admin).data;
+  // لا يظهر للطفل قبل الاعتماد، ولا تعتمده من أضافته؛ المطوّر يعتمد
+  assert.deepStrictEqual(t.call('salahExtras', {}, tok.kid).data.azkar, []);
+  assert.strictEqual(t.call('approveExtraZikr', { zikr_id: a }, tok.admin).error, 'يعتمده المطوّر أو أدمن أخرى (ليس من أضافته أو عدّلته)');
+  assert.ok(!t.call('approveExtraZikr', { zikr_id: a }, tok.teacher).ok);
+  assert.ok(t.call('approveExtraZikr', { zikr_id: a }, tok.dev).ok);
+  assert.ok(t.call('approveExtraZikr', { zikr_id: b }, tok.dev).ok);
   let k = t.call('salahExtras', {}, tok.kid).data.azkar;
   assert.deepStrictEqual(k.map(z => z.zikr_id), [a, b]);
-  assert.deepStrictEqual(k[0].after, ['fajr', 'maghrib']);
-  assert.deepStrictEqual(k[1].after, [], 'all prayers = empty');
+  assert.strictEqual(k[0].after, undefined, 'no prayer binding');
+  assert.strictEqual(k[0].created_by, undefined, 'kid does not see author');
+  assert.strictEqual(t.g.rows_('ExtraAzkar')[0].after, '', 'after ignored on save');
+  // أدمن ثانية عدّلت ذكر غيرها: لا تعتمد ما عدّلته بنفسها
+  t.sheets.Users.appendRow(['A2', 'admin', 'أدمن ثانية', 'C1', '', t.g.hashPin_('555555'), '', '', '', true, 'x']);
+  const a2 = t.login({ name: 'أدمن ثانية', pin: '555555' });
+  t.call('saveExtraZikr', { ...ok, zikr_id: b, text: 'اللهم أعني على ذكرك وشكرك', ref: 'أبو داود 1522', count: 1 }, a2);
+  assert.match(t.call('approveExtraZikr', { zikr_id: b }, a2).error, /ليس من أضافته أو عدّلته/);
+  const seenOld = t.call('salahExtras', { all: true }, tok.dev).data.azkar.find(z => z.zikr_id === b).updated_at;
+  t.call('saveExtraZikr', { ...ok, zikr_id: b, text: 'اللهم أعني على ذكرك وشكرك وحسن عبادتك', ref: 'أبو داود 1522', count: 1 }, a2);
+  assert.match(t.call('approveExtraZikr', { zikr_id: b, seen: seenOld + 'x' }, tok.dev).error, /تعدّل/);
+  const seenNew = t.call('salahExtras', { all: true }, tok.dev).data.azkar.find(z => z.zikr_id === b).updated_at;
+  assert.ok(t.call('approveExtraZikr', { zikr_id: b, seen: seenNew }, tok.dev).ok, 'dev approves the version she saw');
+  // التعديل يرجّعه للمراجعة
+  t.call('saveExtraZikr', { ...ok, zikr_id: a, text: '=HYPERLINK("x")', ref: 'مسلم ٢٦٩٢', count: 33 }, tok.admin);
+  assert.deepStrictEqual(t.call('salahExtras', {}, tok.kid).data.azkar.map(z => z.zikr_id), [b]);
+  t.call('approveExtraZikr', { zikr_id: a }, tok.dev);
   assert.ok(String(t.sheets.ExtraAzkar._data[1][1]).startsWith("'"), 'formula escaped in sheet');
   // إخفاء: الطفل لا يراه، والأدمن تراه مع all
   assert.strictEqual(k[1].grade, 'حسن');
@@ -1553,6 +1574,22 @@ test('محتوى الصلاة: الأدمن فقط تضيف فيديوهات و�
   t.call('deleteExtraZikr', { zikr_id: a }, tok.admin);
   assert.deepStrictEqual(t.call('salahExtras', { all: true }, tok.admin).data.azkar.map(z => z.zikr_id), [b]);
   assert.ok(t.g.rows_('AuditLog').some(r => r.action === 'deleteExtraZikr' && r.target_id === a));
+});
+
+test('إشعار «صليت الظهر؟» بعد الأذان بنصف ساعة، ولا يُرسل لمن علّم عليها', () => {
+  const t = setup();
+  const k1 = t.login({ class_code: 'SERAH1', user_id: 'S1', pin: '1111' }), k2 = t.login({ class_code: 'SERAH1', user_id: 'S2', pin: '2222' });
+  const now = Math.floor(Date.now() / 1000), adhan = now - 1800 - 30;
+  const plan = [[adhan, 'p:dhuhr', 1], [adhan + 1800, 'ask:dhuhr', 1]];
+  const r1 = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/a1', plan }, k1);
+  const r2 = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/a2', plan }, k2);
+  assert.ok(r1.ok && r2.ok, JSON.stringify([r1, r2]));
+  assert.ok(JSON.parse(t.g.rows_('PushSubs')[0].plan).some(e => e[1] === 'ask:dhuhr'), 'ask kind accepted');
+  t.call('markPrayer', { date: new Date().toISOString().slice(0, 10), prayer: 'dhuhr', done: true }, k1);
+  t.props.PUSH_LAST = String(now - 60); t.props.PUSH_NEXT = '0';
+  t.g.pushTick();
+  assert.deepStrictEqual(t.call('pullNotices', { key: r1.data.key }).data.items, [], 'S1 already marked: no ask');
+  assert.deepStrictEqual(t.call('pullNotices', { key: r2.data.key }).data.items, [{ kind: 'ask:dhuhr', idx: 1 }]);
 });
 
 for (const [name, fn] of tests) {

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, SquarePlay, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, BadgeCheck, Clock, Loader2, Pencil, Plus, SquarePlay, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { useRequireRole } from "@/components/kid/kid-shell";
@@ -16,7 +16,6 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PRAYER_IDS, PRAYER_NAMES, type PrayerId } from "@/lib/prayer";
 import { times, VIDEO_SLOTS, ytId, type ExtraZikr, type SalahExtras } from "@/lib/salah-extras";
 import { cn } from "@/lib/utils";
 
@@ -26,12 +25,11 @@ const ar = (n: number) => n.toLocaleString("ar-EG");
 const TABS = [{ id: "videos", label: "الفيديوهات" }, { id: "azkar", label: "أذكار إضافية" }, { id: "preview", label: "معاينة كطفل" }] as const;
 type Tab = (typeof TABS)[number]["id"];
 type VideoForm = { key: string; title: string; url: string; had: boolean };
-type ZikrForm = { zikr_id?: string; text: string; count: string; ref: string; virtue: string; grade: string; after: PrayerId[]; visible: boolean; confirmed: boolean };
-const blank: ZikrForm = { text: "", count: "1", ref: "", virtue: "", grade: "", after: [], visible: true, confirmed: false };
+type ZikrForm = { zikr_id?: string; text: string; count: string; ref: string; virtue: string; grade: string; visible: boolean; confirmed: boolean };
+const blank: ZikrForm = { text: "", count: "1", ref: "", virtue: "", grade: "", visible: true, confirmed: false };
 const GRADES = ["صحيح", "حسن"] as const;
 const HARAKAT = /[ً-ْ]/;
 const latinDigits = (v: string) => v.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[^0-9]/g, "").slice(0, 3);
-const afterLabel = (a: PrayerId[]) => (a.length ? a.map((p) => PRAYER_NAMES[p]).join("، ") : "كل الصلوات");
 
 export default function PrayerContentPage() {
   const me = useRequireRole(["admin", "superadmin"]);
@@ -62,8 +60,10 @@ export default function PrayerContentPage() {
     const ids = azkar.map((z) => z.zikr_id); const [x] = ids.splice(i, 1); ids.splice(to, 0, x);
     run("order", () => api("reorderExtraAzkar", { ids }), "تم حفظ الترتيب");
   };
-  const edit = (z: ExtraZikr) => setZikr({ zikr_id: z.zikr_id, text: z.text, count: String(z.count), ref: z.ref, virtue: z.virtue, grade: z.grade, after: z.after, visible: z.visible, confirmed: false });
-  const toggleAfter = (p: PrayerId) => zikr && setZikr({ ...zikr, after: zikr.after.includes(p) ? zikr.after.filter((x) => x !== p) : PRAYER_IDS.filter((x) => x === p || zikr.after.includes(x)) });
+  const edit = (z: ExtraZikr) => setZikr({ zikr_id: z.zikr_id, text: z.text, count: String(z.count), ref: z.ref, virtue: z.virtue, grade: z.grade, visible: z.visible, confirmed: false });
+  // الاعتماد: المطوّر، أو أدمن غير التي أضافته أو عدّلته آخر مرة
+  const canApprove = (z: ExtraZikr) => me?.role === "superadmin" || (z.created_by !== me?.user_id && z.updated_by !== me?.user_id);
+  const pending = azkar.filter((z) => !z.approved).length;
 
   const vId = video ? ytId(video.url) : "";
   const count = Number(zikr?.count);
@@ -128,7 +128,9 @@ export default function PrayerContentPage() {
 
       {data && tab === "azkar" && (
         <div className="flex flex-col gap-3">
-          <p className="rounded-2xl bg-gold/10 p-3 text-sm leading-7">أضيفي فقط ذكرًا ثابتًا (صحيحًا أو حسنًا)، واكتبيه بالتشكيل كما ورد بلا زيادة ولا نقص، مع مصدره (الكتاب ورقم الحديث). اجعلي العدد كما ورد في الحديث، ولا تختاري صلاة معيّنة إلا إذا ورد الذكر بعدها. لا تكرري ذكرًا موجودًا في الأذكار الأصلية. يظهر للأطفال في قسم مستقل بعد أذكار الصلاة مع علامة «اختارته المعلمة».</p>
+          <p className="rounded-2xl bg-gold/10 p-3 text-sm leading-7">أضيفي فقط ذكرًا ثابتًا (صحيحًا أو حسنًا)، واكتبيه بالتشكيل كما ورد بلا زيادة ولا نقص، مع مصدره (الكتاب ورقم الحديث). اجعلي العدد كما ورد في الحديث، أضيفي فقط ذكرًا ورد بعد كل صلاة مكتوبة؛ أمّا ما ورد بعد صلاة معيّنة (كالفجر أو المغرب وحدهما) فلا تضيفيه هنا، لأنه سيظهر بعد كل الصلوات. لا تكرري ذكرًا موجودًا في الأذكار الأصلية. يظهر للأطفال في قسم مستقل بعد أذكار الصلاة مع علامة «اختارته المعلمة».</p>
+          <p className="rounded-2xl bg-secondary/60 p-3 text-sm leading-7">الذكر الجديد أو المعدَّل يبقى مخفيًا عن الأطفال حتى يعتمده المطوّر أو أدمن أخرى (غير التي أضافته أو عدّلته)، ويصلهم إشعار بمراجعته.</p>
+          {pending > 0 && <p role="status" className="font-bold text-amber-700 dark:text-amber-400">{pending === 1 ? "ذكر واحد ينتظر" : `${ar(pending)} أذكار تنتظر`} الاعتماد</p>}
           <Button variant="hero" size="lg2" className="w-fit" onClick={() => setZikr({ ...blank })}><Plus /> إضافة ذكر</Button>
           <ol className="grid grid-cols-1 gap-2">
             {azkar.map((z, i) => (
@@ -136,15 +138,23 @@ export default function PrayerContentPage() {
                 <p className="line-clamp-3 text-lg leading-[2]"><RT text={z.text} /></p>
                 <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-muted-foreground">
                   <span className="rounded-full bg-secondary px-2 py-1">{times(z.count)}</span>
-                  <span className="rounded-full bg-secondary px-2 py-1">بعد: {afterLabel(z.after)}</span>
+                  {z.approved
+                    ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-1 text-emerald-700 dark:text-emerald-400"><BadgeCheck className="size-3.5" /> معتمد</span>
+                    : <span className="flex items-center gap-1 rounded-full bg-gold/20 px-2 py-1 text-[#7A4D00] dark:text-gold"><Clock className="size-3.5" /> ينتظر الاعتماد</span>}
                   <span className="min-w-0 truncate">{z.ref}{z.grade && ` — ${z.grade}`}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label className="flex items-center gap-2 text-sm font-bold">
                     <Switch checked={z.visible} disabled={!!busy} aria-label={`ظاهر للأطفال: الذكر ${ar(i + 1)}`}
                       onCheckedChange={(v) => run(z.zikr_id, () => api("setExtraZikrVisible", { zikr_id: z.zikr_id, visible: v }), v ? "ظاهر للأطفال" : "تم الإخفاء")} />
-                    {z.visible ? "ظاهر للأطفال" : "مخفي عن الأطفال"}
+                    {!z.visible ? "مخفي عن الأطفال" : z.approved ? "ظاهر للأطفال" : "يظهر بعد الاعتماد"}
                   </Label>
+                  {canApprove(z) ? (
+                    <Button variant={z.approved ? "secondary" : "hero"} size="lg2" disabled={!!busy} aria-label={`${z.approved ? "إلغاء اعتماد" : "اعتماد"} الذكر ${ar(i + 1)}`}
+                      onClick={() => run(z.zikr_id, () => api("approveExtraZikr", { zikr_id: z.zikr_id, approved: !z.approved, seen: z.updated_at ?? "" }), z.approved ? "تم إلغاء الاعتماد" : "تم الاعتماد — يظهر للأطفال")}>
+                      {z.approved ? "إلغاء الاعتماد" : <><BadgeCheck /> اعتماد</>}
+                    </Button>
+                  ) : !z.approved && <span className="text-xs text-muted-foreground">يعتمده المطوّر أو أدمن أخرى</span>}
                   <div className="flex items-center gap-0.5">
                     <Button variant="ghost" size="icon-xl" aria-label={`نقل الذكر ${ar(i + 1)} لأعلى`} disabled={i === 0 || !!busy} onClick={() => move(i, i - 1)}><ArrowUp /></Button>
                     <Button variant="ghost" size="icon-xl" aria-label={`نقل الذكر ${ar(i + 1)} لأسفل`} disabled={i === azkar.length - 1 || !!busy} onClick={() => move(i, i + 1)}><ArrowDown /></Button>
@@ -203,15 +213,6 @@ export default function PrayerContentPage() {
                 <Textarea id="z-virtue" rows={2} value={zikr.virtue} maxLength={800} aria-describedby="z-virtue-hint" onChange={(e) => setZikr({ ...zikr, virtue: e.target.value })} />
                 <p id="z-virtue-hint" className="text-xs text-muted-foreground">لا تكتبي فضلًا إلا من حديث ثابت، واذكري مصدره إن كان من حديث آخر.</p>
               </div>
-              <fieldset className="grid gap-1.5">
-                <legend className="mb-1.5 text-sm font-medium">بعد أي صلاة؟ <span className="text-muted-foreground">(إن لم تختاري شيئًا: بعد كل الصلوات)</span></legend>
-                <div className="flex flex-wrap gap-2">
-                  {PRAYER_IDS.map((p) => (
-                    <button key={p} type="button" aria-pressed={zikr.after.includes(p)} onClick={() => toggleAfter(p)}
-                      className={cn("h-10 rounded-2xl px-3 text-sm font-bold transition", zikr.after.includes(p) ? "bg-gold text-[#3D2600] shadow-soft" : "bg-secondary text-secondary-foreground")}>{PRAYER_NAMES[p]}</button>
-                  ))}
-                </div>
-              </fieldset>
               <Label className="flex items-center gap-2 text-sm font-bold"><Switch checked={zikr.visible} onCheckedChange={(v) => setZikr({ ...zikr, visible: v })} aria-label="ظاهر للأطفال" /> ظاهر للأطفال</Label>
               <label className="flex items-start gap-2 rounded-2xl bg-gold/10 p-3 text-sm font-bold leading-7">
                 <input type="checkbox" className="mt-1.5 size-4 shrink-0 accent-primary" checked={zikr.confirmed} onChange={(e) => setZikr({ ...zikr, confirmed: e.target.checked })} />

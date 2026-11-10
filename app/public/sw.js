@@ -1,6 +1,6 @@
 // عامل خدمة آمن مع سفاري: لا يتدخل في فتح الصفحات نهائيًا (سفاري يرفض الصفحة لو مرّت بتحويل عبر عامل الخدمة)
 // ويخزن فقط الملفات الثابتة (الخطوط، الأيقونات، ملفات الواجهة) لتسريع الفتح. لا يخزن الـ API ولا الصوت.
-const V = "serah-v12";
+const V = "serah-v13";
 // إعدادات الإشعارات (مفتاح الجهاز ورابط الخلفية ونصوص التذكير) يكتبها التطبيق هنا، ولا تُحذف مع تحديث النسخة
 const NOTIFY = "serah-notify";
 self.addEventListener("install", () => self.skipWaiting());
@@ -13,7 +13,7 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET" || req.mode === "navigate") return;
   const u = new URL(req.url);
   if (u.origin !== location.origin) return;
-  if (!/\/_next\/static\/|\/3d\/|\.(woff2|svg|png)$/.test(u.pathname)) return;
+  if (!/\/_next\/static\/|\/3d\/|\/scenes\/|\.(woff2|svg|png|webp)$/.test(u.pathname)) return;
   e.respondWith(caches.open(V).then((c) => c.match(req).then((hit) => hit || fetch(req).then((res) => {
     if (res.ok && !res.redirected) c.put(req, res.clone());
     return res;
@@ -56,9 +56,21 @@ function prayerText(item, t) {
   return { title, body, url };
 }
 
+// «صليت الظهر؟» بعد الأذان بنصف ساعة: الضغط يفتح جدول الصلاة ليعلّم عليها
+function askText(item, t) {
+  const who = (t && t.who) || {}, key = item.kind.slice(4), prayer = (t && t.names && t.names[key]) || "";
+  const f = who.girl, name = who.name ? " يا " + who.name : "";
+  // ظهر الجمعة للأولاد والرجال هو صلاة الجمعة
+  const jumua = key === "dhuhr" && !f && new Date().getDay() === 5;
+  return { title: (f ? "صلّيتِ " : "صلّيت ") + (jumua ? "الجمعة" : prayer) + name + "؟ 🤲",
+    body: f ? "لو صلّيتِ، اضغطي هنا وعلّمي عليها في جدول صلاتك ✅" : "لو صلّيت، اضغط هنا وعلّم عليها في جدول صلاتك ✅",
+    url: who.staff ? "/teacher/prayer/" : "/kid/prayer/" };
+}
+
 function textFor(item, t) {
   const r = (t && t.reminders) || {};
   if (item.title) return { title: item.title, body: item.body || "", url: item.url || "/kid/" };
+  if (/^ask:/.test(item.kind)) return askText(item, t);
   if (/^(pre|p):/.test(item.kind)) return prayerText(item, t || {});
   if (item.kind === "duha") { const x = pick(r.duha, item.idx) || { title: "صلاة الضحى", body: "ركعتان من الضحى" }; return { ...x, url: "/kid/prayer/" }; }
   if (item.kind === "fri") { const x = pick(r.friday, item.idx) || { title: "جمعة مباركة", body: "اقرأ سورة الكهف" }; return { ...x, url: "/kid/prayer/" }; }

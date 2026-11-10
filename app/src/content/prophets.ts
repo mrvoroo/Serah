@@ -11,6 +11,8 @@ export type ProphetContent = {
   symbol: { main: string; label: string; unified?: boolean };
   sequence: ShapeStep[];
   summary: string; more: string[]; refs: string[]; notes?: string;
+  // مشهد مبني من صور المالك (public/scenes/<id>/) بدل النقاط، بمراحل لكل منها جملة ومرجع
+  scene?: { kind: "images"; steps: ShapeStep[] };
 };
 
 const LIST = (data as { prophets: ProphetContent[] }).prophets;
@@ -21,6 +23,8 @@ const ALIAS: Record<string, string> = { staff: "staff_plain" };
 
 export const prophetContent = (id: string) => BY_ID.get(id);
 export const mainSymbol = (id: string) => BY_ID.get(id)?.symbol;
+// مراحل مشهد الصور إن وُجد (آدم وإدريس وصالح)
+export const imageSceneSteps = (id: string): ShapeStep[] | null => BY_ID.get(id)?.scene?.steps ?? null;
 export const shapeSequence = (id: string): ShapeStep[] =>
   (BY_ID.get(id)?.sequence ?? []).map((s) => ({ ...s, shape: ALIAS[s.shape] ?? s.shape }));
 

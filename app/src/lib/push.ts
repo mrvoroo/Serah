@@ -45,7 +45,8 @@ async function saveForWorker(key?: string, plan?: unknown[]) {
   if (plan) await c.put(notifyUrl("plan"), new Response(JSON.stringify(plan)));
   // اسم صاحب الجهاز ودوره (يبقى على الجهاز فقط): الطفل باسمه الأول بصيغة تحمّسه، والمعلمة بلقبها بصيغة فيها وقار
   const u = session.user(), staff = !!u && u.role !== "student", first = (u?.name ?? "").trim().split(/\s+/)[0] ?? "";
-  const who = { name: staff ? teacherTitle(first, u?.role) : first, staff, mosque: staff ? u?.role === "superadmin" : u?.gender !== "f" };
+  const girl = staff ? u?.role !== "superadmin" : u?.gender === "f";
+  const who = { name: staff ? teacherTitle(first, u?.role) : first, staff, mosque: staff ? u?.role === "superadmin" : u?.gender !== "f", girl };
   await c.put(notifyUrl("texts"), new Response(JSON.stringify({ reminders: salah.reminders, names: PRAYER_NAMES, who })));
   if (key) await c.put(notifyUrl("cfg"), new Response(JSON.stringify({ api: API_URL, key })));
 }
