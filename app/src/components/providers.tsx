@@ -6,6 +6,7 @@ import { TierProvider } from "@/lib/tier";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { ViewAsBanner } from "@/components/view-as-banner";
 import { UpdateBanner } from "@/components/update-banner";
+import { listenForNotifySounds } from "@/lib/notify-sounds";
 
 export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
@@ -14,6 +15,8 @@ export function Providers({ children }: { children: ReactNode }) {
       navigator.serviceWorker.register(`${base}/sw.js`, { scope: `${base}/` }).catch(() => {});
     }
   }, []);
+  // نغمة الإشعار لما يصل والتطبيق مفتوح
+  useEffect(() => listenForNotifySounds(), []);
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange storageKey="serah-theme">
       <TierProvider>

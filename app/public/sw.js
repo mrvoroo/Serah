@@ -1,6 +1,6 @@
 // عامل خدمة آمن مع سفاري: لا يتدخل في فتح الصفحات نهائيًا (سفاري يرفض الصفحة لو مرّت بتحويل عبر عامل الخدمة)
 // ويخزن فقط الملفات الثابتة (الخطوط، الأيقونات، ملفات الواجهة) لتسريع الفتح. لا يخزن الـ API ولا الصوت.
-const V = "serah-v13";
+const V = "serah-v14";
 // إعدادات الإشعارات (مفتاح الجهاز ورابط الخلفية ونصوص التذكير) يكتبها التطبيق هنا، ولا تُحذف مع تحديث النسخة
 const NOTIFY = "serah-notify";
 self.addEventListener("install", () => self.skipWaiting());
@@ -98,6 +98,12 @@ self.addEventListener("push", (e) => e.waitUntil((async () => {
     const hit = plan.filter((e) => e[0] <= now + 60 && e[0] > now - 15 * 60).pop();
     items = [hit ? { kind: hit[1], idx: hit[2] } : { kind: "dhikr" }];
   }
+  // التطبيق مفتوح: نبلغ الصفحة لتشغّل نغمة هذا النوع (الإشعار المقفول بصوت الجهاز الافتراضي)
+  try {
+    const ws = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const last = items[items.length - 1];
+    if (last) ws.forEach((w) => w.postMessage({ type: "notify-sound", kind: String(last.kind || "") }));
+  } catch { /* لا شيء */ }
   await Promise.all(items.slice(-3).map((it, i) => {
     const n = textFor(it, texts);
     return self.registration.showNotification(n.title, {
