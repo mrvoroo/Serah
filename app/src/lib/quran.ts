@@ -12,7 +12,8 @@ export const RECITERS = [
   { id: "husary", short: "الشيخ الحصري", name: "الشيخ محمود خليل الحصري", teacher: "Husary_Muallim_128kbps", murattal: "Husary_128kbps", muallim: false },
 ] as const;
 export type ReciterId = (typeof RECITERS)[number]["id"];
-export type QuranMode = "teacher" | "turn";
+// listen: تلاوة مرتّلة متصلة (شاشة المعلمات: قراءة واستماع، بدون وضع تعليمي)
+export type QuranMode = "teacher" | "turn" | "listen";
 
 const API = "https://api.alquran.cloud/v1";
 const pad = (n: number) => String(n).padStart(3, "0");
@@ -63,7 +64,10 @@ export type QuranPrefs = { surah: number; ayah: number; page: number; reciter: R
 export const DEFAULT_PREFS: QuranPrefs = { surah: 1, ayah: 1, page: 0, reciter: "minshawy", mode: "teacher", repeat: 1, pause: 1.2 };
 // الوضع الفعلي: الشيخ اللي ماعندوش مصحف معلّم يشتغل على «دورك»
 export const fixMode = (p: QuranPrefs): QuranPrefs => (RECITERS.find((r) => r.id === p.reciter)?.muallim === false && p.mode === "teacher" ? { ...p, mode: "turn" } : p);
-export const loadPrefs = (): QuranPrefs => fixMode({ ...DEFAULT_PREFS, ...(cached<Partial<QuranPrefs>>("serah_q_prefs") ?? {}) });
-export const savePrefs = (p: QuranPrefs) => store("serah_q_prefs", p);
+// المعلمة لها إعدادات وموضع منفصلان عن الطفل (على نفس الجهاز)، ووضعها دائمًا «استماع مرتّل»
+export const loadPrefs = (staff = false): QuranPrefs => staff
+  ? { ...DEFAULT_PREFS, ...(cached<Partial<QuranPrefs>>("serah_q_prefs_t") ?? {}), mode: "listen", repeat: 1 }
+  : fixMode({ ...DEFAULT_PREFS, ...(cached<Partial<QuranPrefs>>("serah_q_prefs") ?? {}) });
+export const savePrefs = (p: QuranPrefs, staff = false) => store(staff ? "serah_q_prefs_t" : "serah_q_prefs", p);
 
 export const arNum = (n: number) => n.toLocaleString("ar-EG");

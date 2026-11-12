@@ -5,7 +5,9 @@ import path from "path";
 // القرآن: المصحف المعلّم ودورك تقرأ، الشيخان، البسملة، تلوين الآية، التكرار، والمتابعة من آخر موضع (نص وصوت وهميان)
 
 const code = fs.readFileSync(path.join(__dirname, "..", "..", "backend", "Code.gs"), "utf8");
-const oggOpusToWebm = new Function(code.slice(code.indexOf("function oggOpusToWebm_")) + "\nreturn oggOpusToWebm_;")() as (u: Uint8Array) => Uint8Array;
+// دوال التحويل فقط (حتى أول قسم إجراءات بعدها يحتاج باقي الخلفية)
+const start = code.indexOf("function oggOpusToWebm_"), stop = code.indexOf("/* ============ محتوى الصلاة", start);
+const oggOpusToWebm = new Function(code.slice(start, stop > 0 ? stop : undefined) + "\nreturn oggOpusToWebm_;")() as (u: Uint8Array) => Uint8Array;
 const AUDIO = Buffer.from(oggOpusToWebm(new Uint8Array(fs.readFileSync(path.join(__dirname, "..", "..", "backend", "tests", "fixtures", "voice.ogg")))));
 
 const LIST = [{ number: 1, name: "سُورَةُ ٱلْفَاتِحَةِ", numberOfAyahs: 7 }, { number: 2, name: "سُورَةُ البَقَرَةِ", numberOfAyahs: 5 }, { number: 112, name: "سُورَةُ الإِخۡلَاصِ", numberOfAyahs: 4 }];
@@ -140,4 +142,31 @@ test("حفظ قديم على «الحصري + المصحف المعلّم» يت
   await open(page, { reciter: "husary", mode: "teacher" });
   await page.getByRole("button", { name: /إعدادات التلاوة/ }).click();
   await expect(page.getByRole("button", { name: /دورك/ })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("القرآن للمعلمات: تلاوة مرتّلة متصلة بالحصري أو المنشاوي، بدون أوضاع الأطفال", async ({ page, browserName }) => {
+  test.skip(browserName === "webkit", "WebKit على ويندوز لا يشغّل أي صوت");
+  const played: string[] = [];
+  await page.route(/api\.alquran\.cloud\/v1\/surah$/, (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ data: LIST }) }));
+  await page.route(/api\.alquran\.cloud\/v1\/surah\/112\//, (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ data: { ayahs: IKHLAS.map((text, i) => ({ numberInSurah: i + 1, text })) } }) }));
+  await page.route(/everyayah\.com\/data\//, (r) => { played.push(r.request().url().replace("https://everyayah.com/data/", "")); return r.fulfill({ contentType: "audio/webm", body: AUDIO }); });
+  await page.route(/script\.google\.com\/macros/, (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) }));
+  await page.addInitScript(() => {
+    localStorage.setItem("serah_token", "t");
+    localStorage.setItem("serah_user", JSON.stringify({ user_id: "T1", name: "فاطمة", role: "teacher", class_id: "C1", avatar: "" }));
+    // إعدادات طفل على نفس الجهاز لا تؤثر على المعلمة
+    localStorage.setItem("serah_q_prefs", JSON.stringify({ surah: 1, mode: "turn", reciter: "husary" }));
+    if (!localStorage.getItem("serah_q_prefs_t")) localStorage.setItem("serah_q_prefs_t", JSON.stringify({ surah: 112, ayah: 1, reciter: "minshawy" }));
+  });
+  await page.goto("/Serah/teacher/quran/");
+  await expect(page.locator('a[href="/Serah/teacher/quran/"]').first()).toBeAttached();
+  await expect(page.getByRole("button", { name: "آية 1", exact: true })).toBeVisible();
+  await expect(page.getByText("قراءة واستماع بتلاوة مرتّلة")).toBeVisible();
+  await page.getByRole("button", { name: /إعدادات التلاوة/ }).click();
+  await expect(page.getByRole("group", { name: "الشيخ" }).getByRole("button")).toHaveCount(2);
+  await expect(page.getByRole("group", { name: "الوضع" })).toHaveCount(0);
+  await page.locator("audio").evaluate((a: HTMLAudioElement) => { a.defaultPlaybackRate = 8; a.addEventListener("play", () => { a.playbackRate = 8; }); });
+  await page.getByRole("button", { name: "تشغيل" }).click();
+  await expect(page.getByText(/وصلنا إلى آخر سورة/)).toBeVisible({ timeout: 20000 });
+  expect(played.filter((x, i) => played.indexOf(x) === i).filter((x) => !x.endsWith("112005.mp3"))).toEqual(["Minshawy_Murattal_128kbps/001001.mp3", "Minshawy_Murattal_128kbps/112001.mp3", "Minshawy_Murattal_128kbps/112002.mp3", "Minshawy_Murattal_128kbps/112003.mp3", "Minshawy_Murattal_128kbps/112004.mp3"]);
 });

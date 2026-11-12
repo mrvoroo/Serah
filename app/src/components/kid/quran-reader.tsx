@@ -29,8 +29,9 @@ function Chip({ on, onClick, children, label }: { on: boolean; onClick: () => vo
 // Enter أو مسافة على عنصر يعمل كزر
 const pressKey = (fn: () => void) => (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
 
-export function QuranReader() {
-  const [prefs, setPrefs] = useState<QuranPrefs>(loadPrefs);
+// staff: شاشة المعلمات — قراءة واستماع بتلاوة الحصري أو المنشاوي المرتّلة، بنفس التنقل بالصفحات والآيات، بدون أوضاع الأطفال
+export function QuranReader({ staff = false }: { staff?: boolean } = {}) {
+  const [prefs, setPrefs] = useState<QuranPrefs>(() => loadPrefs(staff));
   const [list, setList] = useState<SurahInfo[] | null>(null);
   const [ayahs, setAyahs] = useState<Ayah[] | null>(null);
   const [listError, setListError] = useState("");
@@ -61,7 +62,7 @@ export function QuranReader() {
   const pageIndex = Math.max(0, pages.indexOf(shownPage));
   const shown = pages.length > 1 ? (ayahs ?? []).filter((a) => a.page === shownPage) : ayahs ?? [];
 
-  const update = useCallback((patch: Partial<QuranPrefs>) => setPrefs((p) => { const next = { ...p, ...patch }; savePrefs(next); return next; }), []);
+  const update = useCallback((patch: Partial<QuranPrefs>) => setPrefs((p) => { const next = { ...p, ...patch }; savePrefs(next, staff); return next; }), [staff]);
 
   useEffect(() => { surahList().then((l) => { setList(l); setListError(""); }).catch((e) => setListError(e.message)); }, [retry]);
   useEffect(() => {
@@ -135,7 +136,7 @@ export function QuranReader() {
   // تغيير السورة أو الشيخ أو الوضع يوقف التشغيل الحالي
   const change = (patch: Partial<QuranPrefs>) => {
     audio.current?.pause(); stopTimer(); setPhase("idle");
-    if (patch.reciter && fixMode({ ...prefs, ...patch }).mode !== (patch.mode ?? prefs.mode)) patch = { ...patch, mode: "turn" };
+    if (!staff && patch.reciter && fixMode({ ...prefs, ...patch }).mode !== (patch.mode ?? prefs.mode)) patch = { ...patch, mode: "turn" };
     if (patch.surah) { setAyahs(null); setCurrent(1); setManualPage(null); update({ ...patch, ayah: 1, page: 0 }); } else update(patch);
   };
 
@@ -167,7 +168,7 @@ export function QuranReader() {
 
       <div className="flex items-center gap-3">
         <Icon3D name="open-book" size={44} float />
-        <div><h1 className="font-heading text-2xl font-extrabold">القرآن الكريم</h1><p className="text-sm text-muted-foreground">{g("استمع واقرأ مع الشيخ", "استمعي واقرئي مع الشيخ")}</p></div>
+        <div><h1 className="font-heading text-2xl font-extrabold">القرآن الكريم</h1><p className="text-sm text-muted-foreground">{staff ? "قراءة واستماع بتلاوة مرتّلة" : g("استمع واقرأ مع الشيخ", "استمعي واقرئي مع الشيخ")}</p></div>
       </div>
 
       <section aria-label="الاختيارات" className="flex flex-col gap-3 rounded-[28px] border bg-card p-3 shadow-soft">
@@ -186,7 +187,7 @@ export function QuranReader() {
         </div>
         {!showSettings && (
           <p className="text-xs text-muted-foreground">
-            {reciter.short} · {prefs.mode === "teacher" ? "المصحف المعلّم" : g("دورك تقرأ", "دورك تقرئي")}{prefs.repeat > 1 ? ` · تكرار ${arNum(prefs.repeat)}×` : ""}
+            {reciter.short} · {prefs.mode === "listen" ? "تلاوة مرتّلة" : prefs.mode === "teacher" ? "المصحف المعلّم" : g("دورك تقرأ", "دورك تقرئي")}{prefs.repeat > 1 ? ` · تكرار ${arNum(prefs.repeat)}×` : ""}
           </p>
         )}
         {showSettings && (
@@ -195,7 +196,7 @@ export function QuranReader() {
               {RECITERS.map((r) => <Chip key={r.id} on={prefs.reciter === r.id} onClick={() => change({ reciter: r.id })}>{r.short}</Chip>)}
               <span className="self-center text-xs text-muted-foreground">برواية حفص عن عاصم</span>
             </div>
-            <div role="group" aria-label="الوضع" className="flex flex-wrap gap-2">
+            {!staff && <><div role="group" aria-label="الوضع" className="flex flex-wrap gap-2">
               {reciter.muallim && <Chip on={prefs.mode === "teacher"} onClick={() => change({ mode: "teacher" })}>📖 المصحف المعلّم</Chip>}
               <Chip on={prefs.mode === "turn"} onClick={() => change({ mode: "turn" })}>🎤 {g("دورك تقرأ", "دورك تقرئي")}</Chip>
             </div>
@@ -208,7 +209,7 @@ export function QuranReader() {
                 <span className="text-muted-foreground">وقتك للقراءة:</span>
                 {([[0.8, "قصير"], [1.2, "متوسط"], [1.6, "طويل"]] as const).map(([v, l]) => <Chip key={v} on={prefs.pause === v} onClick={() => update({ pause: v })}>{l}</Chip>)}
               </div>
-            )}
+            )}</>}
           </div>
         )}
       </section>

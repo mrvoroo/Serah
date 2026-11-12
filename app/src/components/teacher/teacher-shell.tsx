@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles, ClipboardCheck, NotebookPen, Info, Radio, Clock, BookHeart, School } from "lucide-react";
+import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles, ClipboardCheck, NotebookPen, Info, Radio, Clock, BookHeart, School, BookOpen } from "lucide-react";
 import { session, type Role } from "@/lib/api";
 import { ROLE_LABEL, stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useRequireRole } from "@/components/kid/kid-shell";
@@ -26,6 +26,7 @@ export const TEACHER_NAV: { href: string; label: string; icon: typeof Users; min
   { href: "/teacher/classes/", label: "الفصول", icon: School, min: "admin" },
   { href: "/teacher/team/", label: "المعلمات", icon: UserCog, min: "admin" },
   { href: "/teacher/live/", label: "المحاضرة المباشرة", icon: Radio },
+  { href: "/teacher/quran/", label: "القرآن الكريم", icon: BookOpen },
   { href: "/teacher/prayer/", label: "جدول الصلوات", icon: Clock },
   { href: "/teacher/prayer-content/", label: "محتوى الصلاة", icon: BookHeart, min: "admin" },
   { href: "/teacher/lectures/", label: "المحاضرات", icon: Headphones },
