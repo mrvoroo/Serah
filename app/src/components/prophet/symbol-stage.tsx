@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Hand } from "lucide-react";
-import { useTier } from "@/lib/tier";
+import { useSceneTier } from "@/lib/tier";
 import { ruqaaFont } from "@/lib/particles/font";
 import { arNum } from "@/lib/quran";
 import type { ShapeStep } from "@/content/prophets";
@@ -32,11 +32,12 @@ export function SymbolStage({ steps, title, scene, sceneId }: { steps: ShapeStep
   const [failed, setFailed] = useState(false);
   const [tapped, setTapped] = useState(false);
   const { resolvedTheme } = useTheme();
-  const tier = useTier();
+  const tier = useSceneTier();
   const themeRef = useRef(resolvedTheme);
   const iRef = useRef(0);
 
   useEffect(() => {
+    if (!tier) return; // ننتظر اكتشاف الجهاز حتى لا يُبنى المشهد مرتين
     let disposed = false;
     const ready = (w: World | null) => {
       if (disposed) { w?.dispose(); return; }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Check, ChevronLeft, ChevronRight, LocateFixed, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, session } from "@/lib/api";
 import { g, isGirl } from "@/lib/kid-text";
 import { useMotionAllowed } from "@/lib/tier";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,17 @@ type Log = Record<string, PrayerId[]>;
 const VIEWS: { id: View; label: string }[] = [{ id: "day", label: "اليوم" }, { id: "week", label: "الأسبوع" }, { id: "month", label: "الشهر" }];
 const ar = (n: number) => n.toLocaleString("ar-EG");
 
+// نسخة من السجل على الجهاز: علامات الصح تظهر فورًا عند الفتح، ثم تتحدث من الخادم
+const cacheKey = () => `serah_plog:${session.user()?.user_id ?? ""}`;
+function readCache(): Log { try { return JSON.parse(localStorage.getItem(cacheKey()) || "{}") as Log; } catch { return {}; } }
+function writeCache(l: Log) {
+  try {
+    // آخر ٧٠ يومًا فقط
+    const keep = Object.keys(l).sort().slice(-70);
+    localStorage.setItem(cacheKey(), JSON.stringify(Object.fromEntries(keep.map((k) => [k, l[k]]))));
+  } catch { /* تخزين غير متاح */ }
+}
+
 function range(view: View, anchor: Date): Date[] {
   if (view === "day") return [startOfDay(anchor)];
   if (view === "week") { const s = startOfWeek(anchor); return Array.from({ length: 7 }, (_, i) => addDays(s, i)); }
@@ -35,6 +46,12 @@ export function PrayerPage() {
   const [place, setPlace] = useState<Place>(() => (typeof window === "undefined" ? { name: "", lat: 24.7136, lng: 46.6753 } : loadPlace()));
   const [log, setLog] = useState<Log>({});
   const [loaded, setLoaded] = useState<Set<string>>(new Set());
+  // أيام لها نسخة محفوظة على الجهاز (تُعرض فورًا وتُفتح للضغط)، والباقي ينتظر الخادم
+  const [cached, setCached] = useState<Set<string>>(new Set());
+  // قراءة الجهاز بعد التجهيز (لا وقت البناء على الخادم) — مرة واحدة
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { const c = readCache(); setLog((l) => ({ ...c, ...l })); setCached(new Set(Object.keys(c))); }, []);
+  useEffect(() => { if (loaded.size) writeCache(log); }, [log, loaded]);
   const [now, setNow] = useState(() => new Date());
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -51,8 +68,13 @@ export function PrayerPage() {
     if (!need.length) return;
     let live = true;
     api<{ days: Log }>("prayerLog", { from: need[0], to: need[need.length - 1] })
-      .then((r) => { if (!live) return; setLog((l) => ({ ...l, ...r.days })); setLoaded((s) => new Set([...s, ...need])); })
-      .catch(() => { /* الصفحة تعمل بدون السجل */ });
+      .then((r) => {
+        if (!live) return;
+        // الأيام بدون صلوات مسجلة ترجع فاضية من الخادم: نمسح أي نسخة قديمة لها على الجهاز
+        setLog((l) => { const n = { ...l }; need.forEach((d) => { n[d] = r.days[d] ?? []; }); return n; });
+        setLoaded((s) => new Set([...s, ...need]));
+      })
+      .catch(() => { if (live) setLoaded((s) => new Set([...s, ...need])); /* بدون نت: نفتح الضغط على ما هو محفوظ */ });
     return () => { live = false; };
   }, [days, loaded]);
 
@@ -61,6 +83,9 @@ export function PrayerPage() {
   const next = PRAYER_IDS.find((p) => todayTimes[p] > now);
 
   const canMark = (d: string, p: PrayerId) => d < today || (d === today && (times[d] ?? todayTimes)[p] <= now);
+  // اليوم جاهز للضغط بعد ما نعرف حالته (من الخادم أو نسخة الجهاز) — حتى لا يضغط الطفل مرة ثانية على صلاة مسجلة
+  const ready = (d: string) => loaded.has(d) || cached.has(d);
+  const loadingDay = view === "day" && !ready(iso(days[0]));
 
   const toggle = useCallback(async (d: string, p: PrayerId) => {
     const was = (log[d] ?? []).includes(p);
@@ -134,24 +159,25 @@ export function PrayerPage() {
         <button type="button" onClick={() => setAnchor(new Date())} className="mx-auto -mt-2 h-9 rounded-xl bg-secondary px-4 text-sm font-bold">رجوع لليوم</button>
       ) : null}
 
+      {loadingDay && <p role="status" className="-mb-1 flex items-center justify-center gap-2 text-sm font-bold text-muted-foreground"><span className="size-2 animate-ping rounded-full bg-primary" /> جارٍ تحميل صلواتك…</p>}
       {view === "day" ? (
-        <ul className="grid gap-3 sm:grid-cols-5" aria-label="صلوات اليوم">
+        <ul className="grid gap-3 sm:grid-cols-5" aria-label="صلوات اليوم" aria-busy={loadingDay}>
           {PRAYER_IDS.map((p, i) => {
-            const d = iso(days[0]), done = (log[d] ?? []).includes(p), ok = canMark(d, p), isNext = d === today && p === next;
+            const d = iso(days[0]), done = (log[d] ?? []).includes(p), ok = canMark(d, p), isNext = d === today && p === next, wait = !ready(d);
             return (
               <motion.li key={p} initial={animate ? { opacity: 0, y: 12 } : false} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                <button type="button" aria-pressed={done} disabled={!ok || busy === d + p} onClick={() => toggle(d, p)}
+                <button type="button" aria-pressed={done} disabled={!ok || wait || busy === d + p} onClick={() => toggle(d, p)}
                   aria-label={`${done ? "ألغِ" : g("صلّيت", "صلّيتِ")} ${PRAYER_NAMES[p]}`}
                   className={cn("flex w-full items-center gap-3 rounded-[24px] border p-4 text-start shadow-soft transition sm:flex-col sm:text-center",
                     done ? "border-emerald-500/50 bg-emerald-500/10" : "bg-card", isNext && "ring-2 ring-gold", !ok && "opacity-60")}>
-                  <span className={cn("grid size-12 shrink-0 place-items-center rounded-full border-2 transition", done ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted-foreground/30")}>
-                    {done && <Check className="size-7" />}
+                  <span className={cn("grid size-12 shrink-0 place-items-center rounded-full border-2 transition", wait ? "animate-pulse border-transparent bg-muted" : done ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted-foreground/30")}>
+                    {done && !wait && <Check className="size-7" />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block font-heading text-xl font-extrabold">{PRAYER_NAMES[p]}</span>
                     <span className="block text-muted-foreground">{fmtTime(times[d][p])}</span>
                   </span>
-                  <span className="text-xs font-bold text-muted-foreground">{done ? g("صلّيتها ✓", "صلّيتِها ✓") : ok ? g("اضغط لما تصلي", "اضغطي لما تصلي") : "لم يحن وقتها"}</span>
+                  <span className="text-xs font-bold text-muted-foreground">{wait && ok ? "لحظة…" : done ? g("صلّيتها ✓", "صلّيتِها ✓") : ok ? g("اضغط لما تصلي", "اضغطي لما تصلي") : "لم يحن وقتها"}</span>
                 </button>
               </motion.li>
             );
@@ -165,7 +191,7 @@ export function PrayerPage() {
           </div>
           <ol aria-label="جدول الأيام">
             {days.map((day) => {
-              const d = iso(day), t = times[d];
+              const d = iso(day), t = times[d], wait = !ready(d);
               return (
                 <li key={d} className={cn("grid grid-cols-[minmax(4.5rem,1fr)_repeat(5,minmax(0,1fr))] items-center gap-1 border-b p-2 last:border-0", d === today && "bg-gold/10")}>
                   <button type="button" onClick={() => { setView("day"); setAnchor(day); }} className="text-start text-xs font-bold sm:text-sm" aria-label={`عرض يوم ${fmtDay(day)}`}>
@@ -174,10 +200,10 @@ export function PrayerPage() {
                   {PRAYER_IDS.map((p) => {
                     const done = (log[d] ?? []).includes(p), ok = canMark(d, p);
                     return (
-                      <button key={p} type="button" aria-pressed={done} disabled={!ok || busy === d + p} onClick={() => toggle(d, p)}
+                      <button key={p} type="button" aria-pressed={done} disabled={!ok || wait || busy === d + p} onClick={() => toggle(d, p)}
                         aria-label={`${PRAYER_NAMES[p]} ${fmtDay(day)}`}
                         className={cn("flex flex-col items-center gap-0.5 rounded-xl py-1.5 transition", done ? "bg-emerald-500/15" : ok ? "hover:bg-secondary" : "opacity-50")}>
-                        <span className={cn("grid size-6 place-items-center rounded-full border-2", done ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted-foreground/30")}>{done && <Check className="size-4" />}</span>
+                        <span className={cn("grid size-6 place-items-center rounded-full border-2", wait ? "animate-pulse border-transparent bg-muted" : done ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted-foreground/30")}>{done && !wait && <Check className="size-4" />}</span>
                         <span className="text-[10px] text-muted-foreground sm:text-xs">{fmtTime(t[p])}</span>
                       </button>
                     );

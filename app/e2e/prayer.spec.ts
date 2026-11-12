@@ -44,32 +44,41 @@ test("جدول الصلوات: اليوم جاهز، والطفلة تعلّم �
   // أمس (الجمعة) كله مُعلَّم من السجل
   await expect(week.getByRole("button", { name: /^العشاء الجمعة، ٦ /u })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("heading", { name: /نوفمبر/ })).toBeVisible();
-  await page.getByRole("button", { name: "التالي" }).click();
+  await page.getByRole("button", { name: "التالي", exact: true }).click();
   await expect(week.getByRole("listitem")).toHaveCount(31);
 });
 
-test("أذكار ما بعد الصلاة كاملة بالعدّاد، وآية الكرسي بخط المصحف، وعدد الركعات وكيفية الصلاة", async ({ page }) => {
+test("أذكار ما بعد الصلاة كروت تفاعلية: الضغط في أي مكان يعدّ، والإطار يمتلئ، وينتقل للتالي تلقائيًا", async ({ page }) => {
   await mock(page);
   await page.goto("/Serah/kid/prayer/");
-  const az = page.getByRole("list", { name: "أذكار ما بعد الصلاة" });
-  await expect(az.getByRole("listitem").first()).toContainText("أَسْتَغْفِرُ اللَّهَ");
-  expect(await az.getByRole("listitem").count()).toBeGreaterThanOrEqual(12);
-  await expect(az.locator("[data-ayah-text]").first()).toBeAttached();
-  const first = az.getByRole("listitem").first().getByRole("button");
-  for (let i = 0; i < 3; i++) await first.click();
-  await expect(first).toHaveText(/تم/);
-  // المعوذات: مرة بعد الظهر، وثلاثًا بعد الفجر والمغرب؛ والتهليل عشرًا بعد الفجر والمغرب فقط
-  const item = (re: RegExp) => az.getByRole("listitem").filter({ hasText: re });
+  const menu = page.getByRole("list", { name: "أذكار ما بعد الصلاة" });
+  await expect(menu.getByRole("listitem").nth(11)).toBeAttached();
+  const card = page.getByTestId("zikr-card");
+  await expect(card).toContainText("أَسْتَغْفِرُ اللَّهَ");
+  await expect(card).toContainText("٣ مرات");
+  // الضغط على نص الكارت نفسه (مش الزر)
+  await card.locator("p").first().click();
+  await expect(card.getByRole("button", { name: "عدّ: ٢ متبقية" })).toBeVisible();
+  await card.locator("p").first().click();
+  await card.locator("p").first().click();
+  // بعد آخر ضغطة: ينتقل وحده للكارت التالي
+  await expect(page.getByTestId("zikr-card")).toContainText("اللَّهُمَّ أَنْتَ السَّلَامُ", { timeout: 5000 });
+  await expect(menu.getByRole("button").first()).toHaveAccessibleName(/تم/);
+  // القائمة تنقل لأي كارت
+  await menu.getByRole("button", { name: /سُبْحَانَ اللَّهِ/ }).first().click();
+  await expect(page.getByTestId("zikr-card")).toContainText("٣٣ مرة");
+  // المعوذات: مرة بعد الظهر، وثلاثًا بعد المغرب؛ والتهليل عشرًا بعد الفجر والمغرب فقط
   const after = page.getByRole("radiogroup", { name: "أذكار بعد صلاة" });
+  const open = async (re: RegExp) => { await menu.getByRole("button", { name: re }).first().click(); return page.getByTestId("zikr-card"); };
   await after.getByRole("radio", { name: "الظهر" }).click();
-  await expect(item(/قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ/).getByRole("button")).toHaveText("قلته");
-  await expect(item(/يُحْيِي وَيُمِيتُ/)).toHaveCount(0);
+  await expect((await open(/قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ/)).getByRole("button", { name: /^قلته/ })).toBeVisible();
+  const dhuhrCount = await menu.getByRole("listitem").count();
   await after.getByRole("radio", { name: "المغرب" }).click();
-  await expect(after.getByRole("radio", { name: "المغرب" })).toHaveAttribute("aria-checked", "true");
-  for (const re of [/قُلْ هُوَ اللَّهُ أَحَدٌ/, /قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ/, /قُلْ أَعُوذُ بِرَبِّ النَّاسِ/]) await expect(item(re)).toContainText("٣ مرات");
-  await expect(item(/يُحْيِي وَيُمِيتُ/)).toHaveCount(1);
+  for (const re of [/قُلْ هُوَ اللَّهُ/, /قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ/, /قُلْ أَعُوذُ بِرَبِّ النَّاسِ/]) await expect(await open(re)).toContainText("٣ مرات");
+  await expect(menu.getByRole("listitem")).toHaveCount(dhuhrCount + 1); // التهليل عشرًا بعد المغرب فقط
   // تغيير الصلاة يبدأ العدّ من جديد
-  await expect(first).not.toHaveText(/تم/);
+  await expect(menu.getByRole("button").first()).not.toHaveAccessibleName(/تم/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   await page.getByRole("tab", { name: "عدد الركعات" }).click();
   await expect(page.getByText("الفجر").last()).toBeVisible();
   await page.getByRole("tab", { name: "كيفية الصلاة" }).click();
@@ -77,9 +86,10 @@ test("أذكار ما بعد الصلاة كاملة بالعدّاد، وآية
   await expect(page.getByText(/فيديو «كيفية الوضوء» قريبًا/)).toBeVisible();
 });
 
-test("كارت آية الكرسي مميّز بالحديث الصحيح وشرح مبسّط، والضغط يعدّها ويحفّز", async ({ page }) => {
+test("كارت آية الكرسي مميّز بالحديث الصحيح وشرح مبسّط، وفتح الشرح لا يُحسب قراءة", async ({ page }) => {
   await mock(page);
   await page.goto("/Serah/kid/prayer/");
+  await page.getByRole("list", { name: "أذكار ما بعد الصلاة" }).getByRole("button", { name: /اللَّهُ لَا إِلَٰهَ/ }).first().click();
   const card = page.getByTestId("kursi-card");
   await expect(card).toBeVisible();
   await expect(card).toContainText("أعظم آية في القرآن");
@@ -90,10 +100,45 @@ test("كارت آية الكرسي مميّز بالحديث الصحيح وشر
   await expect(meanings).toBeHidden();
   await card.getByText("معنى الآية ببساطة").click();
   await expect(meanings.getByRole("listitem")).toHaveCount(10);
-  await card.getByRole("button", { name: "قرأتها: آية الكرسي" }).click();
-  await expect(card.getByRole("button", { name: "تم: آية الكرسي" })).toBeDisabled();
+  await expect(card.getByRole("button", { name: /^قلته/ })).toBeEnabled(); // الشرح ما اتحسبش
+  await card.locator("[data-ayah-text]").first().click();
+  await expect(card.getByRole("button", { name: /^تم/ })).toBeDisabled();
   await expect(card.getByRole("status")).toHaveText(/أحسنتِ! حافظي على آية الكرسي/); // الطفلة: صيغة مؤنثة
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+});
+
+test("جدول الصلوات: علامات الصح محفوظة على الجهاز تظهر فورًا، والأزرار مقفولة لحد ما الحالة تتحمّل", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-07T16:30:00+03:00")); // بعد العصر
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => { release = r; });
+  await page.route(/script\.google\.com\/macros/, async (route) => {
+    const b = JSON.parse(route.request().postData() || "{}");
+    if (b.action === "prayerLog") await gate; // الخادم بطيء
+    const data = b.action === "prayerLog" ? { days: { "2026-11-07": ["fajr", "dhuhr"] } } : [];
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data }) });
+  });
+  await page.addInitScript((u) => { localStorage.setItem("serah_token", "t"); localStorage.setItem("serah_user", JSON.stringify(u)); }, GIRL);
+  await page.goto("/Serah/kid/prayer/");
+  const today = page.getByRole("list", { name: "صلوات اليوم" });
+  await expect(page.getByRole("status").filter({ hasText: "جارٍ تحميل صلواتك" })).toBeVisible();
+  await expect(today.getByRole("button", { name: /الفجر/ })).toBeDisabled();
+  release();
+  await expect(today.getByRole("button", { name: /ألغِ الفجر/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(today.getByRole("button", { name: /ألغِ الظهر/ })).toBeEnabled();
+  await expect(page.getByText("جارٍ تحميل صلواتك")).toHaveCount(0);
+  // الفتح التالي: من نسخة الجهاز فورًا حتى قبل رد الخادم
+  let release2: () => void = () => {};
+  const gate2 = new Promise<void>((r) => { release2 = r; });
+  await page.unroute(/script\.google\.com\/macros/);
+  await page.route(/script\.google\.com\/macros/, async (route) => {
+    const b = JSON.parse(route.request().postData() || "{}");
+    if (b.action === "prayerLog") await gate2;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: b.action === "prayerLog" ? { days: { "2026-11-07": ["fajr", "dhuhr"] } } : [] }) });
+  });
+  await page.reload();
+  await expect(today.getByRole("button", { name: /ألغِ الظهر/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("جارٍ تحميل صلواتك")).toHaveCount(0);
+  release2();
 });
 
 test("تفعيل الإشعارات يرسل جدول ١٤ يومًا (صلوات وأذكار وضحى وجمعة) للخادم", async ({ page, browserName }, info) => {

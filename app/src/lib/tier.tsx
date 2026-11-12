@@ -18,13 +18,16 @@ export function detectTier(): Tier {
   return "high";
 }
 
-const TierContext = createContext<{ tier: Tier; setTier: (t: Tier) => void }>({ tier: "mid", setTier: () => {} });
+// first: أول مستوى مكتشف (null قبل الاكتشاف) — المشاهد الثقيلة تُبنى عليه مرة واحدة فقط
+const TierContext = createContext<{ tier: Tier; first: Tier | null; setTier: (t: Tier) => void }>({ tier: "mid", first: null, setTier: () => {} });
 
 export function TierProvider({ children }: { children: ReactNode }) {
   const [tier, setTier] = useState<Tier>("mid");
+  const [first, setFirst] = useState<Tier | null>(null);
   useEffect(() => {
     const t = detectTier();
     setTier(t);
+    setFirst(t);
     document.documentElement.dataset.tier = t;
     // قياس سريع للإطارات: لو الجهاز يتعب نخفف تلقائيًا
     if (t === "static" || t === "low") return;
@@ -41,8 +44,11 @@ export function TierProvider({ children }: { children: ReactNode }) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
-  return <TierContext.Provider value={{ tier, setTier }}>{children}</TierContext.Provider>;
+  return <TierContext.Provider value={{ tier, first, setTier }}>{children}</TierContext.Provider>;
 }
 
 export const useTier = () => useContext(TierContext).tier;
+// للمجسمات والمشاهد: null حتى يُكتشف الجهاز، ثم قيمة ثابتة (التخفيف بعد قياس الإطارات يتولاه كل مشهد داخليًا)
+// حتى لا تُبنى الرحلة مرتين (مرة على «mid» المبدئي ومرة على المستوى الحقيقي)
+export const useSceneTier = () => useContext(TierContext).first;
 export const useMotionAllowed = () => { const t = useTier(); return t === "high" || t === "mid"; };

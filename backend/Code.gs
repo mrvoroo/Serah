@@ -1901,6 +1901,15 @@ function dayNum_(s) {
   if (!m) throw new Error('تاريخ غير صحيح');
   return Number(m[1] + m[2] + m[3]);
 }
+// كل صلوات المستخدم { yyyymmdd: [...] } من الذاكرة المؤقتة (٦ ساعات)، وإلا من الشيت مرة واحدة
+function userPrayers_(user_id) {
+  const c = CacheService.getScriptCache(), ck = 'plog:' + user_id;
+  try { const hit = c.get(ck); if (hit) return JSON.parse(hit); } catch (e) { /* نقرأ من الشيت */ }
+  const m = {};
+  rows_('PrayerLog').forEach(r => { if (r.user_id === user_id) m[String(Number(r.day))] = String(r.prayers || '').split(',').filter(x => PRAYERS.indexOf(x) >= 0); });
+  try { c.put(ck, JSON.stringify(m), 6 * 3600); } catch (e) { console.error(e); }
+  return m;
+}
 function dayOffset_(n) { const d = new Date(Date.now() + n * 864e5); return Number(d.toISOString().slice(0, 10).replace(/-/g, '')); }
 
 // خوادم الإشعارات المعروفة فقط (حتى لا يُستغل الخادم لإرسال طلبات لأي عنوان)
@@ -1922,12 +1931,11 @@ Object.assign(ACTIONS, {
     const from = dayNum_(p.from), to = dayNum_(p.to);
     const utc = (n) => Date.UTC(Math.floor(n / 1e4), Math.floor(n / 100) % 100 - 1, n % 100);
     if (to < from || (utc(to) - utc(from)) / 864e5 > 63) throw new Error('المدى كبير');
-    const days = {};
-    rows_('PrayerLog').forEach(r => {
-      const d = Number(r.day);
-      if (r.user_id !== me.user_id || d < from || d > to) return;
-      const s = String(d);
-      days[s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8)] = String(r.prayers || '').split(',').filter(x => PRAYERS.indexOf(x) >= 0);
+    const all = userPrayers_(me.user_id), days = {};
+    Object.keys(all).forEach(k => {
+      const d = Number(k);
+      if (d < from || d > to) return;
+      days[k.slice(0, 4) + '-' + k.slice(4, 6) + '-' + k.slice(6, 8)] = all[k];
     });
     return { days };
   },
@@ -1951,6 +1959,7 @@ Object.assign(ACTIONS, {
       if (day >= dayOffset_(0)) { const ck = 'pm:' + me.user_id + ':' + prayer; try { if (done) CacheService.getScriptCache().put(ck, String(Math.floor(Date.now() / 1000)), 3 * 3600); else CacheService.getScriptCache().remove(ck); } catch (e) { console.error(e); } }
       if (row) update_('PrayerLog', 'key', key, { prayers, updated_at: now_() });
       else append_('PrayerLog', { key, user_id: me.user_id, day, prayers, updated_at: now_() });
+      try { const c = CacheService.getScriptCache(), ck = 'plog:' + me.user_id, hit = c.get(ck); if (hit) { const m = JSON.parse(hit); m[String(day)] = prayers ? prayers.split(',') : []; c.put(ck, JSON.stringify(m), 6 * 3600); } } catch (e) { console.error(e); }
       return prayers ? prayers.split(',') : [];
     });
   },

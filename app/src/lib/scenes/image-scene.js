@@ -246,7 +246,7 @@ export function createImageScene(canvas, opts = {}) {
     const raw = clock.getDelta(), dt = Math.min(raw, 0.05);
     time += dt;
     if (progress < 1) {
-      progress = Math.min(1, progress + dt / TRANS);
+      progress = Math.min(1, progress + Math.min(raw, 0.25) / TRANS); // بالوقت الحقيقي حتى على جهاز بطيء
       if (progress >= 1) { fromIdx = index; applyStep(); }
     }
     perf.acc += raw; perf.frames++;

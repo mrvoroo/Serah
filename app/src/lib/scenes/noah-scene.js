@@ -810,7 +810,8 @@ export function createNoahScene(canvas, opts = {}) {
     if (!running || lost || !visible) return;
     const raw = clock.getDelta(), dt = Math.min(raw, 0.05);
     time += dt;
-    if (progress < 1) progress = Math.min(1, progress + dt / TRANS);
+    // التحوّل بالوقت الحقيقي (حتى على جهاز بطيء يكتمل في وقته)، والحركة الفيزيائية بخطوة محدودة
+    if (progress < 1) progress = Math.min(1, progress + Math.min(raw, 0.25) / TRANS);
     perf.acc += raw; perf.frames++;
     if (perf.acc > 2) { const avg = perf.acc / perf.frames; perf.acc = perf.frames = 0; if (avg > 0.034 && perf.down < 2) { perf.down++; pixel = Math.max(0.75, pixel * 0.72); renderer.setPixelRatio(pixel); resize(); } }
     pointer.x += (pointer.tx - pointer.x) * 0.04; pointer.y += (pointer.ty - pointer.y) * 0.04;

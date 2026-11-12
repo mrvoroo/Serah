@@ -1,16 +1,15 @@
 "use client";
 import { useState } from "react";
-import { motion } from "motion/react";
-import { Check, PlayCircle, RotateCcw } from "lucide-react";
+import { PlayCircle, RotateCcw } from "lucide-react";
 import salah from "@/content/salah.json";
 import { RT } from "@/components/religious-text";
-import { KursiCard } from "./kursi-card";
+import { KursiBody } from "./kursi-card";
+import { AzkarDeck } from "./azkar-deck";
 import { cn } from "@/lib/utils";
 import { g } from "@/lib/kid-text";
-import { useMotionAllowed } from "@/lib/tier";
 import { loadPlace, PRAYER_IDS, PRAYER_NAMES, timesFor, type PrayerId } from "@/lib/prayer";
 import { useApi } from "@/hooks/use-api";
-import { times, videoFor, ytId, type SalahExtras } from "@/lib/salah-extras";
+import { videoFor, ytId, type SalahExtras } from "@/lib/salah-extras";
 
 // أذكار ما بعد الصلاة كاملة، وعدد الركعات، وكيفية الصلاة (مع أماكن لفيديوهات يوتيوب)
 // المحتوى مراجَع من الشيخ: content/salah.json
@@ -43,7 +42,6 @@ function VideoSlot({ id, title }: { id?: string; title: string }) {
 }
 
 export function SalahGuide() {
-  const animate = useMotionAllowed();
   const [tab, setTab] = useState<Tab>("azkar");
   const [after, setAfter] = useState<PrayerId>(() => lastPrayer());
   const [left, setLeft] = useState<Record<string, number>>({});
@@ -58,34 +56,8 @@ export function SalahGuide() {
   const tap = (z: Zikr) => setLeft((l) => ({ ...l, [z.id]: Math.max(0, remaining(z) - 1) }));
   const doneAll = list.every((z) => remaining(z) === 0);
   const pick = (p: PrayerId) => { setAfter(p); setLeft({}); };
-  const renderZikr = (z: Zikr, i: number) => {
-    const r = remaining(z), done = r === 0, c = countOf(z);
-    if (z.id === "kursi" && !z.extra) return (
-      <motion.li key={z.id} initial={animate ? { opacity: 0, y: 10 } : false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-        <KursiCard index={ar(i + 1)} text={z.text} quranRef={z.ref} remaining={r} onTap={() => tap(z)} />
-      </motion.li>
-    );
-    return (
-      <motion.li key={z.id} initial={animate ? { opacity: 0, y: 10 } : false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-        <div className={cn("rounded-[24px] border p-4 shadow-soft transition", done ? "border-emerald-500/40 bg-emerald-500/5" : "bg-card")}>
-          <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-muted-foreground">
-            <span className="grid size-6 place-items-center rounded-full bg-secondary">{ar(i + 1)}</span>
-            {c > 1 && <span>{times(c)}</span>}
-            {z.extra && <span className="rounded-full bg-gold/20 px-2 py-0.5 text-[#7A4D00] dark:text-gold">اختارته المعلمة</span>}
-          </div>
-          <p className="mt-2 text-lg leading-[2.1]"><RT text={z.text} /></p>
-          {z.virtue && <p className="mt-2 rounded-2xl bg-gold/10 p-2 text-sm leading-7">{z.virtue}</p>}
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <span className="min-w-0 text-xs text-muted-foreground">{z.ref}{z.grade && ` — ${z.grade}`}</span>
-            <button type="button" onClick={() => tap(z)} disabled={done} aria-label={`عدّ: ${ar(r)} متبقية`}
-              className={cn("flex h-11 min-w-24 shrink-0 items-center justify-center gap-1 rounded-2xl px-4 font-bold transition active:scale-95", done ? "bg-emerald-500 text-white" : "bg-primary text-primary-foreground")}>
-              {done ? <><Check className="size-5" /> تم</> : c > 1 ? `${ar(r)} ✋` : "قلته"}
-            </button>
-          </div>
-        </div>
-      </motion.li>
-    );
-  };
+  const [round, setRound] = useState(0); // «من جديد» يرجع لأول كارت
+  const kursiBody = (z: Zikr, done: boolean) => (z.id === "kursi" && !z.extra ? <KursiBody text={z.text} quranRef={z.ref} done={done} /> : null);
 
   return (
     <section aria-labelledby="guide-title" className="flex flex-col gap-3">
@@ -100,8 +72,8 @@ export function SalahGuide() {
       {tab === "azkar" && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
-            <span>{g("اضغط", "اضغطي")} على الذكر بعد ما {g("تقوله", "تقوليه")} ليعدّ لك</span>
-            <button type="button" onClick={() => setLeft({})} className="flex items-center gap-1 rounded-xl px-2 py-1 font-bold hover:bg-secondary"><RotateCcw className="size-4" /> من جديد</button>
+            <span>{g("اضغط", "اضغطي")} على الكارت بعد ما {g("تقول", "تقولي")} الذكر ليعدّ لك</span>
+            <button type="button" onClick={() => { setLeft({}); setRound((n) => n + 1); }} className="flex items-center gap-1 rounded-xl px-2 py-1 font-bold hover:bg-secondary"><RotateCcw className="size-4" /> من جديد</button>
           </div>
           <div role="radiogroup" aria-label="أذكار بعد صلاة" className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-bold">بعد صلاة:</span>
@@ -111,18 +83,14 @@ export function SalahGuide() {
             ))}
           </div>
           {doneAll && <p className="rounded-2xl bg-emerald-500/15 p-3 text-center font-bold text-emerald-700 dark:text-emerald-300">ما شاء الله! {g("أتممت", "أتممتِ")} أذكار الصلاة 🌟</p>}
-          <ol className="grid gap-3" aria-label="أذكار ما بعد الصلاة">
-            {list.map((z, i) => renderZikr(z, i))}
-          </ol>
+          <AzkarDeck key={`${after}:${round}`} list={list} label="أذكار ما بعد الصلاة" remaining={remaining} countOf={countOf} onTap={tap} renderBody={kursiBody} />
           {chosen.length > 0 && (
             <section aria-labelledby="chosen-title" className="mt-2 flex flex-col gap-3">
               <div>
                 <h3 id="chosen-title" className="font-heading text-lg font-extrabold">أذكار اختارتها لك المعلمة</h3>
                 <p className="text-sm leading-7 text-muted-foreground">هذه أذكار ثابتة من السنة اختارتها المعلمة، وليست من أذكار ما بعد الصلاة المعروفة.</p>
               </div>
-              <ol className="grid gap-3" aria-label="أذكار اختارتها المعلمة">
-                {chosen.map((z, i) => renderZikr(z, i))}
-              </ol>
+              <AzkarDeck key={`c:${after}:${round}`} list={chosen} label="أذكار اختارتها المعلمة" remaining={remaining} countOf={countOf} onTap={tap} />
             </section>
           )}
         </div>

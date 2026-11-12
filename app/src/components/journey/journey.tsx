@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { ArrowLeft, BookOpen, ChevronsLeft, ChevronsRight, Headphones, ListTree, Swords } from "lucide-react";
-import { useTier } from "@/lib/tier";
+import { useSceneTier } from "@/lib/tier";
 import { ruqaaFont } from "@/lib/particles/font";
 import { BlurFade } from "@/components/ui/blur-fade";
 import SplitText from "@/components/SplitText";
@@ -119,12 +119,13 @@ export function Journey({ stations }: { stations: Station[] }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const dots = useSyncExternalStore(subscribeMenu, menuDots, () => false);
   const { resolvedTheme } = useTheme();
-  const tier = useTier();
+  const tier = useSceneTier();
   const themeRef = useRef(resolvedTheme);
 
   // تحميل محرك النقاط عند الحاجة فقط (لا يدخل في حزمة باقي الصفحات)
   // عند تغيّر مستوى الجهاز يُعاد إنشاء المحرك ويبدأ من المحطة الظاهرة الآن لا من البداية
   useEffect(() => {
+    if (!tier) return; // ننتظر اكتشاف الجهاز حتى يُبنى المحرك مرة واحدة
     let disposed = false;
     Promise.all([import("@/lib/particles/world.js"), ruqaaFont()]).then(([{ createWorld }, font]) => {
       if (disposed || !canvasRef.current || !scope.current) return;
