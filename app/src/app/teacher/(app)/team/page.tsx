@@ -27,7 +27,7 @@ export default function TeamPage() {
   const me = useRequireRole(["admin", "superadmin"]);
   const isSuper = session.user()?.role === "superadmin";
   const { data, loading, reload } = useApi<Staff[]>("staff", {}, { enabled: !!me });
-  const classes = useApi<ClassRow[]>("classes", {}, { enabled: !!me && isSuper });
+  const classes = useApi<ClassRow[]>("classes", {}, { enabled: !!me });
   const [form, setForm] = useState<Form | null>(null);
   const [delFor, setDelFor] = useState<Staff | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export default function TeamPage() {
   const save = async () => {
     if (!form) return;
     const body = form.user_id
-      ? { user_id: form.user_id, name: form.name, pin: form.pin, ...(isSuper ? { role: form.role, class_id: form.class_id } : {}) }
+      ? { user_id: form.user_id, name: form.name, pin: form.pin, class_id: form.class_id, ...(isSuper ? { role: form.role } : {}) }
       : { name: form.name, pin: form.pin, role: form.role, class_id: form.class_id };
     if (await run("form", () => api(form.user_id ? "updateTeacher" : "addTeacher", body), form.user_id ? "تم حفظ التعديل" : "تمت إضافة المعلمة")) setForm(null);
   };
@@ -51,7 +51,7 @@ export default function TeamPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><Icon3D name="students" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">المعلمات</h1><p className="text-sm text-muted-foreground">{data?.length ?? 0} حساب{isSuper ? " في كل الفصول" : " في الفصل"}</p></div></div>
+        <div className="flex items-center gap-3"><Icon3D name="students" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">المعلمات</h1><p className="text-sm text-muted-foreground">{data?.length ?? 0} حساب{" في كل الفصول"}</p></div></div>
         <Button variant="hero" size="lg2" onClick={() => setForm({ name: "", pin: "", role: "teacher", class_id: classes.data?.[0]?.class_id ?? "" })}><Plus /> إضافة معلمة</Button>
       </div>
 
@@ -96,14 +96,14 @@ export default function TeamPage() {
                 <Label htmlFor="tm-pin">{form.user_id ? "رمز جديد (اتركيه فارغًا للإبقاء على الحالي)" : "الرمز السري"}</Label>
                 <Input id="tm-pin" value={form.pin} onChange={(e) => setForm({ ...form, pin: pinOnly(e.target.value) })} inputMode="numeric" dir="ltr" className="h-12 rounded-xl text-center font-heading text-xl tracking-widest" />
               </div>
-              {isSuper && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
+              {(
+                <div className={cn("grid gap-3", isSuper && "grid-cols-2")}>
+                  {isSuper && <div className="grid gap-1.5">
                     <Label htmlFor="tm-role">الدور</Label>
                     <select id="tm-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} className="h-12 rounded-xl border bg-background px-3">
                       <option value="teacher">معلمة</option><option value="admin">معلمة أدمن</option>
                     </select>
-                  </div>
+                  </div>}
                   <div className="grid gap-1.5">
                     <Label htmlFor="tm-class">الفصل</Label>
                     <select id="tm-class" value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} className="h-12 rounded-xl border bg-background px-3">

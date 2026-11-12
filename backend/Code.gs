@@ -194,10 +194,17 @@ function auth_(token) {
 const RANK = { student: 0, teacher: 1, admin: 2, superadmin: 3 };
 function need_(me, role) { if (!me || (RANK[me.role] || 0) < RANK[role]) throw new Error('ليس لديك صلاحية'); }
 function needTeacher_(me) { if (!me || (RANK[me.role] || 0) < RANK.teacher) throw new Error('للمعلمات فقط'); }
-// الفصل الذي تعمل عليه العملية: المطوّر غير مربوط بفصل، فيعمل على الفصل المطلوب أو أول فصل
+// الفصل الذي تعمل عليه العملية: المعلمة والطفل على فصلهما دائمًا؛ الأدمن والمطوّر يديران كل الفصول
+// (الفصل المطلوب لو موجود، وإلا فصل الأدمن، والمطوّر أول فصل)
 function cls_(me, p) {
-  if (me.role !== 'superadmin') return me.class_id;
-  if (p && p.class_id) return p.class_id;
+  if (me.role !== 'superadmin' && me.role !== 'admin') return me.class_id;
+  if (p && p.class_id) {
+    const id = String(p.class_id);
+    if (me._known === undefined) me._known = rows_('Classes').map(c => String(c.class_id));
+    if (me._known.indexOf(id) < 0) throw new Error('الفصل غير موجود');
+    return id;
+  }
+  if (me.role === 'admin') return me.class_id;
   if (me._cls === undefined) { const c = rows_('Classes')[0]; me._cls = c ? c.class_id : ''; } // مرة واحدة لكل طلب
   return me._cls;
 }
@@ -249,7 +256,8 @@ const POLICY = {
   changeMyPin: { min: 'teacher', write: 1, audit: 1 },
   setLectureStatus: { min: 'admin', write: 1, audit: 1 },
   auditLog: { min: 'admin' },
-  users: { min: 'superadmin' }, classes: { min: 'superadmin' }, systemHealth: { min: 'superadmin' },
+  users: { min: 'superadmin' }, classes: { min: 'admin' }, systemHealth: { min: 'superadmin' },
+  createClass: { min: 'admin', write: 1, audit: 1 }, updateClass: { min: 'admin', write: 1, audit: 1 }, deleteClass: { min: 'admin', write: 1, audit: 1 },
   viewAs: { min: 'superadmin', audit: 1 },
   setRole: { min: 'superadmin', write: 1, audit: 1 },
   setUserActive: { min: 'superadmin', write: 1, audit: 1 },
@@ -674,7 +682,7 @@ const ACTIONS = {
   // ===== إدارة المعلمات (الأدمن لفصلها، والمطوّر لكل الفصول) =====
   staff: (p, me) => {
     const classes = rows_('Classes');
-    return rows_('Users').filter(u => (u.role === 'teacher' || u.role === 'admin') && (me.role === 'superadmin' || u.class_id === me.class_id))
+    return rows_('Users').filter(u => u.role === 'teacher' || u.role === 'admin')
       .map(u => Object.assign(publicUser_(u, classes), { telegram: !!u.telegram_id }));
   },
 
@@ -685,7 +693,7 @@ const ACTIONS = {
     if (!/^\d{6,}$/.test(pin)) throw new Error('رمز المعلمة 6 أرقام على الأقل');
     uniqueStaffName_(name, '');
     const role = p.role === 'admin' && me.role === 'superadmin' ? 'admin' : 'teacher';
-    const class_id = me.role === 'superadmin' ? String(p.class_id || cls_(me, p)) : me.class_id;
+    const class_id = String(p.class_id || cls_(me, p));
     if (!rows_('Classes').some(c => c.class_id === class_id)) throw new Error('الفصل غير موجود');
     const u = append_('Users', { user_id: id_('U'), role, name, class_id, avatar: '', pin_hash: hashPin_(pin), active: true, created_at: now_() });
     return { user_id: u.user_id };
@@ -709,9 +717,11 @@ const ACTIONS = {
       if (['teacher', 'admin'].indexOf(p.role) < 0) throw new Error('الدور: معلمة أو معلمة أدمن');
       patch.role = p.role;
     }
-    if (me.role === 'superadmin' && p.class_id !== undefined) {
+    if (p.class_id !== undefined && String(p.class_id) !== String(u.class_id)) {
       if (!rows_('Classes').some(c => c.class_id === p.class_id)) throw new Error('الفصل غير موجود');
       patch.class_id = p.class_id;
+      // نُقلت لفصل آخر: لم تعد معلمة فصلها القديم
+      rows_('Classes').filter(c => c.teacher_id === u.user_id).forEach(c => update_('Classes', 'class_id', c.class_id, { teacher_id: '' }));
     }
     update_('Users', 'user_id', u.user_id, patch);
     return true;
@@ -789,7 +799,7 @@ const ACTIONS = {
     const pts = {};
     rows_('Points').forEach(r => pts[r.user_id] = (pts[r.user_id] || 0) + Number(r.points));
     return rows_('Users').filter(u => u.class_id === cls_(me, p) && u.role === 'student' && u.active !== false)
-      .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar, gender: genderOf_(u), points: pts[u.user_id] || 0 }));
+      .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar, gender: genderOf_(u), points: pts[u.user_id] || 0, created_at: String(u.created_at || '') }));
   },
 
   addStudent: (p, me) => {
@@ -798,8 +808,10 @@ const ACTIONS = {
     const pin = normDigits_(p.pin);
     if (!name) throw new Error('اكتبي اسم الطفل');
     if (!/^\d{4}$/.test(pin)) throw new Error('الرمز السري 4 أرقام');
-    const u = append_('Users', { user_id: id_('U'), role: 'student', name, class_id: cls_(me, p), avatar: String(p.avatar || '🌟').slice(0, 8),
+    const class_id = cls_(me, p);
+    const u = append_('Users', { user_id: id_('U'), role: 'student', name, class_id, avatar: String(p.avatar || '🌟').slice(0, 8),
       pin_hash: hashPin_(pin), city: String(p.city || '').slice(0, 60), country: String(p.country || '').slice(0, 60), gender: cleanGender_(p.gender), active: true, created_at: now_() });
+    notifyNewStudent_(me, class_id, name);
     return { user_id: u.user_id };
   },
 
@@ -1254,7 +1266,8 @@ function staffTarget_(me, user_id) {
   const u = rows_('Users').find(x => x.user_id === user_id && (x.role === 'teacher' || x.role === 'admin'));
   if (!u) throw new Error('المعلمة غير موجودة');
   if (u.user_id === me.user_id) throw new Error('لا يمكن تنفيذ هذا على حسابك');
-  if (me.role !== 'superadmin' && (u.class_id !== me.class_id || u.role !== 'teacher')) throw new Error('ليس لديك صلاحية على هذا الحساب');
+  // الأدمن تدير المعلمات في كل الفصول (لا الأدمن الأخرى)، والمطوّر الكل
+  if (me.role !== 'superadmin' && u.role !== 'teacher') throw new Error('ليس لديك صلاحية على هذا الحساب');
   return u;
 }
 // الدخول بالاسم، فلا يتكرر اسم بين المعلمات
@@ -2694,3 +2707,93 @@ Object.assign(ACTIONS, {
   const f = ACTIONS[k];
   ACTIONS[k] = (p, me) => { try { return f(p, me); } finally { try { CacheService.getScriptCache().remove('salahx'); } catch (e) { console.error(e); } } };
 });
+
+/* ============ الفصول: الأدمن تنشئ الفصول وتعيّن معلمتها، والمعلمة تضيف طلاب فصلها ============ */
+// معلمات الفصل (غير من قام بالعملية) يصلهن إشعار بطالب جديد أضافته الأدمن أو المطوّر
+function notifyNewStudent_(me, class_id, name) {
+  try {
+    const staff = {}; rows_('Users').forEach(u => { if (!inactive_(u) && (u.role === 'teacher' || u.role === 'admin') && String(u.class_id) === String(class_id) && u.user_id !== me.user_id) staff[u.user_id] = 1; });
+    const cls = rows_('Classes').find(c => String(c.class_id) === String(class_id));
+    if (cls && cls.teacher_id && cls.teacher_id !== me.user_id) staff[cls.teacher_id] = 1;
+    const subs = rows_('PushSubs').filter(s => staff[s.user_id]);
+    if (!subs.length) return;
+    const item = { kind: 'newkid', title: 'طالب جديد في فصلك 🌟', body: String(name).slice(0, 40) + (cls ? ' — ' + String(cls.name).slice(0, 30) : ''), url: '/teacher/students/' };
+    subs.forEach(s => queuePush_(s.sub_id, item));
+    UrlFetchApp.fetchAll(subs.map(s => pushRequest_(s.endpoint)));
+  } catch (e) { console.error(e); }
+}
+function cleanClassName_(v) { const n = String(v || '').trim().replace(/\s+/g, ' ').slice(0, 40); if (!n) throw new Error('اكتبي اسم الفصل'); return n; }
+function cleanJoinCode_(v, exceptId) {
+  const code = normDigits_(v).toUpperCase().replace(/\s+/g, '');
+  if (!/^[A-Z0-9]{3,12}$/.test(code)) throw new Error('الكود من 3 إلى 12 حرفًا إنجليزيًا أو أرقام');
+  if (rows_('Classes').some(c => String(c.join_code).toUpperCase() === code && c.class_id !== exceptId)) throw new Error('هذا الكود مستخدم، اختاري غيره');
+  return code;
+}
+function newJoinCode_() {
+  const used = {}; rows_('Classes').forEach(c => used[String(c.join_code).toUpperCase()] = 1);
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (let t = 0; t < 50; t++) { let c = ''; for (let i = 0; i < 6; i++) c += A[Math.floor(Math.random() * A.length)]; if (!used[c]) return c; }
+  throw new Error('تعذّر إنشاء كود');
+}
+// تعيين معلمة للفصل: تصبح معلمته الأساسية وفصلها هو هذا الفصل (الأدمن تعيّن المعلمات، والمطوّر أي حساب)
+function assignTeacher_(me, class_id, teacher_id) {
+  const t = rows_('Users').find(u => u.user_id === teacher_id && (u.role === 'teacher' || u.role === 'admin'));
+  if (!t) throw new Error('المعلمة غير موجودة');
+  if (me.role !== 'superadmin' && t.role !== 'teacher' && t.user_id !== me.user_id) throw new Error('ليس لديك صلاحية على هذا الحساب');
+  rows_('Classes').filter(c => c.teacher_id === t.user_id && c.class_id !== class_id).forEach(c => update_('Classes', 'class_id', c.class_id, { teacher_id: '' }));
+  if (String(t.class_id) !== String(class_id)) update_('Users', 'user_id', t.user_id, { class_id });
+  update_('Classes', 'class_id', class_id, { teacher_id: t.user_id });
+}
+
+Object.assign(ACTIONS, {
+  classes: () => {
+    const users = rows_('Users'), lectures = rows_('Lectures');
+    return rows_('Classes').map(c => ({ class_id: c.class_id, name: c.name, join_code: String(c.join_code), teacher_id: String(c.teacher_id || ''),
+      teacher: (users.find(u => u.user_id === c.teacher_id) || {}).name || '',
+      teachers: users.filter(u => u.class_id === c.class_id && (u.role === 'teacher' || u.role === 'admin') && u.active !== false).map(u => ({ user_id: u.user_id, name: u.name, role: u.role })),
+      kids: users.filter(u => u.class_id === c.class_id && u.role === 'student' && u.active !== false).length,
+      lectures: lectures.filter(l => l.class_id === c.class_id).length,
+      published: lectures.filter(l => l.class_id === c.class_id && l.status === 'published').length,
+      created_at: String(c.created_at || '') }));
+  },
+
+  createClass: (p, me) => withLock_(() => {
+    rate_('cls:' + me.user_id, 30, 3600);
+    if (rows_('Classes').length >= 200) throw new Error('عدد الفصول كبير');
+    const name = cleanClassName_(p.name);
+    if (rows_('Classes').some(c => String(c.name).trim() === name)) throw new Error('يوجد فصل بنفس الاسم');
+    const code = p.join_code ? cleanJoinCode_(p.join_code, '') : newJoinCode_();
+    const c = append_('Classes', { class_id: id_('C'), name, teacher_id: '', join_code: code, created_at: now_() });
+    if (p.teacher_id) assignTeacher_(me, c.class_id, String(p.teacher_id));
+    return { class_id: c.class_id, join_code: code };
+  }),
+
+  updateClass: (p, me) => withLock_(() => {
+    const c = rows_('Classes').find(x => x.class_id === String(p.class_id || ''));
+    if (!c) throw new Error('الفصل غير موجود');
+    const patch = {};
+    if (p.name !== undefined) {
+      const name = cleanClassName_(p.name);
+      if (rows_('Classes').some(x => String(x.name).trim() === name && x.class_id !== c.class_id)) throw new Error('يوجد فصل بنفس الاسم');
+      patch.name = name;
+    }
+    if (p.join_code !== undefined) patch.join_code = cleanJoinCode_(p.join_code, c.class_id);
+    if (Object.keys(patch).length) update_('Classes', 'class_id', c.class_id, patch);
+    if (p.teacher_id !== undefined) {
+      if (String(p.teacher_id)) assignTeacher_(me, c.class_id, String(p.teacher_id));
+      else update_('Classes', 'class_id', c.class_id, { teacher_id: '' });
+    }
+    return true;
+  }),
+
+  // حذف فصل فاضي فقط (بدون طلاب ولا معلمات ولا محاضرات) حتى لا يضيع شيء
+  deleteClass: (p) => withLock_(() => {
+    const id = String(p.class_id || '');
+    if (!rows_('Classes').some(c => c.class_id === id)) throw new Error('الفصل غير موجود');
+    if (rows_('Users').some(u => u.class_id === id && u.active !== false)) throw new Error('الفصل فيه طلاب أو معلمات — انقليهم أولًا');
+    if (rows_('Lectures').some(l => l.class_id === id)) throw new Error('الفصل فيه محاضرات — لا يمكن حذفه');
+    remove_('Classes', 'class_id', id);
+    return true;
+  })
+});
+

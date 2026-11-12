@@ -130,7 +130,7 @@ test('مصفوفة الصلاحيات: كل دور يصل لما يخصه فقط
     students: ['teacher', 'admin', 'superadmin'],
     dashboard: ['teacher', 'admin', 'superadmin'],
     auditLog: ['admin', 'superadmin'],
-    users: ['superadmin'], classes: ['superadmin'], systemHealth: ['superadmin']
+    users: ['superadmin'], classes: ['admin', 'superadmin'], systemHealth: ['superadmin']
   };
   for (const [action, roles] of Object.entries(allowed)) for (const role of Object.keys(tok)) {
     const r = t.call(action, {}, tok[role]);
@@ -259,7 +259,7 @@ test('المطوّر يعمل على الفصل الأول تلقائيًا أو
   const t = setup();
   const sa = t.login({ name: 'م.احمد', pin: '987654' });
   assert.deepStrictEqual(t.call('students', {}, sa).data.map(s => s.name).sort(), ['مريم', 'يوسف']);
-  assert.deepStrictEqual(t.call('students', { class_id: 'C9' }, sa).data, []);
+  assert.strictEqual(t.call('students', { class_id: 'C9' }, sa).error, 'الفصل غير موجود');
   const c = t.call('classes', {}, sa).data[0];
   assert.deepStrictEqual([c.kids, c.lectures, c.teacher], [2, 1, 'المعلمة']);
 });
@@ -1590,6 +1590,42 @@ test('إشعار «صليت الظهر؟» بعد الأذان بنصف ساعة
   t.g.pushTick();
   assert.deepStrictEqual(t.call('pullNotices', { key: r1.data.key }).data.items, [], 'S1 already marked: no ask');
   assert.deepStrictEqual(t.call('pullNotices', { key: r2.data.key }).data.items, [{ kind: 'ask:dhuhr', idx: 1 }]);
+});
+
+test('الفصول: الأدمن تنشئ فصلًا وتعيّن معلمته وتضيف طلابًا لأي فصل، والمعلمة لفصلها فقط ويصلها إشعار', () => {
+  const t = setup();
+  const admin = t.login({ name: 'المعلمة', pin: '482615' }), teacher = t.login({ name: 'معلمة ثانية', pin: '222222' }), dev = t.login({ name: 'م.احمد', pin: '987654' });
+  assert.ok(!t.call('createClass', { name: 'فصل ب' }, teacher).ok, 'teacher cannot create');
+  const c = t.call('createClass', { name: 'فصل ب' }, admin);
+  assert.ok(c.ok, JSON.stringify(c)); assert.match(c.data.join_code, /^[A-Z0-9]{6}$/);
+  assert.strictEqual(t.call('createClass', { name: 'فصل ب' }, admin).error, 'يوجد فصل بنفس الاسم');
+  assert.strictEqual(t.call('createClass', { name: 'فصل ج', join_code: 'SERAH1' }, admin).error, 'هذا الكود مستخدم، اختاري غيره');
+  // تعيين المعلمة الثانية لفصل ب: فصلها يتغير، وتظهر معلمةً له
+  const t2 = t.g.rows_('Users').find(u => u.name === 'معلمة ثانية');
+  assert.ok(t.call('updateClass', { class_id: c.data.class_id, teacher_id: t2.user_id, name: 'فصل البراعم' }, admin).ok);
+  const cls = t.call('classes', {}, admin).data.find(x => x.class_id === c.data.class_id);
+  assert.deepStrictEqual([cls.name, cls.teacher, cls.teachers.map(x => x.name)], ['فصل البراعم', 'معلمة ثانية', ['معلمة ثانية']]);
+  assert.strictEqual(t.g.rows_('Users').find(u => u.user_id === t2.user_id).class_id, c.data.class_id);
+  // الأدمن لا تعيّن أدمن أخرى (المطوّر يقدر)
+  const dv = t.g.rows_('Users').find(u => u.role === 'superadmin');
+  assert.ok(!t.call('updateClass', { class_id: c.data.class_id, teacher_id: dv.user_id }, admin).ok);
+  // المعلمة تسجّل جهاز إشعارات، ثم الأدمن تضيف طالبًا لفصلها
+  const tk = t.login({ name: 'معلمة ثانية', pin: '222222' }); // التوكن الجديد بفصلها الجديد
+  const sub = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/tch', plan: [] }, tk);
+  assert.ok(sub.ok);
+  assert.ok(t.call('addStudent', { name: 'عمر', pin: '1234', class_id: c.data.class_id }, admin).ok);
+  assert.deepStrictEqual(t.call('pullNotices', { key: sub.data.key }).data.items.map(x => [x.kind, x.title]), [['newkid', 'طالب جديد في فصلك 🌟']]);
+  // المعلمة تضيف لفصلها فقط (class_id آخر يُتجاهل) ولا يصلها إشعار عن نفسها
+  assert.ok(t.call('addStudent', { name: 'سلمى', pin: '1234', class_id: 'C1', gender: 'f' }, tk).ok);
+  assert.strictEqual(t.g.rows_('Users').find(u => u.name === 'سلمى').class_id, c.data.class_id);
+  assert.deepStrictEqual(t.call('pullNotices', { key: sub.data.key }).data.items, []);
+  assert.deepStrictEqual(t.call('students', {}, tk).data.map(s => s.name).sort(), ['سلمى', 'عمر']);
+  assert.deepStrictEqual(t.call('students', { class_id: c.data.class_id }, admin).data.length, 2);
+  // فصل مجهول يُرفض، وحذف فصل فيه طلاب يُرفض، والفاضي يتحذف
+  assert.strictEqual(t.call('addStudent', { name: 'x', pin: '1234', class_id: 'NOPE' }, admin).error, 'الفصل غير موجود');
+  assert.match(t.call('deleteClass', { class_id: c.data.class_id }, admin).error, /فيه طلاب/);
+  const e = t.call('createClass', { name: 'فصل فاضي' }, dev).data;
+  assert.ok(t.call('deleteClass', { class_id: e.class_id }, admin).ok);
 });
 
 for (const [name, fn] of tests) {
