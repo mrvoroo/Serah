@@ -121,14 +121,13 @@ test("الأدمن تضيف فيديو وذكرًا، يبقى مخفيًا حت
   await kid.getByRole("radio", { name: "الفجر" }).click();
   await expect(az.getByText("اختارته المعلمة")).toHaveCount(0); // ليس داخل أذكار السنة
   await expect(kid.getByRole("heading", { name: "أذكار اختارتها لك المعلمة" })).toBeVisible();
-  const extra = kid.getByRole("list", { name: "أذكار اختارتها المعلمة" }).getByRole("listitem");
-  await expect(extra).toHaveCount(1);
+  await expect(kid.getByRole("list", { name: "أذكار اختارتها المعلمة" }).getByRole("listitem")).toHaveCount(1);
+  const extra = kid.locator('section[aria-labelledby="chosen-title"]').getByTestId("zikr-card");
   await expect(extra).toContainText("اختارته المعلمة");
   await expect(extra).toContainText("أبو داود ١٥٢٢ — صحيح");
   await expect(extra).toContainText("٣ مرات");
-  const btn = extra.getByRole("button");
-  for (let i = 0; i < 3; i++) await btn.click();
-  await expect(btn).toHaveText(/تم/);
+  for (let i = 0; i < 3; i++) await extra.locator("p").first().click(); // الضغط على الكارت نفسه
+  await expect(extra.getByRole("button", { name: /^تم/ })).toBeDisabled();
   await kid.getByRole("radio", { name: "الظهر" }).click();
   await expect(kid.getByText("اختارته المعلمة")).toHaveCount(1); // بعد كل الصلوات
   await kid.getByRole("tab", { name: "كيفية الصلاة" }).click();

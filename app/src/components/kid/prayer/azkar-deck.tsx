@@ -104,9 +104,10 @@ export function AzkarDeck({ list, label, remaining, countOf, onTap, renderBody, 
   const body = renderBody?.(cur, done);
 
   return (
-    <div className="flex flex-col gap-3">
+    // overflow-x-clip: حركة دخول الكارت من الجنب أو السحب لا تعمل سكرول أفقي للصفحة
+    <div className="flex min-w-0 flex-col gap-3 overflow-x-clip py-1">
       {/* قائمة الكروت: لمحة لكل ذكر وحلقة تقدّمه */}
-      <ol ref={menu} aria-label={label} className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <ol ref={menu} aria-label={label} className="flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {list.map((z, k) => {
           const zr = remaining(z), zc = countOf(z), zd = zr === 0, on = k === i;
           return (

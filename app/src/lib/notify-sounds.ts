@@ -47,8 +47,9 @@ export function playNotifySound(kind: string) {
 
 // يستقبل رسالة عامل الخدمة عند وصول إشعار والتطبيق مفتوح
 export function listenForNotifySounds() {
-  if (typeof navigator === "undefined" || !navigator.serviceWorker) return () => {};
+  const sw = typeof navigator === "undefined" ? undefined : navigator.serviceWorker;
+  if (!sw || typeof sw.addEventListener !== "function") return () => {};
   const on = (e: MessageEvent) => { if (e.data?.type === "notify-sound" && typeof e.data.kind === "string") playNotifySound(e.data.kind); };
-  navigator.serviceWorker.addEventListener("message", on);
-  return () => navigator.serviceWorker.removeEventListener("message", on);
+  try { sw.addEventListener("message", on); } catch { return () => {}; }
+  return () => { try { sw.removeEventListener("message", on); } catch { /* لا شيء */ } };
 }

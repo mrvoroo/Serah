@@ -71,7 +71,8 @@ export function PrayerPage() {
       .then((r) => {
         if (!live) return;
         // الأيام بدون صلوات مسجلة ترجع فاضية من الخادم: نمسح أي نسخة قديمة لها على الجهاز
-        setLog((l) => { const n = { ...l }; need.forEach((d) => { n[d] = r.days[d] ?? []; }); return n; });
+        const got = r && typeof r.days === "object" && r.days ? r.days : {};
+        setLog((l) => { const n = { ...l }; need.forEach((d) => { n[d] = Array.isArray(got[d]) ? got[d] : []; }); return n; });
         setLoaded((s) => new Set([...s, ...need]));
       })
       .catch(() => { if (live) setLoaded((s) => new Set([...s, ...need])); /* بدون نت: نفتح الضغط على ما هو محفوظ */ });
