@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Check, ChevronLeft, ChevronRight, LocateFixed, MapPin } from "lucide-react";
 import { toast } from "sonner";
@@ -26,8 +26,9 @@ const cacheKey = () => `serah_plog:${session.user()?.user_id ?? ""}`;
 function readCache(): Log { try { return JSON.parse(localStorage.getItem(cacheKey()) || "{}") as Log; } catch { return {}; } }
 function writeCache(l: Log) {
   try {
-    // آخر ٧٠ يومًا فقط
-    const keep = Object.keys(l).sort().slice(-70);
+    // آخر ٧٠ يومًا حتى اليوم فقط (لا الأيام المستقبلية الفاضية)
+    const today = iso(new Date());
+    const keep = Object.keys(l).filter((k) => k <= today).sort().slice(-70);
     localStorage.setItem(cacheKey(), JSON.stringify(Object.fromEntries(keep.map((k) => [k, l[k]]))));
   } catch { /* تخزين غير متاح */ }
 }
@@ -48,6 +49,11 @@ export function PrayerPage() {
   const [loaded, setLoaded] = useState<Set<string>>(new Set());
   // أيام لها نسخة محفوظة على الجهاز (تُعرض فورًا وتُفتح للضغط)، والباقي ينتظر الخادم
   const [cached, setCached] = useState<Set<string>>(new Set());
+  // أيام فشل تحميلها (بدون نت): تُفتح للضغط، وتُعاد محاولتها لما يرجع النت
+  const [failed, setFailed] = useState<Set<string>>(new Set());
+  useEffect(() => { const on = () => setFailed(new Set()); window.addEventListener("online", on); return () => window.removeEventListener("online", on); }, []);
+  // أيام فيها ضغطة جارية: رد السجل المتأخر لا يمسحها
+  const pending = useRef<Set<string>>(new Set());
   // قراءة الجهاز بعد التجهيز (لا وقت البناء على الخادم) — مرة واحدة
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { const c = readCache(); setLog((l) => ({ ...c, ...l })); setCached(new Set(Object.keys(c))); }, []);
@@ -64,7 +70,7 @@ export function PrayerPage() {
 
   // نحمّل سجل المدى المعروض مرة واحدة لكل يوم
   useEffect(() => {
-    const need = days.map(iso).filter((d) => !loaded.has(d));
+    const need = days.map(iso).filter((d) => !loaded.has(d) && !failed.has(d));
     if (!need.length) return;
     let live = true;
     api<{ days: Log }>("prayerLog", { from: need[0], to: need[need.length - 1] })
@@ -72,12 +78,12 @@ export function PrayerPage() {
         if (!live) return;
         // الأيام بدون صلوات مسجلة ترجع فاضية من الخادم: نمسح أي نسخة قديمة لها على الجهاز
         const got = r && typeof r.days === "object" && r.days ? r.days : {};
-        setLog((l) => { const n = { ...l }; need.forEach((d) => { n[d] = Array.isArray(got[d]) ? got[d] : []; }); return n; });
+        setLog((l) => { const n = { ...l }; need.forEach((d) => { if (!pending.current.has(d)) n[d] = Array.isArray(got[d]) ? got[d] : []; }); return n; });
         setLoaded((s) => new Set([...s, ...need]));
       })
-      .catch(() => { if (live) setLoaded((s) => new Set([...s, ...need])); /* بدون نت: نفتح الضغط على ما هو محفوظ */ });
+      .catch(() => { if (live) setFailed((s) => new Set([...s, ...need])); /* بدون نت: نفتح الضغط على ما هو محفوظ */ });
     return () => { live = false; };
-  }, [days, loaded]);
+  }, [days, loaded, failed]);
 
   const times = useMemo(() => Object.fromEntries(days.map((d) => [iso(d), timesFor(d, place)])), [days, place]);
   const todayTimes = useMemo(() => timesFor(now, place), [now, place]);
@@ -85,7 +91,7 @@ export function PrayerPage() {
 
   const canMark = (d: string, p: PrayerId) => d < today || (d === today && (times[d] ?? todayTimes)[p] <= now);
   // اليوم جاهز للضغط بعد ما نعرف حالته (من الخادم أو نسخة الجهاز) — حتى لا يضغط الطفل مرة ثانية على صلاة مسجلة
-  const ready = (d: string) => loaded.has(d) || cached.has(d);
+  const ready = (d: string) => loaded.has(d) || cached.has(d) || failed.has(d);
   const loadingDay = view === "day" && !ready(iso(days[0]));
 
   const toggle = useCallback(async (d: string, p: PrayerId) => {
@@ -93,6 +99,7 @@ export function PrayerPage() {
     const set = was ? (log[d] ?? []).filter((x) => x !== p) : [...(log[d] ?? []), p];
     setLog((l) => ({ ...l, [d]: set }));
     setBusy(d + p);
+    pending.current.add(d);
     try {
       const saved = await api<PrayerId[]>("markPrayer", { date: d, prayer: p, done: !was });
       setLog((l) => ({ ...l, [d]: saved }));
@@ -101,7 +108,7 @@ export function PrayerPage() {
     } catch (e) {
       setLog((l) => ({ ...l, [d]: was ? [...(l[d] ?? []), p] : (l[d] ?? []).filter((x) => x !== p) }));
       toast.error((e as Error).message);
-    } finally { setBusy(null); }
+    } finally { setBusy(null); pending.current.delete(d); }
   }, [log]);
 
   const locate = () => {
@@ -160,7 +167,7 @@ export function PrayerPage() {
         <button type="button" onClick={() => setAnchor(new Date())} className="mx-auto -mt-2 h-9 rounded-xl bg-secondary px-4 text-sm font-bold">رجوع لليوم</button>
       ) : null}
 
-      {loadingDay && <p role="status" className="-mb-1 flex items-center justify-center gap-2 text-sm font-bold text-muted-foreground"><span className="size-2 animate-ping rounded-full bg-primary" /> جارٍ تحميل صلواتك…</p>}
+      <div role="status" className="-mb-1 empty:hidden">{loadingDay && <p className="flex items-center justify-center gap-2 text-sm font-bold text-muted-foreground"><span className="size-2 animate-ping rounded-full bg-primary" /> جارٍ تحميل صلواتك…</p>}</div>
       {view === "day" ? (
         <ul className="grid gap-3 sm:grid-cols-5" aria-label="صلوات اليوم" aria-busy={loadingDay}>
           {PRAYER_IDS.map((p, i) => {

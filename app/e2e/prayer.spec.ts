@@ -65,16 +65,16 @@ test("أذكار ما بعد الصلاة كروت تفاعلية: الضغط ف
   await expect(page.getByTestId("zikr-card")).toContainText("اللَّهُمَّ أَنْتَ السَّلَامُ", { timeout: 5000 });
   await expect(menu.getByRole("button").first()).toHaveAccessibleName(/تم/);
   // القائمة تنقل لأي كارت
-  await menu.getByRole("button", { name: /سُبْحَانَ اللَّهِ/ }).first().click();
+  await menu.getByRole("button", { name: /التسبيح/ }).first().click();
   await expect(page.getByTestId("zikr-card")).toContainText("٣٣ مرة");
   // المعوذات: مرة بعد الظهر، وثلاثًا بعد المغرب؛ والتهليل عشرًا بعد الفجر والمغرب فقط
   const after = page.getByRole("radiogroup", { name: "أذكار بعد صلاة" });
   const open = async (re: RegExp) => { await menu.getByRole("button", { name: re }).first().click(); return page.getByTestId("zikr-card"); };
   await after.getByRole("radio", { name: "الظهر" }).click();
-  await expect((await open(/قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ/)).getByRole("button", { name: /^قلته/ })).toBeVisible();
+  await expect((await open(/سورة الفلق/)).getByRole("button", { name: /^قلته/ })).toBeVisible();
   const dhuhrCount = await menu.getByRole("listitem").count();
   await after.getByRole("radio", { name: "المغرب" }).click();
-  for (const re of [/قُلْ هُوَ اللَّهُ/, /قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ/, /قُلْ أَعُوذُ بِرَبِّ النَّاسِ/]) await expect(await open(re)).toContainText("٣ مرات");
+  for (const re of [/سورة الإخلاص/, /سورة الفلق/, /سورة الناس/]) await expect(await open(re)).toContainText("٣ مرات");
   await expect(menu.getByRole("listitem")).toHaveCount(dhuhrCount + 1); // التهليل عشرًا بعد المغرب فقط
   // تغيير الصلاة يبدأ العدّ من جديد
   await expect(menu.getByRole("button").first()).not.toHaveAccessibleName(/تم/);
@@ -89,7 +89,7 @@ test("أذكار ما بعد الصلاة كروت تفاعلية: الضغط ف
 test("كارت آية الكرسي مميّز بالحديث الصحيح وشرح مبسّط، وفتح الشرح لا يُحسب قراءة", async ({ page }) => {
   await mock(page);
   await page.goto("/Serah/kid/prayer/");
-  await page.getByRole("list", { name: "أذكار ما بعد الصلاة" }).getByRole("button", { name: /اللَّهُ لَا إِلَٰهَ/ }).first().click();
+  await page.getByRole("list", { name: "أذكار ما بعد الصلاة" }).getByRole("button", { name: /آية الكرسي/ }).first().click();
   const card = page.getByTestId("kursi-card");
   await expect(card).toBeVisible();
   await expect(card).toContainText("أعظم آية في القرآن");

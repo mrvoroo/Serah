@@ -69,6 +69,7 @@ export default function About() {
             </Link>
           ))}
         </section>
+        <Link href="/privacy/" className="text-sm text-white/70 underline underline-offset-4 hover:text-[#FFC24D]">الخصوصية وحماية بيانات الأطفال</Link>
       </div>
     </main>
   );

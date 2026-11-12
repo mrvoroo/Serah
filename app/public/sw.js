@@ -102,7 +102,9 @@ self.addEventListener("push", (e) => e.waitUntil((async () => {
   try {
     const ws = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     const last = items[items.length - 1];
-    if (last) ws.forEach((w) => w.postMessage({ type: "notify-sound", kind: String(last.kind || "") }));
+    // نافذة واحدة ظاهرة من تطبيقنا فقط (لا تتكرر النغمة مع أكثر من تبويب)
+    const w = ws.find((x) => x.visibilityState === "visible" && x.url.startsWith(BASE + "/"));
+    if (last && w) w.postMessage({ type: "notify-sound", kind: String(last.kind || "") });
   } catch { /* لا شيء */ }
   await Promise.all(items.slice(-3).map((it, i) => {
     const n = textFor(it, texts);

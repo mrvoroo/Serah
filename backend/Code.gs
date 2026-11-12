@@ -732,6 +732,7 @@ const ACTIONS = {
   deleteTeacher: (p, me) => {
     const u = staffTarget_(me, p.user_id);
     remove_('Users', 'user_id', u.user_id);
+    rows_('Classes').filter(c => c.teacher_id === u.user_id).forEach(c => update_('Classes', 'class_id', c.class_id, { teacher_id: '' }));
     return true;
   },
 
@@ -809,10 +810,12 @@ const ACTIONS = {
     const pin = normDigits_(p.pin);
     if (!name) throw new Error('اكتبي اسم الطفل');
     if (!/^\d{4}$/.test(pin)) throw new Error('الرمز السري 4 أرقام');
+    rate_('as:' + me.user_id, 60, 3600);
     const class_id = cls_(me, p);
+    if (!class_id) throw new Error('اختاري الفصل أولًا');
     const u = append_('Users', { user_id: id_('U'), role: 'student', name, class_id, avatar: String(p.avatar || '🌟').slice(0, 8),
       pin_hash: hashPin_(pin), city: String(p.city || '').slice(0, 60), country: String(p.country || '').slice(0, 60), gender: cleanGender_(p.gender), active: true, created_at: now_() });
-    notifyNewStudent_(me, class_id, name);
+    notifyNewStudent_(me, class_id, name, cleanGender_(p.gender));
     return { user_id: u.user_id };
   },
 
@@ -1315,9 +1318,11 @@ function ownLecture_(me, p) {
   return l;
 }
 // الاقتراحات: المعلمة والأدمن يرون اقتراحات فصلهم فقط، والمطوّر الكل
+// الأدمن والمطوّر يديران كل الفصول؛ المعلمة فصلها فقط
+function sameClass_(me, cid) { return me.role === 'superadmin' || me.role === 'admin' || String(cid) === String(me.class_id); }
 function classSuggestions_(me) {
   const all = rows_('Suggestions');
-  if (me.role === 'superadmin') return all;
+  if (me.role === 'superadmin' || me.role === 'admin') return all;
   const cls = {}; rows_('Users').forEach(u => cls[u.user_id] = String(u.class_id));
   return all.filter(s => cls[s.from_user] === String(me.class_id));
 }
@@ -1335,19 +1340,19 @@ function byNewest_(a, b) { return String(b.created_at).localeCompare(String(a.cr
 function prophetRef_(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30); }
 // اختبار/واجب من فصل المستخدم (والمطوّر أي فصل)
 function ownQuiz_(me, p) {
-  const z = rows_('Quizzes').find(x => x.quiz_id === String(p.quiz_id || '') && (me.role === 'superadmin' || x.class_id === me.class_id));
+  const z = rows_('Quizzes').find(x => x.quiz_id === String(p.quiz_id || '') && sameClass_(me, x.class_id));
   if (!z) throw new Error('الاختبار غير موجود');
   return z;
 }
 function ownAssignment_(me, p) {
-  const a = rows_('Assignments').find(x => x.assignment_id === String(p.assignment_id || '') && (me.role === 'superadmin' || x.class_id === me.class_id));
+  const a = rows_('Assignments').find(x => x.assignment_id === String(p.assignment_id || '') && sameClass_(me, x.class_id));
   if (!a) throw new Error('الواجب غير موجود');
   return a;
 }
 // صاحبة الواجب، ومن شاركته معها، وأدمن الفصل، والمطوّر (الواجبات القديمة بلا صاحبة: كل معلمات الفصل)
 function helpersOf_(a) { return String(a.helpers || '').split(',').map(x => x.trim()).filter(Boolean); }
 function canManageHw_(me, a) {
-  if (me.role === 'superadmin') return true;
+  if (me.role === 'superadmin' || me.role === 'admin') return true;
   if (RANK[me.role] < RANK.teacher || a.class_id !== me.class_id) return false;
   return me.role === 'admin' || !a.created_by || a.created_by === me.user_id || helpersOf_(a).indexOf(me.user_id) >= 0;
 }
@@ -1917,7 +1922,7 @@ function dayNum_(s) {
 }
 // كل صلوات المستخدم { yyyymmdd: [...] } من الذاكرة المؤقتة (٦ ساعات)، وإلا من الشيت مرة واحدة
 function userPrayers_(user_id) {
-  const c = CacheService.getScriptCache(), ck = 'plog:' + user_id;
+  const c = CacheService.getScriptCache(), ck = 'plog:' + user_id + ':' + (c.get('plogv:' + user_id) || '0');
   try { const hit = c.get(ck); if (hit) return JSON.parse(hit); } catch (e) { /* نقرأ من الشيت */ }
   const m = {};
   rows_('PrayerLog').forEach(r => { if (r.user_id === user_id) m[String(Number(r.day))] = String(r.prayers || '').split(',').filter(x => PRAYERS.indexOf(x) >= 0); });
@@ -1973,7 +1978,8 @@ Object.assign(ACTIONS, {
       if (day >= dayOffset_(0)) { const ck = 'pm:' + me.user_id + ':' + prayer; try { if (done) CacheService.getScriptCache().put(ck, String(Math.floor(Date.now() / 1000)), 3 * 3600); else CacheService.getScriptCache().remove(ck); } catch (e) { console.error(e); } }
       if (row) update_('PrayerLog', 'key', key, { prayers, updated_at: now_() });
       else append_('PrayerLog', { key, user_id: me.user_id, day, prayers, updated_at: now_() });
-      try { const c = CacheService.getScriptCache(), ck = 'plog:' + me.user_id, hit = c.get(ck); if (hit) { const m = JSON.parse(hit); m[String(day)] = prayers ? prayers.split(',') : []; c.put(ck, JSON.stringify(m), 6 * 3600); } } catch (e) { console.error(e); }
+      // نسخة السجل المخزّنة تُلغى بتغيير إصدارها (حتى قراءة متزامنة لا تخزّن نسخة قديمة)
+      try { CacheService.getScriptCache().put('plogv:' + me.user_id, String(Date.now()), 21600); } catch (e) { console.error(e); }
       return prayers ? prayers.split(',') : [];
     });
   },
@@ -2267,7 +2273,7 @@ function liveOut_(s, users) {
 function slotOut_(s) { return { slot_id: s.slot_id, title: s.title, week_min: Number(s.week_min), minutes: Number(s.minutes) || 60, tz: s.tz || 'Asia/Riyadh' }; }
 function cleanTz_(v) { const t = String(v || ''); return /^[A-Za-z]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(t) && t.length <= 40 ? t : 'Asia/Riyadh'; }
 function ownLive_(me, p) {
-  const s = rows_('LiveSessions').find(x => x.live_id === String(p.live_id || '') && (me.role === 'superadmin' || x.class_id === me.class_id));
+  const s = rows_('LiveSessions').find(x => x.live_id === String(p.live_id || '') && sameClass_(me, x.class_id));
   if (!s) throw new Error('المحاضرة غير موجودة');
   return s;
 }
@@ -2710,15 +2716,15 @@ Object.assign(ACTIONS, {
 });
 
 /* ============ الفصول: الأدمن تنشئ الفصول وتعيّن معلمتها، والمعلمة تضيف طلاب فصلها ============ */
-// معلمات الفصل (غير من قام بالعملية) يصلهن إشعار بطالب جديد أضافته الأدمن أو المطوّر
-function notifyNewStudent_(me, class_id, name) {
+// معلمات الفصل (غير من أضافت الطالب) يصلهن إشعار بطالب جديد
+function notifyNewStudent_(me, class_id, name, gender) {
   try {
     const staff = {}; rows_('Users').forEach(u => { if (!inactive_(u) && (u.role === 'teacher' || u.role === 'admin') && String(u.class_id) === String(class_id) && u.user_id !== me.user_id) staff[u.user_id] = 1; });
     const cls = rows_('Classes').find(c => String(c.class_id) === String(class_id));
     if (cls && cls.teacher_id && cls.teacher_id !== me.user_id) staff[cls.teacher_id] = 1;
     const subs = rows_('PushSubs').filter(s => staff[s.user_id]);
     if (!subs.length) return;
-    const item = { kind: 'newkid', title: 'طالب جديد في فصلك 🌟', body: String(name).slice(0, 40) + (cls ? ' — ' + String(cls.name).slice(0, 30) : ''), url: '/teacher/students/' };
+    const item = { kind: 'newkid', title: gender === 'f' ? 'طالبة جديدة في فصلكِ 🌟' : 'طالب جديد في فصلكِ 🌟', body: String(name).slice(0, 40) + (cls ? ' — ' + String(cls.name).slice(0, 30) : ''), url: '/teacher/students/' };
     subs.forEach(s => queuePush_(s.sub_id, item));
     UrlFetchApp.fetchAll(subs.map(s => pushRequest_(s.endpoint)));
   } catch (e) { console.error(e); }
@@ -2739,7 +2745,7 @@ function newJoinCode_() {
 // تعيين معلمة للفصل: تصبح معلمته الأساسية وفصلها هو هذا الفصل (الأدمن تعيّن المعلمات، والمطوّر أي حساب)
 function assignTeacher_(me, class_id, teacher_id) {
   const t = rows_('Users').find(u => u.user_id === teacher_id && (u.role === 'teacher' || u.role === 'admin'));
-  if (!t) throw new Error('المعلمة غير موجودة');
+  if (!t || t.active === false || String(t.active).toUpperCase() === 'FALSE') throw new Error('المعلمة غير موجودة');
   if (me.role !== 'superadmin' && t.role !== 'teacher' && t.user_id !== me.user_id) throw new Error('ليس لديك صلاحية على هذا الحساب');
   rows_('Classes').filter(c => c.teacher_id === t.user_id && c.class_id !== class_id).forEach(c => update_('Classes', 'class_id', c.class_id, { teacher_id: '' }));
   if (String(t.class_id) !== String(class_id)) update_('Users', 'user_id', t.user_id, { class_id });
@@ -2793,6 +2799,8 @@ Object.assign(ACTIONS, {
     if (!rows_('Classes').some(c => c.class_id === id)) throw new Error('الفصل غير موجود');
     if (rows_('Users').some(u => u.class_id === id && u.active !== false)) throw new Error('الفصل فيه طلاب أو معلمات — انقليهم أولًا');
     if (rows_('Lectures').some(l => l.class_id === id)) throw new Error('الفصل فيه محاضرات — لا يمكن حذفه');
+    if (rows_('Users').some(u => u.class_id === id) || rows_('Quizzes').some(q => q.class_id === id) || rows_('Assignments').some(a => a.class_id === id) || rows_('LiveSlots').some(s => s.class_id === id))
+      throw new Error('الفصل له بيانات قديمة (اختبارات أو واجبات أو مواعيد أو حسابات موقوفة) — لا يمكن حذفه');
     remove_('Classes', 'class_id', id);
     return true;
   })
@@ -2805,6 +2813,7 @@ function backupFolder_() {
   if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* المجلد اتحذف: ننشئ غيره */ } }
   const root = prop_('ROOT_FOLDER') ? DriveApp.getFolderById(prop_('ROOT_FOLDER')) : DriveApp.getRootFolder();
   const f = root.createFolder('Backups');
+  try { f.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE); } catch (e) { console.error(e); } // النسخ فيها كل البيانات
   props_().setProperty('FOLDER_backups', f.getId());
   return f;
 }
@@ -2812,8 +2821,9 @@ function weeklyBackup() {
   try {
     const folder = backupFolder_();
     DriveApp.getFileById(ss_().getId()).makeCopy('Muntaha backup ' + new Date().toISOString().slice(0, 16).replace('T', ' '), folder);
+    // نحذف النسخ القديمة فقط (بالاسم)، لا أي ملف آخر في المجلد
     const files = [], it = folder.getFiles();
-    while (it.hasNext()) files.push(it.next());
+    while (it.hasNext()) { const f = it.next(); if (/^Muntaha backup /.test(f.getName())) files.push(f); }
     files.sort((a, b) => b.getDateCreated() - a.getDateCreated()).slice(BACKUP_KEEP).forEach(f => f.setTrashed(true));
     props_().setProperty('BACKUP_LAST', now_());
     props_().deleteProperty('BACKUP_ERROR');

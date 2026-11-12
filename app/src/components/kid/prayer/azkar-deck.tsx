@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { motion, type PanInfo } from "motion/react";
 import confetti from "canvas-confetti";
 import { Check, ChevronLeft, ChevronRight, Hand } from "lucide-react";
@@ -12,32 +12,50 @@ import { times } from "@/lib/salah-extras";
 // أذكار ما بعد الصلاة كمجموعة كروت تفاعلية: قائمة صغيرة فوق للتنقل، وكارت كبير يضغط الطفل في أي مكان فيه ليعدّ.
 // إطار الكارت يمتلئ بنور ذهبي حسب ما أنجز (٣٣ ضغطة = دورة كاملة)، ومع كل ضغطة شعاع ونبضة، وبعد آخر ضغطة
 // ينتقل تلقائيًا للكارت التالي. كل الحركة تتوقف مع «تقليل الحركة».
-export type DeckZikr = { id: string; text: string; count: number; ref: string; virtue?: string; extra?: boolean; grade?: string };
+// title: اسم الذكر في القائمة (مراجعة الشيخ: لا يُقص نص قرآن أو ذكر في منتصفه)
+export type DeckZikr = { id: string; text: string; count: number; ref: string; virtue?: string; extra?: boolean; grade?: string; title?: string };
 
 const ar = (n: number) => n.toLocaleString("ar-EG");
-// أول كلمات الذكر للقائمة (بدون علامات الآيات)
-// (والسور بدون البسملة حتى لا تتشابه)
-const short = (t: string) => t.replace(/[﴿﴾]/g, "").replace(/^\s*بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ\s*/, "").split(/\s+/).slice(0, 4).join(" ");
+// اسم الذكر في القائمة: العنوان المراجَع، وللذكر الإضافي (بلا عنوان) «ذكر ١، ٢…» بدل قص نصه
+const short = (z: DeckZikr, k: number) => z.title || `ذكر ${ar(k + 1)}`;
 
-// إطار يمتلئ بالنسبة: مستطيل مدوّر بخط طوله = النسبة
+// إطار يمتلئ بالنسبة: مسار مستطيل مدوّر (path يعمل على كل المتصفحات، عكس calc داخل rect على سفاري القديم)
+// يبدأ من أعلى اليمين ويسير يسارًا (اتجاه القراءة العربية)
+function frameD(w: number, h: number) {
+  const i = 2, r = Math.min(26, (w - 2 * i) / 2, (h - 2 * i) / 2), R = w - i, B = h - i;
+  return `M${R - r},${i} L${i + r},${i} A${r},${r} 0 0 0 ${i},${i + r} L${i},${B - r} A${r},${r} 0 0 0 ${i + r},${B} L${R - r},${B} A${r},${r} 0 0 0 ${R},${B - r} L${R},${i + r} A${r},${r} 0 0 0 ${R - r},${i} Z`;
+}
 function ProgressFrame({ pct, done, pulse }: { pct: number; done: boolean; pulse: number }) {
   const animate = useMotionAllowed();
+  const ref = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const gid = useId().replace(/:/g, "");
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const set = () => { const b = el.getBoundingClientRect(); setSize({ w: Math.round(b.width), h: Math.round(b.height) }); };
+    set();
+    if (!window.ResizeObserver) return;
+    const ro = new ResizeObserver(set); ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const d = size.w > 10 && size.h > 10 ? frameD(size.w, size.h) : "";
   return (
-    <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible" preserveAspectRatio="none">
+    <svg ref={ref} aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible">
       <defs>
-        <linearGradient id="zk-gold" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#FFE08A" /><stop offset="50%" stopColor="#FFB020" /><stop offset="100%" stopColor="#FFE08A" />
         </linearGradient>
       </defs>
-      <rect x="2" y="2" width="calc(100% - 4px)" height="calc(100% - 4px)" rx="26" fill="none" strokeWidth="4" className="stroke-gold/15" />
-      <motion.rect x="2" y="2" width="calc(100% - 4px)" height="calc(100% - 4px)" rx="26" fill="none" strokeWidth="4" strokeLinecap="round"
-        stroke={done ? "#10b981" : "url(#zk-gold)"} pathLength={1}
-        initial={false} animate={{ pathLength: Math.max(0.001, pct) }} transition={animate ? { type: "spring", stiffness: 120, damping: 20 } : { duration: 0 }}
-        style={{ filter: done ? "drop-shadow(0 0 6px rgba(16,185,129,.7))" : "drop-shadow(0 0 7px rgba(255,190,60,.85))" }} />
+      {d && <path d={d} fill="none" strokeWidth="4" className="stroke-gold/15" />}
+      {d && pct > 0 && (
+        <motion.path d={d} fill="none" strokeWidth="4" strokeLinecap="round" stroke={done ? "#10b981" : `url(#${gid})`}
+          initial={false} animate={{ pathLength: pct }} transition={animate ? { type: "spring", stiffness: 120, damping: 20 } : { duration: 0 }}
+          style={{ filter: done ? "drop-shadow(0 0 6px rgba(16,185,129,.7))" : "drop-shadow(0 0 7px rgba(255,190,60,.85))" }} />
+      )}
       {/* شعاع يلف حول الإطار مع كل ضغطة */}
-      {animate && pulse > 0 && !done && (
-        <motion.rect key={pulse} x="2" y="2" width="calc(100% - 4px)" height="calc(100% - 4px)" rx="26" fill="none" strokeWidth="5" strokeLinecap="round"
-          stroke="#FFF4C2" pathLength={1} strokeDasharray="0.06 0.94"
+      {d && animate && pulse > 0 && !done && (
+        <motion.path key={pulse} d={d} fill="none" strokeWidth="5" strokeLinecap="round" stroke="#FFF4C2" pathLength={1} strokeDasharray="0.06 0.94"
           initial={{ strokeDashoffset: 0, opacity: 1 }} animate={{ strokeDashoffset: -1, opacity: 0 }} transition={{ duration: 0.9, ease: "easeOut" }}
           style={{ filter: "drop-shadow(0 0 8px #FFD25A)" }} />
       )}
@@ -66,26 +84,39 @@ export function AzkarDeck({ list, label, remaining, countOf, onTap, renderBody, 
   const [ripple, setRipple] = useState<{ x: number; y: number; k: number } | null>(null);
   const menu = useRef<HTMLOListElement>(null);
   const advance = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragged = useRef(false); // سحب بالماوس لا يُحسب ضغطة
+  const countBtn = useRef<HTMLButtonElement>(null);
+  const keepFocus = useRef(false); // التركيز كان داخل الكارت (لوحة مفاتيح / قارئ شاشة) فننقله للكارت الجديد
+  const [say, setSay] = useState(""); // إعلان لقارئ الشاشة
   const cur = list[Math.min(i, list.length - 1)];
 
   useEffect(() => () => { if (advance.current) clearTimeout(advance.current); }, []);
   // الكارت الحالي يبقى ظاهرًا في القائمة
   useEffect(() => { menu.current?.querySelector<HTMLElement>(`[data-idx="${i}"]`)?.scrollIntoView({ block: "nearest", inline: "center", behavior: animate ? "smooth" : "auto" }); }, [i, animate]);
+  useEffect(() => { if (keepFocus.current) { keepFocus.current = false; countBtn.current?.focus(); } }, [i]);
 
   if (!cur) return null;
-  const go = (k: number) => { if (k < 0 || k >= list.length || k === i) return; setDir(k > i ? 1 : -1); setI(k); setPulse(0); };
+  const go = (k: number) => {
+    if (advance.current) { clearTimeout(advance.current); advance.current = null; }
+    if (k < 0 || k >= list.length || k === i) return;
+    keepFocus.current = !!document.activeElement?.closest("[data-deck-card]");
+    setDir(k > i ? 1 : -1); setI(k); setPulse(0);
+  };
   const r = remaining(cur), c = countOf(cur), done = r === 0, pct = c ? (c - r) / c : 1;
 
   const tap = (e?: React.MouseEvent) => {
     if (done) return;
+    if (dragged.current) { dragged.current = false; return; }
     if (e && (e.target as HTMLElement).closest("[data-no-count]")) return;
-    if (e) { const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); setRipple({ x: e.clientX - b.left, y: e.clientY - b.top, k: Date.now() }); }
+    if (e) { const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); setRipple((o) => ({ x: e.clientX - b.left, y: e.clientY - b.top, k: (o?.k ?? 0) + 1 })); }
     setPulse((p) => p + 1);
     try { navigator.vibrate?.(12); } catch { /* لا شيء */ }
     onTap(cur);
+    setSay(r - 1 === 0 ? "تم" : `باقي ${ar(r - 1)}`);
     if (r - 1 === 0) {
-      // آخر ضغطة: ننتقل للكارت التالي غير المكتمل
-      const nextIdx = list.findIndex((z, k) => k > i && remaining(z) > 0);
+      // آخر ضغطة: ننتقل للكارت التالي غير المكتمل (بعده، وإلا أول واحد ناقص قبله)
+      let nextIdx = list.findIndex((z, k) => k > i && remaining(z) > 0);
+      if (nextIdx < 0) nextIdx = list.findIndex((z) => z.id !== cur.id && remaining(z) > 0);
       const allDone = list.every((z) => z.id === cur.id || remaining(z) === 0);
       if (allDone) {
         onAllDone?.();
@@ -97,9 +128,10 @@ export function AzkarDeck({ list, label, remaining, countOf, onTap, renderBody, 
     }
   };
   const onDragEnd = (_: unknown, info: PanInfo) => {
-    // السحب في الاتجاه العربي: لليسار = التالي
-    if (info.offset.x < -70) go(i + 1);
-    else if (info.offset.x > 70) go(i - 1);
+    // كالقائمة العربية: التالي على اليسار، فالسحب لليمين يجيبه (ويدخل من اليسار)
+    if (Math.abs(info.offset.x) > 8) dragged.current = true;
+    if (info.offset.x > 70) go(i + 1);
+    else if (info.offset.x < -70) go(i - 1);
   };
   const body = renderBody?.(cur, done);
 
@@ -113,11 +145,11 @@ export function AzkarDeck({ list, label, remaining, countOf, onTap, renderBody, 
           return (
             <li key={z.id} data-idx={k} className="shrink-0 snap-center">
               <button type="button" onClick={() => go(k)} aria-current={on ? "step" : undefined}
-                aria-label={`${ar(k + 1)}: ${short(z.text)}${zd ? " — تم" : zc > 1 ? ` — باقي ${ar(zr)}` : ""}`}
+                aria-label={`${ar(k + 1)}: ${short(z, k)}${zd ? " — تم" : zc > 1 ? ` — باقي ${ar(zr)}` : ""}`}
                 className={cn("relative flex h-16 w-24 flex-col items-center justify-center gap-0.5 rounded-2xl border px-2 text-center text-xs font-bold transition",
                   on ? "border-gold bg-gold/15 shadow-soft" : zd ? "border-emerald-500/40 bg-emerald-500/10" : "bg-card")}>
                 <span className={cn("grid size-6 place-items-center rounded-full text-[11px]", zd ? "bg-emerald-500 text-white" : "bg-secondary")}>{zd ? <Check className="size-3.5" /> : ar(k + 1)}</span>
-                <span className="line-clamp-1 w-full text-[11px] text-muted-foreground">{short(z.text)}</span>
+                <span className="line-clamp-1 w-full text-[11px] text-muted-foreground">{short(z, k)}</span>
                 {zc > 1 && !zd && <span aria-hidden className="absolute inset-x-2 bottom-1 h-1 overflow-hidden rounded-full bg-secondary"><span className="block h-full rounded-full bg-gold transition-all" style={{ width: `${((zc - zr) / zc) * 100}%` }} /></span>}
               </button>
             </li>
@@ -133,7 +165,7 @@ export function AzkarDeck({ list, label, remaining, countOf, onTap, renderBody, 
             transition={{ type: "spring", stiffness: 260, damping: 28 }}
             drag={animate ? "x" : false} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.25} onDragEnd={onDragEnd}
             data-testid={cur.id === "kursi" && !cur.extra ? "kursi-card" : "zikr-card"}
-            onClick={tap}
+            onClick={tap} data-deck-card
             className={cn("relative cursor-pointer select-none overflow-hidden rounded-[28px] p-5 shadow-soft transition-colors",
               done ? "bg-emerald-50 dark:bg-[#06261f]" : "bg-card")}>
             <ProgressFrame pct={pct} done={done} pulse={pulse} />
@@ -157,11 +189,11 @@ export function AzkarDeck({ list, label, remaining, countOf, onTap, renderBody, 
             )}
             <div className="relative mt-4 flex items-center justify-between gap-3">
               <span className="flex items-center gap-1 text-xs font-bold text-muted-foreground">
-                {done ? <span className="text-emerald-700 dark:text-emerald-300">{g("أحسنت", "أحسنتِ")} ✨</span> : <><Hand className="size-4" /> {g("اضغط في أي مكان على الكارت", "اضغطي في أي مكان على الكارت")}</>}
+                {done ? <span className="text-emerald-700 dark:text-emerald-300">{g("أحسنت", "أحسنتِ")} ✨</span> : <><Hand className="size-4" /> {g("قل الذكر ثم اضغط على الكارت", "قولي الذكر ثم اضغطي على الكارت")}</>}
               </span>
               {/* زر للوحة المفاتيح وقارئ الشاشة (والضغط على الكارت كله يعمل نفس الشيء) */}
-              <button type="button" data-no-count onClick={(e) => { e.stopPropagation(); tap(); }} disabled={done}
-                aria-label={done ? `تم: ${short(cur.text)}` : c > 1 ? `عدّ: ${ar(r)} متبقية` : `قلته: ${short(cur.text)}`}
+              <button ref={countBtn} type="button" data-no-count onClick={(e) => { e.stopPropagation(); keepFocus.current = true; tap(); }} disabled={done}
+                aria-label={done ? `تم: ${short(cur, i)}` : c > 1 ? `عدّ: ${ar(r)} متبقية` : `قلته: ${short(cur, i)}`}
                 className={cn("flex h-12 min-w-24 items-center justify-center gap-1 rounded-2xl px-4 text-lg font-extrabold tabular-nums transition active:scale-95",
                   done ? "bg-emerald-500 text-white" : "bg-gold text-[#3D2600] shadow-soft")}>
                 {done ? <><Check className="size-5" /> تم</> : c > 1 ? <motion.span key={r} initial={animate ? { scale: 1.4 } : false} animate={{ scale: 1 }}>{ar(r)}</motion.span> : "قلته"}
@@ -170,6 +202,7 @@ export function AzkarDeck({ list, label, remaining, countOf, onTap, renderBody, 
           </motion.div>
       </div>
 
+      <p aria-live="polite" className="sr-only">{say}</p>
       <div className="flex items-center justify-between gap-2">
         <button type="button" onClick={() => go(i - 1)} disabled={i === 0} aria-label="الذكر السابق" className="flex h-11 items-center gap-1 rounded-2xl bg-secondary px-4 font-bold disabled:opacity-40"><ChevronRight className="size-5" /> السابق</button>
         <span className="text-sm font-bold text-muted-foreground">{ar(list.filter((z) => remaining(z) === 0).length)} / {ar(list.length)}</span>

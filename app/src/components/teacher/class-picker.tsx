@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { session } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { useHydrated } from "@/hooks/use-hydrated";
@@ -15,21 +16,27 @@ export function useClassScope() {
   const manager = role === "admin" || role === "superadmin";
   const classes = useApi<ClassRow[]>("classes", {}, { enabled: manager });
   const [picked, setPicked] = useState<string>("");
+  const [init, setInit] = useState(false); // قرأنا الرابط والمحفوظ
+  const router = useRouter(), pathname = usePathname();
   // الاختيار من الرابط (?class=) أو المحفوظ على الجهاز
   useEffect(() => {
-    if (!manager) return;
-    const q = new URLSearchParams(location.search).get("class");
-    let v = q || "";
-    if (!v) { try { v = localStorage.getItem(KEY) || ""; } catch { /* لا شيء */ } }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (v) setPicked(v);
-  }, [manager]);
+    if (!hydrated) return;
+    if (manager) {
+      const q = new URLSearchParams(location.search).get("class");
+      let v = q || "";
+      if (!v) { try { v = localStorage.getItem(KEY) || ""; } catch { /* لا شيء */ } }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (v) setPicked(v);
+    }
+    setInit(true);
+  }, [manager, hydrated]);
   const list = Array.isArray(classes.data) ? classes.data : [];
   const mine = session.user()?.class_id ?? "";
   // فصل غير موجود (اتحذف) يرجع للافتراضي
   const class_id = manager ? (list.some((c) => c.class_id === picked) ? picked : list.some((c) => c.class_id === mine) ? mine : list[0]?.class_id ?? "") : "";
-  const pick = (id: string) => { setPicked(id); try { localStorage.setItem(KEY, id); } catch { /* لا شيء */ } };
-  return { manager, classes: list, class_id, current: list.find((c) => c.class_id === class_id), pick, reloadClasses: classes.reload, ready: !manager || !!class_id || (!classes.loading && list.length === 0) };
+  // الاختيار يُحفظ ويُكتب في الرابط (حتى إعادة التحميل تبقى على نفس الفصل)
+  const pick = (id: string) => { setPicked(id); try { localStorage.setItem(KEY, id); } catch { /* لا شيء */ } router.replace(`${pathname}?class=${encodeURIComponent(id)}`); };
+  return { manager, classes: list, class_id, current: list.find((c) => c.class_id === class_id), pick, reloadClasses: classes.reload, ready: hydrated && init && (!manager || !!class_id || (!classes.loading && list.length === 0)) };
 }
 
 export function ClassSelect({ scope }: { scope: ReturnType<typeof useClassScope> }) {

@@ -61,7 +61,7 @@ export default function ClassesPage() {
                     <h2 className="truncate font-heading text-xl font-extrabold">{c.name}</h2>
                     <p className="text-sm text-muted-foreground">{c.teacher ? `المعلمة: ${c.teacher}` : "بدون معلمة بعد"}</p>
                   </div>
-                  <button type="button" onClick={() => { navigator.clipboard?.writeText(c.join_code); toast.success("تم نسخ كود الفصل"); }} aria-label={`نسخ كود ${c.name}`}
+                  <button type="button" onClick={() => { const manual = () => toast.error(`انسخي الكود يدويًا: ${c.join_code}`); if (navigator.clipboard) navigator.clipboard.writeText(c.join_code).then(() => toast.success("تم نسخ كود الفصل"), manual); else manual(); }} aria-label={`نسخ كود ${c.name}`}
                     className="flex shrink-0 items-center gap-1 rounded-xl bg-secondary px-3 py-2 font-heading text-sm font-bold tracking-widest" dir="ltr"><Copy className="size-4" /> {c.join_code}</button>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs font-bold">

@@ -24,7 +24,12 @@ export const session = {
   token: () => safeGet(TOKEN_KEY),
   user: (): User | null => { const raw = safeGet(USER_KEY); try { return raw ? (JSON.parse(raw) as User) : null; } catch { return null; } },
   save: (d: { token: string; user: User }) => { safeSet(TOKEN_KEY, d.token); safeSet(USER_KEY, JSON.stringify(d.user)); },
-  clear: () => { safeSet(TOKEN_KEY, null); safeSet(USER_KEY, null); },
+  // الخروج يمسح بيانات صاحب الحساب من الجهاز (سجل الصلوات، اختيار الفصل، نصوص الإشعارات باسمه)
+  clear: () => {
+    safeSet(TOKEN_KEY, null); safeSet(USER_KEY, null);
+    try { Object.keys(localStorage).filter((k) => k.startsWith("serah_plog:") || k === "serah_class" || k === "serah_q_prefs_t").forEach((k) => localStorage.removeItem(k)); } catch { /* لا شيء */ }
+    try { void caches.delete("serah-notify"); } catch { /* لا شيء */ }
+  },
 };
 
 export class ApiError extends Error {

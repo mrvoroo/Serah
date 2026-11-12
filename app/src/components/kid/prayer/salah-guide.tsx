@@ -15,7 +15,7 @@ import { videoFor, ytId, type SalahExtras } from "@/lib/salah-extras";
 // المحتوى مراجَع من الشيخ: content/salah.json
 // countAfter: عدد مختلف بعد صلوات معينة (المعوذات ٣ بعد الفجر والمغرب)، only: ذكر خاص بصلوات معينة
 // extra: ذكر إضافي أضافته الأدمن (يظهر بعد الأذكار الأصلية)
-type Zikr = { id: string; text: string; count: number; ref: string; virtue?: string; countAfter?: Partial<Record<PrayerId, number>>; only?: PrayerId[]; extra?: boolean; grade?: string };
+type Zikr = { id: string; title?: string; text: string; count: number; ref: string; virtue?: string; countAfter?: Partial<Record<PrayerId, number>>; only?: PrayerId[]; extra?: boolean; grade?: string };
 type Prayer = { id: string; name: string; fard: number; before: number; after: number; note: string };
 type Step = { id: string; title: string; text: string; ref?: string; video?: string };
 type Video = { id: string; title: string; youtubeId: string };
@@ -82,7 +82,7 @@ export function SalahGuide() {
                 className={cn("h-10 rounded-2xl px-3 text-sm font-bold transition", after === p ? "bg-gold text-[#3D2600] shadow-soft" : "bg-secondary text-secondary-foreground")}>{PRAYER_NAMES[p]}</button>
             ))}
           </div>
-          {doneAll && <p className="rounded-2xl bg-emerald-500/15 p-3 text-center font-bold text-emerald-700 dark:text-emerald-300">ما شاء الله! {g("أتممت", "أتممتِ")} أذكار الصلاة 🌟</p>}
+          {doneAll && <p className="rounded-2xl bg-emerald-500/15 p-3 text-center font-bold text-emerald-700 dark:text-emerald-300">ما شاء الله! {g("أتممت", "أتممتِ")} أذكار الصلاة، تقبّل الله {g("منك", "منكِ")} 🌟</p>}
           <AzkarDeck key={`${after}:${round}`} list={list} label="أذكار ما بعد الصلاة" remaining={remaining} countOf={countOf} onTap={tap} renderBody={kursiBody} />
           {chosen.length > 0 && (
             <section aria-labelledby="chosen-title" className="mt-2 flex flex-col gap-3">

@@ -45,7 +45,7 @@ export default function StudentsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3"><Icon3D name="cap" size={48} float /><div><h1 className="font-heading text-2xl font-extrabold">الطلاب</h1><p className="text-sm text-muted-foreground">{data?.length ?? 0} طفل في {scope.current ? `«${scope.current.name}»` : "الفصل"}</p></div></div>
         <ClassSelect scope={scope} />
-        <Button variant="hero" size="lg2" onClick={() => { setName(""); setPin(""); setGender("m"); setAdd(true); }}><Plus /> إضافة طفل</Button>
+        <Button variant="hero" size="lg2" disabled={!scope.ready || (scope.manager && !scope.class_id)} onClick={() => { setName(""); setPin(""); setGender("m"); setAdd(true); }}><Plus /> إضافة طفل</Button>
       </div>
 
       {loading && !data ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 rounded-[24px]" />)}</div> : (

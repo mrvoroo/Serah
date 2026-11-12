@@ -1614,7 +1614,7 @@ test('الفصول: الأدمن تنشئ فصلًا وتعيّن معلمته �
   const sub = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/tch', plan: [] }, tk);
   assert.ok(sub.ok);
   assert.ok(t.call('addStudent', { name: 'عمر', pin: '1234', class_id: c.data.class_id }, admin).ok);
-  assert.deepStrictEqual(t.call('pullNotices', { key: sub.data.key }).data.items.map(x => [x.kind, x.title]), [['newkid', 'طالب جديد في فصلك 🌟']]);
+  assert.deepStrictEqual(t.call('pullNotices', { key: sub.data.key }).data.items.map(x => [x.kind, x.title]), [['newkid', 'طالب جديد في فصلكِ 🌟']]);
   // المعلمة تضيف لفصلها فقط (class_id آخر يُتجاهل) ولا يصلها إشعار عن نفسها
   assert.ok(t.call('addStudent', { name: 'سلمى', pin: '1234', class_id: 'C1', gender: 'f' }, tk).ok);
   assert.strictEqual(t.g.rows_('Users').find(u => u.name === 'سلمى').class_id, c.data.class_id);
@@ -1639,7 +1639,7 @@ test('نسخة احتياطية: للمطوّر فقط، تنسخ الشيت ل�
   t.props.FOLDER_backups = 'bk';
   const realGet = t.drive.getFileById, realFolder = t.drive.getFolderById;
   t.drive.getFolderById = (id) => (id === 'bk' ? folder : realFolder(id));
-  t.drive.getFileById = (id) => ({ ...realGet(id), makeCopy: (name) => { const f = { name, trashed: false, at: Date.now() + copies.length, getDateCreated: () => new Date(Date.now() + copies.length * 1000), setTrashed(v) { this.trashed = v; } }; copies.push(f); return f; } });
+  t.drive.getFileById = (id) => ({ ...realGet(id), makeCopy: (name) => { const f = { name, getName: () => name, trashed: false, at: Date.now() + copies.length, getDateCreated: () => new Date(Date.now() + copies.length * 1000), setTrashed(v) { this.trashed = v; } }; copies.push(f); return f; } });
   for (let i = 0; i < 10; i++) assert.ok(i >= 6 || t.call('backupNow', {}, dev).ok, 'backup ' + i);
   assert.strictEqual(copies.length, 6);
   assert.strictEqual(t.call('systemHealth', {}, dev).data.backupLast !== '', true);
