@@ -256,7 +256,7 @@ const POLICY = {
   changeMyPin: { min: 'teacher', write: 1, audit: 1 },
   setLectureStatus: { min: 'admin', write: 1, audit: 1 },
   auditLog: { min: 'admin' },
-  users: { min: 'superadmin' }, classes: { min: 'admin' }, systemHealth: { min: 'superadmin' },
+  users: { min: 'superadmin' }, classes: { min: 'admin' }, systemHealth: { min: 'superadmin' }, backupNow: { min: 'superadmin', write: 1, audit: 1 },
   createClass: { min: 'admin', write: 1, audit: 1 }, updateClass: { min: 'admin', write: 1, audit: 1 }, deleteClass: { min: 'admin', write: 1, audit: 1 },
   viewAs: { min: 'superadmin', audit: 1 },
   setRole: { min: 'superadmin', write: 1, audit: 1 },
@@ -343,6 +343,7 @@ function migrate_() {
     // مشغّل الإشعارات كل دقيقة — يُنشأ مرة واحدة تلقائيًا (بدون فتح المحرر)
     if (!prop_('VAPID_PUB')) { try { genVapid_(); } catch (e) { console.error(e); } }
     if (prop_('PUSH_TRIGGER') !== '2') { try { installPushTrigger(); props_().setProperty('PUSH_TRIGGER', '2'); } catch (e) { console.error(e); } }
+    if (prop_('BACKUP_TRIGGER') !== '1') { try { installBackupTrigger(); props_().setProperty('BACKUP_TRIGGER', '1'); } catch (e) { console.error(e); } }
     props_().setProperty('SCHEMA_VERSION', String(VERSION));
   } finally { lock.releaseLock(); }
 }
@@ -1200,7 +1201,7 @@ const ACTIONS = {
       }
     } catch (e) { bot = { error: String(e.message || e) }; }
     const locked = rows_('LoginAttempts').filter(a => a.locked_until && new Date(a.locked_until).getTime() > Date.now()).length;
-    return { version: VERSION, tables, settings, triggers, bot, lockedAccounts: locked, now: now_() };
+    return { version: VERSION, tables, settings, triggers, bot, lockedAccounts: locked, now: now_(), backupLast: prop_('BACKUP_LAST') || '', backupError: prop_('BACKUP_ERROR') || '' };
   }
 };
 
@@ -2796,4 +2797,35 @@ Object.assign(ACTIONS, {
     return true;
   })
 });
+
+/* ============ نسخة احتياطية أسبوعية من الشيت (كل جمعة ٣ فجرًا) — تُحفظ آخر ٨ نسخ في مجلد Backups ============ */
+const BACKUP_KEEP = 8;
+function backupFolder_() {
+  const id = prop_('FOLDER_backups');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* المجلد اتحذف: ننشئ غيره */ } }
+  const root = prop_('ROOT_FOLDER') ? DriveApp.getFolderById(prop_('ROOT_FOLDER')) : DriveApp.getRootFolder();
+  const f = root.createFolder('Backups');
+  props_().setProperty('FOLDER_backups', f.getId());
+  return f;
+}
+function weeklyBackup() {
+  try {
+    const folder = backupFolder_();
+    DriveApp.getFileById(ss_().getId()).makeCopy('Muntaha backup ' + new Date().toISOString().slice(0, 16).replace('T', ' '), folder);
+    const files = [], it = folder.getFiles();
+    while (it.hasNext()) files.push(it.next());
+    files.sort((a, b) => b.getDateCreated() - a.getDateCreated()).slice(BACKUP_KEEP).forEach(f => f.setTrashed(true));
+    props_().setProperty('BACKUP_LAST', now_());
+    props_().deleteProperty('BACKUP_ERROR');
+    return prop_('BACKUP_LAST');
+  } catch (e) {
+    props_().setProperty('BACKUP_ERROR', String(e.message || e).slice(0, 300));
+    throw e;
+  }
+}
+function installBackupTrigger() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'weeklyBackup').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('weeklyBackup').timeBased().onWeekDay(ScriptApp.WeekDay.FRIDAY).atHour(3).create();
+}
+ACTIONS.backupNow = () => { rate_('backup', 6, 3600); return { last: weeklyBackup() }; };
 

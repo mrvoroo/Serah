@@ -79,7 +79,7 @@ function boot() {
     }, getFolderById: () => ({ createFile: (blob) => { saved.push({ ...(blob && blob._b) }); return { getId: () => 'drv' + (++drv) }; } }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
   const g = new Function(...Object.keys(env), code + '\nreturn { pushTick, vapidJwt_, vapid_, handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN, oggOpusToWebm_ };')(...Object.values(env));
-  return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches, shared, lock };
+  return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches, shared, lock, drive: env.DriveApp };
 }
 
 // بيانات بالشكل القديم (قبل أعمدة last_login_at وجدول LoginAttempts) كما في الشيت الحقيقي
@@ -1626,6 +1626,24 @@ test('الفصول: الأدمن تنشئ فصلًا وتعيّن معلمته �
   assert.match(t.call('deleteClass', { class_id: c.data.class_id }, admin).error, /فيه طلاب/);
   const e = t.call('createClass', { name: 'فصل فاضي' }, dev).data;
   assert.ok(t.call('deleteClass', { class_id: e.class_id }, admin).ok);
+});
+
+test('نسخة احتياطية: للمطوّر فقط، تنسخ الشيت لمجلد Backups وتبقي آخر ٨', () => {
+  const t = setup();
+  const copies = [];
+  const folder = { getId: () => 'bk', getFiles: () => { let i = 0; return { hasNext: () => i < copies.length, next: () => copies[i++] }; } };
+  t.g.__setDrive && t.g.__setDrive(null);
+  const dev = t.login({ name: 'م.احمد', pin: '987654' }), admin = t.login({ name: 'المعلمة', pin: '482615' });
+  assert.ok(!t.call('backupNow', {}, admin).ok, 'admin cannot');
+  // درايف وهمي للنسخ
+  t.props.FOLDER_backups = 'bk';
+  const realGet = t.drive.getFileById, realFolder = t.drive.getFolderById;
+  t.drive.getFolderById = (id) => (id === 'bk' ? folder : realFolder(id));
+  t.drive.getFileById = (id) => ({ ...realGet(id), makeCopy: (name) => { const f = { name, trashed: false, at: Date.now() + copies.length, getDateCreated: () => new Date(Date.now() + copies.length * 1000), setTrashed(v) { this.trashed = v; } }; copies.push(f); return f; } });
+  for (let i = 0; i < 10; i++) assert.ok(i >= 6 || t.call('backupNow', {}, dev).ok, 'backup ' + i);
+  assert.strictEqual(copies.length, 6);
+  assert.strictEqual(t.call('systemHealth', {}, dev).data.backupLast !== '', true);
+  t.drive.getFileById = realGet; t.drive.getFolderById = realFolder;
 });
 
 for (const [name, fn] of tests) {
