@@ -1,5 +1,6 @@
 import data from "@/content/morning-evening.json";
 import { timesFor, type Place } from "@/lib/prayer";
+import { session } from "@/lib/api";
 
 // أذكار الصباح والمساء (محتوى مراجَع من الشيخ: content/morning-evening.json)
 export type Period = "am" | "pm";
@@ -35,10 +36,12 @@ export const listFor = (p: Period, short: boolean) => AZKAR.filter((z) => fitsPe
 export const PERIOD_NAME: Record<Period, string> = { am: "أذكار الصباح", pm: "أذكار المساء" };
 
 // عدّاد اليوم محفوظ على الجهاز (يكمل من حيث وقف لو أغلق الصفحة)، ويبدأ من جديد مع كل فترة جديدة
+// اليوم المنطقي للفترة: المساء بعد منتصف الليل (قبل الخامسة) يتبع اليوم السابق — نفس اليوم يُرسل للخادم للنجوم
+export const logicalDay = (p: Period, now = new Date()) => { const d = new Date(now); if (p === "pm" && d.getHours() < 5) d.setDate(d.getDate() - 1); return d; };
+// العدّاد لكل حساب (حتى لا يرى أخ أو أخت على نفس الجهاز أذكار الآخر مكتملة)
 const dayKey = (p: Period, now = new Date()) => {
-  // المساء بعد منتصف الليل يتبع اليوم السابق
-  const d = new Date(now); if (p === "pm" && d.getHours() < 5) d.setDate(d.getDate() - 1);
-  return `serah_me:${p}:${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  const d = logicalDay(p, now), u = session.user()?.user_id ?? "x";
+  return `serah_me:${u}:${p}:${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 };
 export function loadCounts(p: Period): Record<string, number> { try { return JSON.parse(localStorage.getItem(dayKey(p)) || "{}"); } catch { return {}; } }
 export function saveCounts(p: Period, c: Record<string, number>) {

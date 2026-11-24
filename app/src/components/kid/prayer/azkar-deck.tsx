@@ -92,7 +92,13 @@ export function AzkarDeck({ list, label, remaining, countOf, onTap, renderBody, 
 
   useEffect(() => () => { if (advance.current) clearTimeout(advance.current); }, []);
   // الكارت الحالي يبقى ظاهرًا في القائمة
-  useEffect(() => { menu.current?.querySelector<HTMLElement>(`[data-idx="${i}"]`)?.scrollIntoView({ block: "nearest", inline: "center", behavior: animate ? "smooth" : "auto" }); }, [i, animate]);
+  // نحرّك القائمة وحدها (scrollIntoView على سفاري يحرّك الصفحة كلها جانبيًا)
+  useEffect(() => {
+    const m = menu.current, chip = m?.querySelector<HTMLElement>(`[data-idx="${i}"]`);
+    if (!m || !chip) return;
+    const left = chip.offsetLeft - (m.clientWidth - chip.offsetWidth) / 2;
+    if (typeof m.scrollTo === "function") m.scrollTo({ left, behavior: animate ? "smooth" : "auto" }); else m.scrollLeft = left;
+  }, [i, animate]);
   useEffect(() => { if (keepFocus.current) { keepFocus.current = false; countBtn.current?.focus(); } }, [i]);
 
   if (!cur) return null;

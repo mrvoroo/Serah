@@ -119,7 +119,7 @@ export function WhoBoard({ rounds, onDone }: { rounds: WhoRound[]; onDone: (scor
   return (
     <div className="flex flex-col gap-3">
       <p className="text-center text-sm font-bold text-muted-foreground">الجولة {ar(k + 1)} من {ar(rounds.length)}</p>
-      <ul className="flex flex-col gap-2">
+      <ul aria-live="polite" className="flex flex-col gap-2">
         {r.clues.slice(0, shown).map((c, i) => (
           <li key={i} className="flex items-start gap-2 rounded-2xl bg-card p-3 leading-7 shadow-soft"><Lightbulb className="mt-1 size-4 shrink-0 text-amber-500" /> {c}</li>
         ))}

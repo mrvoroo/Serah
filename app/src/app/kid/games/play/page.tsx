@@ -14,7 +14,7 @@ import { MatchBoard, OrderBoard, WhoBoard } from "@/components/games/boards";
 import { isGirl, g } from "@/lib/kid-text";
 import { useMotionAllowed } from "@/lib/tier";
 import type { ProphetRow } from "@/lib/prophets";
-import { MIN_SEC, PASS, akhlaqPairs, akhlaqWhy, asmaPairs, symbolRef, gameMeta, matchPairs, orderSet, visibleProphets, whoRounds, type GameId } from "@/lib/games";
+import { LEVEL_NEED, MIN_SEC, PASS, akhlaqPairs, akhlaqWhy, asmaPairs, symbolRef, gameMeta, matchPairs, orderSet, visibleProphets, whoRounds, type GameId } from "@/lib/games";
 import { cn } from "@/lib/utils";
 
 // شاشة اللعب: نبدأ المستوى عند الخادم (يتحقق أنه مفتوح)، ونرسل النتيجة بعد الحد الأدنى للوقت
@@ -94,9 +94,10 @@ function Play() {
           {res.stars > 0 && <p className="flex items-center gap-1 text-lg font-bold text-amber-600 dark:text-gold"><Star className="size-5 fill-current" /> +{ar(res.stars)} نجمة</p>}
           {res.passed && res.stars === 0 && <p className="text-sm text-muted-foreground">{g("خدت", "خدتِ")} نجوم المستوى ده قبل كده</p>}
           {!res.passed && <p className="text-sm text-muted-foreground">النجاح من {ar(PASS)}٪</p>}
+          {res.passed && level < 3 && meta.prophets && vps.length < LEVEL_NEED[level] && <p className="text-sm text-muted-foreground">المستوى {ar(level + 1)} يفتح لما {g("تقابل", "تقابلي")} {ar(LEVEL_NEED[level])} أنبياء في رحلتك ✨</p>}
           <div className="flex flex-wrap justify-center gap-2">
-            {res.passed && level < 3 && <Link href={`/kid/games/play/?g=${game}&l=${level + 1}`} className={buttonVariants({ variant: "hero", size: "lg2" })}>المستوى {ar(level + 1)}</Link>}
-            <Button variant="secondary" size="lg2" onClick={() => setRound((r) => r + 1)}><RotateCcw /> العب تاني</Button>
+            {res.passed && level < 3 && (!meta.prophets || vps.length >= LEVEL_NEED[level]) && <Link href={`/kid/games/play/?g=${game}&l=${level + 1}`} className={buttonVariants({ variant: "hero", size: "lg2" })}>المستوى {ar(level + 1)}</Link>}
+            <Button variant="secondary" size="lg2" onClick={() => setRound((r) => r + 1)}><RotateCcw /> {g("العب تاني", "العبي تاني")}</Button>
           </div>
         </div>
       ) : (

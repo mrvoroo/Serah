@@ -109,8 +109,8 @@ const rememberStation = (id: string) => { try { sessionStorage.setItem(AT_KEY, i
 export function Journey({ stations }: { stations: Station[] }) {
   // الكبار (ولي الأمر والمعلمات) يرون ترحيبًا وكلامًا مخصصًا لهم بدل كلام الطفل
   const role = session.user()?.role;
-  const parent = role === "parent", teacherRole = role === "teacher" || role === "admin";
-  const startTag = (t: string) => (parent ? "أهلًا بكم" : teacherRole ? "أهلًا بكِ" : g(t, t.replace("يا بطل", "يا بطلة")));
+  const parent = role === "parent", teacherRole = role === "teacher" || role === "admin" || role === "superadmin";
+  const startTag = (t: string) => (parent ? "أهلًا بكم" : role === "superadmin" ? "أهلًا بك" : teacherRole ? "أهلًا بكِ" : g(t, t.replace("يا بطل", "يا بطلة")));
   const startText = (t: string) => (parent ? "رحلة مع أنبياء الله خطوة خطوة: في كل محطة حكاية نبي، تقرؤونها وتحكونها لأطفالكم وتعيشون معهم دروسها."
     : teacherRole ? "رحلة مع أنبياء الله خطوة خطوة، كما يراها الأطفال: في كل محطة حكاية نبي مراجَعة."
     : g(t, t.replace("انزل معانا", "انزلي معانا")));

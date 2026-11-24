@@ -12,7 +12,7 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { api, driveImage } from "@/lib/api";
 import { g } from "@/lib/kid-text";
 import { loadPlace } from "@/lib/prayer";
-import { KID_ORDER, PERIOD_NAME, currentPeriod, fitsPeriod, loadCounts, saveCounts, textFor, titleFor, todayIso, zikrById, type Period, type Release } from "@/lib/azkar";
+import { KID_ORDER, PERIOD_NAME, currentPeriod, fitsPeriod, loadCounts, saveCounts, textFor, titleFor, todayIso, logicalDay, zikrById, type Period, type Release } from "@/lib/azkar";
 import { cn } from "@/lib/utils";
 
 // أذكار الصباح والمساء للطفل: تظهر فقط الأذكار التي فتحتها المعلمة لفصله، وآخر ذكر فُتح هو «ذكر الأسبوع».
@@ -46,7 +46,7 @@ export function KidAzkar() {
 
   const rel = Array.isArray(data) ? data : [];
   const byId = new Map(rel.map((r) => [r.zikr_id, r]));
-  const week = rel.find((r) => zikrById(r.zikr_id));
+  const week = rel.find((r) => { const z = zikrById(r.zikr_id); return z && fitsPeriod(z, period); }) ?? rel.find((r) => zikrById(r.zikr_id));
   const list: DeckZikr[] = KID_ORDER.map(zikrById).filter((z): z is NonNullable<typeof z> => !!z && byId.has(z.id) && fitsPeriod(z, period))
     .map((z) => ({ id: z.id, title: titleFor(z, period), text: textFor(z, period), count: z.count, ref: "" }));
   const remaining = (z: DeckZikr) => Math.min(left[z.id] ?? z.count, z.count);
@@ -60,7 +60,7 @@ export function KidAzkar() {
     if (sent.current || period !== currentPeriod(loadPlace())) return;
     sent.current = true;
     try {
-      const r = await api<{ stars: number }>("azkarDone", { period, date: todayIso() });
+      const r = await api<{ stars: number }>("azkarDone", { period, date: todayIso(logicalDay(period)) });
       if (r.stars) toast.success(`${g("أحسنت", "أحسنتِ")}! ${g("كسبت", "كسبتِ")} ${r.stars.toLocaleString("ar-EG")} نجمة ⭐`);
     } catch { sent.current = false; }
   };

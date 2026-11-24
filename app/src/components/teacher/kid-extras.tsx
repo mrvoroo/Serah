@@ -26,8 +26,8 @@ export function ParentCodeDialog({ kid, onClose }: { kid: Kid | null; onClose: (
     try { setCode(await api<{ code: string; expires_at: string }>("parentCode", { user_id: kid.user_id })); invalidate("parentLinks"); void links.reload(); }
     catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
   };
-  const unlink = async (parent_id: string) => {
-    if (!kid) return;
+  const unlink = async (parent_id: string, name: string) => {
+    if (!kid || !window.confirm(`فك ربط «${name}» بـ ${kid.name}؟ سيحتاج كودًا جديدًا ليربطه مرة أخرى.`)) return;
     setBusy(true);
     try { await api("unlinkParent", { user_id: kid.user_id, parent_id }); toast.success("تم فك الربط"); invalidate("parentLinks"); await links.reload(); }
     catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
@@ -40,7 +40,7 @@ export function ParentCodeDialog({ kid, onClose }: { kid: Kid | null; onClose: (
         <DialogHeader><DialogTitle>ولي أمر {kid?.name}</DialogTitle><DialogDescription>كود يصلح لمرة واحدة خلال ١٤ يومًا، يدخل به ولي الأمر من صفحة «أولياء الأمور» وينشئ حسابه</DialogDescription></DialogHeader>
         {code ? (
           <div className="flex flex-col items-center gap-2 rounded-2xl bg-secondary p-4 text-center">
-            <p data-testid="parent-code" dir="ltr" className="font-heading text-3xl font-extrabold tracking-[0.25em]">{fmtCode(code.code)}</p>
+            <p data-testid="parent-code" dir="ltr" className="select-all font-heading text-3xl font-extrabold tracking-[0.25em]">{fmtCode(code.code)}</p>
             <p className="text-xs text-muted-foreground">صالح حتى {fmtDate(code.expires_at)} — لن يظهر مرة أخرى، انسخيه الآن</p>
             <Button variant="hero" size="lg2" onClick={copy}><Copy /> نسخ الكود</Button>
           </div>
@@ -52,7 +52,7 @@ export function ParentCodeDialog({ kid, onClose }: { kid: Kid | null; onClose: (
           {links.loading && !links.data ? <Loader2 className="mx-auto animate-spin" /> : parents.length === 0 ? <p className="text-sm text-muted-foreground">لا أحد بعد</p> : parents.map((p) => (
             <div key={p.parent_id} className="flex items-center justify-between gap-2 rounded-2xl border p-2 text-sm">
               <span className="min-w-0 truncate font-bold">{p.gender === "f" ? "👩" : "👨"} {p.name}</span>
-              <Button variant="ghost" size="lg" className="text-destructive" disabled={busy} onClick={() => unlink(p.parent_id)} aria-label={`فك ربط ${p.name}`}><UserMinus /> فك</Button>
+              <Button variant="ghost" size="lg" className="text-destructive" disabled={busy} onClick={() => unlink(p.parent_id, p.name)} aria-label={`فك ربط ${p.name}`}><UserMinus /> فك</Button>
             </div>
           ))}
         </div>
@@ -71,7 +71,7 @@ export function AchievementDialog({ kid, onClose, onSaved }: { kid: Kid | null; 
     try { await fn(); toast.success(ok); invalidate("kidAchievements"); invalidate("students"); await list.reload(); onSaved(); return true; }
     catch (e) { toast.error((e as Error).message); return false; } finally { setBusy(false); }
   };
-  const save = async () => { if (kid && await run(() => api("kidAchievement", { user_id: kid.user_id, kind, title }), kind === "surah" ? "مبارك! +١٠ نجوم 🎉" : "أحسن! +٢ نجمة ⭐")) setTitle(""); };
+  const save = async () => { if (kid && await run(() => api("kidAchievement", { user_id: kid.user_id, kind, title }), kind === "surah" ? `تم التسجيل — +١٠ نجوم لـ${kid.name} 🎉` : `تم التسجيل — +٢ نجمة لـ${kid.name} ⭐`)) setTitle(""); };
   const items = Array.isArray(list.data) ? list.data : [];
   return (
     <Dialog open={!!kid} onOpenChange={(o) => !o && !busy && onClose()}>
@@ -95,7 +95,7 @@ export function AchievementDialog({ kid, onClose, onSaved }: { kid: Kid | null; 
                 {a.kind === "surah" ? <BookCheck className="size-4 text-emerald-500" /> : <Star className="size-4 text-amber-500" />}
                 <span className="min-w-0 flex-1 truncate">{a.title}</span>
                 <span className="text-xs text-muted-foreground">{fmtDate(a.at)}</span>
-                <button type="button" aria-label={`إلغاء ${a.title}`} disabled={busy} onClick={() => run(() => api("deleteKidAchievement", { key: a.key }), "تم الإلغاء")} className="text-destructive"><Trash2 className="size-4" /></button>
+                <button type="button" aria-label={`إلغاء ${a.title}`} disabled={busy} onClick={() => { if (window.confirm(`إلغاء «${a.title}»؟ ستُخصم نجومه من الطفل.`)) void run(() => api("deleteKidAchievement", { key: a.key }), "تم الإلغاء"); }} className="text-destructive"><Trash2 className="size-4" /></button>
               </li>
             ))}
           </ul>
