@@ -17,7 +17,7 @@ function write(key: string, v: unknown) {
 
 export function viewAsInfo(): ViewAs | null { return read<ViewAs>(MARK_KEY); }
 
-export const ROLE_LABEL: Record<Role, string> = { student: "طفل", teacher: "معلمة", admin: "معلمة أدمن", superadmin: "مطوّر" };
+export const ROLE_LABEL: Record<Role, string> = { student: "طفل", teacher: "معلمة", admin: "معلمة أدمن", superadmin: "مطوّر", parent: "ولي أمر" };
 
 export async function startViewAs(user_id: string) {
   const d = await api<{ token: string; user: User }>("viewAs", { user_id });
@@ -26,7 +26,7 @@ export async function startViewAs(user_id: string) {
   write(MARK_KEY, { name: d.user.name, role: d.user.role });
   // تحميل كامل للصفحة حتى لا تبقى أي بيانات من حساب المطوّر في الذاكرة
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-  window.location.assign(`${base}${d.user.role === "student" ? "/kid/" : "/teacher/"}`);
+  window.location.assign(`${base}${d.user.role === "student" ? "/kid/" : d.user.role === "parent" ? "/parent/" : "/teacher/"}`);
 }
 
 export function stopViewAs(to = "/admin/users/") {

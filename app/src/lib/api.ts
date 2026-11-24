@@ -3,7 +3,7 @@ export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "https://script.google.com/macros/s/AKfycbz5QzGujgyndr_k1QpuFkPBQTjgA-KkxQoP9WOBV66-6pi5X-o4Q4JWLiJauDR2Xt39/exec";
 
-export type Role = "student" | "teacher" | "admin" | "superadmin";
+export type Role = "student" | "teacher" | "admin" | "superadmin" | "parent";
 export type Gender = "m" | "f";
 export type User = { user_id: string; name: string; role: Role; class_id: string; avatar: string; gender?: Gender };
 export type Kid = { user_id: string; name: string; avatar: string; points?: number; gender?: Gender };
@@ -27,7 +27,7 @@ export const session = {
   // الخروج يمسح بيانات صاحب الحساب من الجهاز (سجل الصلوات، اختيار الفصل، نصوص الإشعارات باسمه)
   clear: () => {
     safeSet(TOKEN_KEY, null); safeSet(USER_KEY, null);
-    try { Object.keys(localStorage).filter((k) => k.startsWith("serah_plog:") || k === "serah_class" || k === "serah_q_prefs_t").forEach((k) => localStorage.removeItem(k)); } catch { /* لا شيء */ }
+    try { Object.keys(localStorage).filter((k) => k.startsWith("serah_plog:") || k.startsWith("serah_me:") || k === "serah_parent_kid" || k === "serah_class" || k === "serah_q_prefs_t").forEach((k) => localStorage.removeItem(k)); } catch { /* لا شيء */ }
     try { void caches.delete("serah-notify"); } catch { /* لا شيء */ }
   },
 };
@@ -41,11 +41,11 @@ export class ApiError extends Error {
 const LOGOUT_REASON = "serah_logout_reason";
 function endSession(reason: string) {
   if (typeof window === "undefined") return;
-  const staff = session.user()?.role !== "student";
+  const role = session.user()?.role;
   session.clear();
   safeSet(LOGOUT_REASON, reason);
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-  window.location.assign(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${staff ? "/teacher/login/" : "/"}`);
+  window.location.assign(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${role === "parent" ? "/parent/login/" : role !== "student" ? "/teacher/login/" : "/"}`);
 }
 // سبب آخر خروج إجباري: يُعرض في صفحة الدخول ويُمسح عند الدخول التالي
 export const logoutReason = () => safeGet(LOGOUT_REASON) ?? "";

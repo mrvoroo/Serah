@@ -165,7 +165,8 @@ function normDigits_(s) {
 // اسم المعلمة/المطوّر للدخول بدون اللقب: «م.احمد» و«م. احمد» و«احمد» واحد، و«أ. مروة» = «مروة»
 function staffName_(s) { return normName_(s).replace(/^(ا|م|د)\s*[.\/]\s*/, ''); }
 function normName_(s) {
-  return String(s == null ? '' : s).trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
+  // الحروف الخفية (اتجاه النص وعديمة العرض) تُحذف: اسم «مروة» بحرف خفي لا يمر كاسم مختلف
+  return String(s == null ? '' : s).replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
 }
 function hashPin_(pin) {
   const d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, prop_('PIN_SALT') + normDigits_(pin));
@@ -705,11 +706,11 @@ const ACTIONS = {
     const pin = normDigits_(p.pin);
     if (!name) throw new Error('اكتبي اسم المعلمة');
     if (!/^\d{6,}$/.test(pin)) throw new Error('رمز المعلمة 6 أرقام على الأقل');
-    uniqueStaffName_(name, '');
     const role = p.role === 'admin' && me.role === 'superadmin' ? 'admin' : 'teacher';
     const class_id = String(p.class_id || cls_(me, p));
     if (!rows_('Classes').some(c => c.class_id === class_id)) throw new Error('الفصل غير موجود');
-    const u = append_('Users', { user_id: id_('U'), role, name, class_id, avatar: '', pin_hash: hashPin_(pin), active: true, created_at: now_() });
+    // فحص الاسم والإضافة معًا تحت القفل (حتى لا يتكرر الاسم مع ولي أمر يسجّل في نفس اللحظة)
+    const u = withLock_(() => { uniqueStaffName_(name, ''); return append_('Users', { user_id: id_('U'), role, name, class_id, avatar: '', pin_hash: hashPin_(pin), active: true, created_at: now_() }); });
     return { user_id: u.user_id };
   },
 
@@ -1559,7 +1560,7 @@ const AUDIO_CHUNK = 2.5 * 1024 * 1024;
 function canHearAudio_(me, p, id) {
   if (!id) return false;
   const isT = RANK[me.role] >= RANK.teacher;
-  if (rows_('Lectures').some(l => l.audio_file_id === id && l.class_id === cls_(me, p) && (isT || l.status === 'published'))) return true;
+  if (me.role !== 'parent' && rows_('Lectures').some(l => l.audio_file_id === id && l.class_id === cls_(me, p) && (isT || l.status === 'published'))) return true;
   if (rows_('ProphetContent').some(c => c.kind === 'audio' && c.file_id === id && (isT || (truthy_(c.approved) && truthy_(c.visible))))) return true;
   // تسجيل صوتي مرفق بذكر: للمعلمات، وللطفل لو الذكر مفتوح لفصله
   return rows_('AzkarRelease').some(r => r.file_kind === 'audio' && String(r.file_id) === String(id) && (isT || classList_(r.classes).indexOf(String(me.class_id)) >= 0));
@@ -2580,7 +2581,7 @@ const SALAH_VIDEO_KEY = /^(how|vid):[a-z0-9_]{2,24}$/;
 const MAX_EXTRA_AZKAR = 40;
 
 Object.assign(POLICY, {
-  salahExtras: { min: 'student' },
+  salahExtras: { min: 'student', parent: 1 },
   saveSalahVideo: { min: 'admin', write: 1, audit: 1 },
   saveExtraZikr: { min: 'admin', write: 1, audit: 1 },
   setExtraZikrVisible: { min: 'admin', write: 1, audit: 1 },
@@ -2924,6 +2925,13 @@ Object.assign(ACTIONS, {
     const kind = ['image', 'audio', 'file'].indexOf(String(p.file_kind || '')) >= 0 ? String(p.file_kind) : '';
     const file_id = p.file_id ? platformFile_(p.file_id) : '';
     if (file_id && !kind) throw new Error('نوع المرفق غير معروف');
+    // نوع الملف الفعلي لازم يطابق النوع المختار (حتى لا يُشارَك تسجيل محاضرة غير منشورة على أنه صورة)
+    if (file_id) {
+      let mime = '';
+      try { mime = String(DriveApp.getFileById(file_id).getMimeType() || ''); } catch (e) { /* يُرفض أدناه */ }
+      const okMime = kind === 'image' ? /^image\//.test(mime) : kind === 'audio' ? /^(audio|video)\//.test(mime) : mime === 'application/pdf';
+      if (!okMime) throw new Error('نوع المرفق لا يطابق الملف');
+    }
     rate_('azr:' + me.user_id, 120, 600);
     const f = { classes: want.join(','), note: String(p.note || '').trim().slice(0, 600), file_id, file_kind: file_id ? kind : '',
       file_name: file_id ? String(p.file_name || '').slice(0, 80) : '', updated_by: me.user_id, updated_at: now_() };
@@ -2971,6 +2979,7 @@ Object.assign(ACTIONS, {
     const title = String(p.title || '').trim().replace(/\s+/g, ' ').slice(0, 60);
     if (title.length < 2) throw new Error(kind === 'surah' ? 'اكتبي اسم السورة أو الجزء' : 'اكتبي الحديث أو عنوانه');
     rate_('ach:' + me.user_id, 120, 3600);
+    rate_('achk:' + kid.user_id, 10, 86400); // حد يومي لكل طفل
     const stars = kind === 'surah' ? SURAH_STARS : HADITH_STARS;
     const key = (kind === 'surah' ? 'su:' : 'hd:') + kid.user_id + ':' + normName_(title);
     const reason = (kind === 'surah' ? 'إتمام ' : 'حفظ حديث: ') + title;
@@ -3014,7 +3023,8 @@ Object.assign(POLICY, {
 function codeHash_(code) { return sign_('pc|' + code).slice(0, 32); }
 function cleanParentCode_(v) { return normDigits_(v).toUpperCase().replace(/[\s-]+/g, ''); }
 function newParentCode_() {
-  const hex = (Utilities.getUuid() + Utilities.getUuid()).replace(/[^0-9a-f]/g, '');
+  // من كل UUID نأخذ الجزء الأخير فقط (بعد خانتي الإصدار والنوع الثابتتين)
+  const hex = [0, 1, 2].map(() => Utilities.getUuid().replace(/-/g, '').slice(20)).join('');
   let out = '';
   for (let i = 0; out.length < 8; i += 2) out += PARENT_CODE_CHARS[parseInt(hex.substr(i, 2), 16) % PARENT_CODE_CHARS.length];
   return out;
@@ -3033,7 +3043,8 @@ function redeemParentCode_(code, parent_id, check) {
   const c = cleanParentCode_(code);
   if (!/^[A-Z2-9]{8}$/.test(c)) throw badParentCode_();
   const h = codeHash_(c), row = rows_('ParentCodes').find(r => String(r.code_hash) === h);
-  if (!row || truthy_(row.revoked) || row.used_by || new Date(row.expires_at).getTime() < Date.now()) throw badParentCode_();
+  const exp = row ? new Date(row.expires_at).getTime() : 0;
+  if (!row || truthy_(row.revoked) || row.used_by || !(exp > Date.now())) throw badParentCode_();
   const kid = rows_('Users').find(u => u.user_id === row.kid_id && u.role === 'student' && !inactive_(u));
   if (!kid) throw badParentCode_();
   const links = rows_('ParentLinks');
@@ -3053,7 +3064,7 @@ function parentKidsOf_(parent_id) {
     return { user_id: u.user_id, name: u.name, avatar: u.avatar, gender: genderOf_(u), class_name: c ? c.name : '' };
   });
 }
-const WEAK_PIN = /^(\d)\1{5}$|^(012345|123456|234567|345678|456789|987654|876543|765432|654321|543210)$/;
+const WEAK_PIN = /^(\d)\1{5}$|^(\d\d)\2\2$|^(\d)\3(\d)\4(\d)\5$|^(012345|123456|234567|345678|456789|987654|876543|765432|654321|543210)$/;
 
 Object.assign(ACTIONS, {
   // كود جديد يلغي أي كود سابق لم يُستخدم لنفس الطفل؛ الكود يظهر مرة واحدة فقط (المحفوظ بصمته)
@@ -3091,14 +3102,14 @@ Object.assign(ACTIONS, {
     if (name.length < 3) throw new Error('اكتب اسمًا من ٣ حروف على الأقل (مثال: أم زيد محمد)');
     if (!/^\d{6}$/.test(pin)) throw new Error('الرمز السري ٦ أرقام');
     if (WEAK_PIN.test(pin)) throw new Error('اختر رمزًا أصعب من ذلك');
-    rate_('preg', 60, 3600);
     const gender = cleanGender_(p.gender);
     const u = withLock_(() => {
-      redeemParentCode_(p.code, '', true); // الكود صالح قبل إنشاء الحساب
-      uniqueStaffName_(name);
+      // الحد العام يُحسب على المحاولات الفاشلة فقط (حتى لا يقفل أحدٌ التسجيل على الجميع بطلبات عشوائية)
+      try { redeemParentCode_(p.code, '', true); uniqueStaffName_(name); } // الكود صالح قبل إنشاء الحساب
+      catch (e) { rate_('pregfail', 300, 3600); throw e; }
       const nu = append_('Users', { user_id: id_('P'), role: 'parent', name, class_id: '', avatar: gender === 'f' ? 'mother' : 'father', pin_hash: hashPin_(pin),
         city: '', country: '', telegram_id: '', active: true, created_at: now_(), last_login_at: now_(), gender });
-      redeemParentCode_(p.code, nu.user_id);
+      try { redeemParentCode_(p.code, nu.user_id); } catch (e) { remove_('Users', 'user_id', nu.user_id); throw e; }
       return nu;
     });
     return { token: makeToken_(u), user: { user_id: u.user_id, name: u.name, role: 'parent', class_id: '', avatar: u.avatar, gender } };

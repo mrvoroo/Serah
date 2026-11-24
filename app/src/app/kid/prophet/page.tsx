@@ -20,8 +20,10 @@ function Inner() {
     window.scrollTo(0, 0);
   }, [id]);
   const { data, error } = useApi<{ prophet: ProphetRow; items: ContentItem[] }>("prophet", { id }, { enabled: !!id });
-  const { data: lectures } = useApi<Lecture[]>("lectures");
-  const staff = session.user()?.role !== "student";
+  const role = session.user()?.role;
+  const staff = role !== "student";
+  // ولي الأمر لا يرى محاضرات الفصول (ليست له)
+  const { data: lectures } = useApi<Lecture[]>("lectures", {}, { enabled: role !== "parent" });
   // اختبارات هذا النبي (للطفل فقط)
   const { data: quizzes } = useApi<Quiz[]>("quizzes", { prophet_id: id }, { enabled: !!id && !staff });
   return (
@@ -31,7 +33,7 @@ function Inner() {
       </Link>
       {error || (data && !data.prophet) ? <p className="rounded-[28px] border bg-card p-6 text-center text-muted-foreground">{error || "القسم غير موجود"}</p>
         : !data ? <div className="grid gap-3"><Skeleton className="h-48 rounded-[32px]" /><Skeleton className="h-32 rounded-[28px]" /></div>
-        : <ProphetView prophet={data.prophet} items={data.items} lectures={lectures} lectureHref={staff ? () => "/teacher/lectures/" : undefined} />}
+        : <ProphetView prophet={data.prophet} items={data.items} lectures={lectures} lectureHref={staff && role !== "parent" ? () => "/teacher/lectures/" : undefined} />}
       {!!quizzes?.length && (
         <section aria-labelledby="h-prophet-quiz" className="flex flex-col gap-2 rounded-[28px] border bg-card p-4 shadow-soft">
           <h2 id="h-prophet-quiz" className="flex items-center gap-2 font-heading text-xl font-extrabold"><Icon3D name="thinking" size={40} /> اختبر نفسك</h2>

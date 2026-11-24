@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { toast } from "sonner";
-import { KeyRound, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Award, KeyRound, Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { AchievementDialog, ParentCodeDialog } from "@/components/teacher/kid-extras";
 import { api, type Kid } from "@/lib/api";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { AVATARS, KidAvatar } from "@/components/kid/kid-avatar";
@@ -33,6 +34,8 @@ export default function StudentsPage() {
   const [pinFor, setPinFor] = useState<Kid | null>(null);
   const [delFor, setDelFor] = useState<Kid | null>(null);
   const [editFor, setEditFor] = useState<Kid | null>(null);
+  const [parentFor, setParentFor] = useState<Kid | null>(null);
+  const [achFor, setAchFor] = useState<Kid | null>(null);
 
   const refresh = () => { invalidate("students"); invalidate("dashboard"); reload(); };
   const run = async (fn: () => Promise<unknown>, ok: string, done: () => void) => {
@@ -52,12 +55,18 @@ export default function StudentsPage() {
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {data?.map((k, i) => (
             <BlurFade key={k.user_id} delay={0.03 * Math.min(i, 10)}>
-              <li className="flex items-center gap-3 rounded-[24px] border bg-card p-3 shadow-soft">
+              <li className="flex flex-col gap-2 rounded-[24px] border bg-card p-3 shadow-soft">
+                <div className="flex items-center gap-3">
                 <KidAvatar value={k.avatar} size={44} />
                 <div className="min-w-0 flex-1"><p className="flex items-center gap-1.5 truncate font-bold">{k.name}{k.created_at && openedAt - new Date(k.created_at).getTime() < 3 * 864e5 && <span className="rounded-full bg-gold/25 px-2 py-0.5 text-[10px] text-[#7A4D00] dark:text-gold">جديد</span>}</p><p className="text-sm text-muted-foreground">{k.gender === "f" ? "بنت" : "ولد"} · {k.points ?? 0} نجمة</p></div>
                 <Button variant="secondary" size="icon-xl" aria-label={`تعديل ${k.name}`} onClick={() => { setName(k.name); setAvatar(k.avatar || `3d:${AVATARS[0]}`); setGender(k.gender === "f" ? "f" : "m"); setEditFor(k); }}><Pencil /></Button>
                 <Button variant="secondary" size="icon-xl" aria-label={`تغيير رمز ${k.name}`} onClick={() => { setPin(""); setPinFor(k); }}><KeyRound /></Button>
                 <Button variant="ghost" size="icon-xl" aria-label={`حذف ${k.name}`} className="text-destructive" onClick={() => setDelFor(k)}><Trash2 /></Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="secondary" size="lg" className="flex-1" onClick={() => setParentFor(k)} aria-label={`ولي أمر ${k.name}`}><Users /> ولي الأمر</Button>
+                  <Button variant="secondary" size="lg" className="flex-1" onClick={() => setAchFor(k)} aria-label={`إنجازات ${k.name}`}><Award /> إنجاز</Button>
+                </div>
               </li>
             </BlurFade>
           ))}
@@ -135,6 +144,8 @@ export default function StudentsPage() {
           <DialogFooter><Button variant="destructive" size="lg2" disabled={busy} onClick={() => delFor && run(() => api("removeStudent", { user_id: delFor.user_id, ...cp }), "تم الحذف", () => setDelFor(null))}>حذف</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+      <ParentCodeDialog kid={parentFor} onClose={() => setParentFor(null)} />
+      <AchievementDialog kid={achFor} onClose={() => setAchFor(null)} onSaved={() => { void reload(); }} />
     </div>
   );
 }

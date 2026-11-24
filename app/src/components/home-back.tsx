@@ -7,7 +7,7 @@ import { session } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 // رئيسية كل مستخدم حسب دوره: الطفل /kid/، والمعلمة والأدمن /teacher/، والمطوّر /admin/، والزائر صفحة الدخول
-export const homeOf = (role?: string) => (!role ? "/" : role === "student" ? "/kid/" : role === "superadmin" ? "/admin/" : "/teacher/");
+export const homeOf = (role?: string) => (!role ? "/" : role === "student" ? "/kid/" : role === "parent" ? "/parent/" : role === "superadmin" ? "/admin/" : "/teacher/");
 
 const noop = () => () => {};
 export function useHome() {

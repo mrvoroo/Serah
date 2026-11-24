@@ -1,6 +1,7 @@
 import { api, API_URL, session } from "@/lib/api";
 import { teacherTitle } from "@/lib/utils";
 import salah from "@/content/salah.json";
+import me from "@/content/morning-evening.json";
 import { buildPlan, loadPlace, loadPrefs, PRAYER_NAMES, type NotifyPrefs } from "@/lib/prayer";
 
 // إشعارات الجوال (Web Push): الخادم يرسل إشعارًا بلا محتوى، وعامل الخدمة يسحب نوعه بمفتاح الجهاز
@@ -44,10 +45,13 @@ async function saveForWorker(key?: string, plan?: unknown[]) {
   }
   if (plan) await c.put(notifyUrl("plan"), new Response(JSON.stringify(plan)));
   // اسم صاحب الجهاز ودوره (يبقى على الجهاز فقط): الطفل باسمه الأول بصيغة تحمّسه، والمعلمة بلقبها بصيغة فيها وقار
-  const u = session.user(), staff = !!u && u.role !== "student", first = (u?.name ?? "").trim().split(/\s+/)[0] ?? "";
-  const girl = staff ? u?.role !== "superadmin" : u?.gender === "f";
-  const who = { name: staff ? teacherTitle(first, u?.role) : first, staff, mosque: staff ? u?.role === "superadmin" : u?.gender !== "f", girl };
-  await c.put(notifyUrl("texts"), new Response(JSON.stringify({ reminders: salah.reminders, names: PRAYER_NAMES, who })));
+  // ولي الأمر: كبير (بوقار) باسمه بدون لقب، وصفحاته تحت /parent/
+  const u = session.user(), parent = u?.role === "parent", staff = !!u && u.role !== "student", first = (u?.name ?? "").trim().split(/\s+/)[0] ?? "";
+  const girl = parent ? u?.gender === "f" : staff ? u?.role !== "superadmin" : u?.gender === "f";
+  const base = parent ? "/parent/" : staff ? "/teacher/" : "/kid/";
+  const who = { name: parent ? "" : staff ? teacherTitle(first, u?.role) : first, staff, mosque: parent ? u?.gender !== "f" : staff ? u?.role === "superadmin" : u?.gender !== "f", girl,
+    prayerUrl: base + "prayer/", azkarUrl: base + "azkar/" };
+  await c.put(notifyUrl("texts"), new Response(JSON.stringify({ reminders: salah.reminders, azkar: me.reminders, names: PRAYER_NAMES, who })));
   if (key) await c.put(notifyUrl("cfg"), new Response(JSON.stringify({ api: API_URL, key })));
 }
 

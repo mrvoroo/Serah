@@ -1,6 +1,6 @@
 // عامل خدمة آمن مع سفاري: لا يتدخل في فتح الصفحات نهائيًا (سفاري يرفض الصفحة لو مرّت بتحويل عبر عامل الخدمة)
 // ويخزن فقط الملفات الثابتة (الخطوط، الأيقونات، ملفات الواجهة) لتسريع الفتح. لا يخزن الـ API ولا الصوت.
-const V = "serah-v14";
+const V = "serah-v15";
 // إعدادات الإشعارات (مفتاح الجهاز ورابط الخلفية ونصوص التذكير) يكتبها التطبيق هنا، ولا تُحذف مع تحديث النسخة
 const NOTIFY = "serah-notify";
 self.addEventListener("install", () => self.skipWaiting());
@@ -41,7 +41,7 @@ const pick = (arr, i) => (arr && arr.length ? arr[(i ?? Math.floor(Math.random()
 function prayerText(item, t) {
   const r = t.reminders || {}, who = t.who || {}, pre = item.kind.startsWith("pre:");
   const key = item.kind.slice(pre ? 4 : 2), prayer = (t.names && t.names[key]) || "";
-  const url = who.staff ? "/teacher/prayer/" : "/kid/prayer/";
+  const url = who.prayerUrl || (who.staff ? "/teacher/prayer/" : "/kid/prayer/");
   const m = r.prayerMsg, list = (r.prayerHadith || []).filter((h) => (h.prayer === key || h.prayer === "any")
     && (h.aud === "all" || (h.aud === "boys" && who.mosque) || (h.aud === "adults" && who.staff)));
   if (!m || !list.length) { // نصوص قديمة محفوظة: الصيغة العامة
@@ -64,13 +64,30 @@ function askText(item, t) {
   const jumua = key === "dhuhr" && !f && new Date().getDay() === 5;
   return { title: (f ? "صلّيتِ " : "صلّيت ") + (jumua ? "الجمعة" : prayer) + name + "؟ 🤲",
     body: f ? "لو صلّيتِ، اضغطي هنا وعلّمي عليها في جدول صلاتك ✅" : "لو صلّيت، اضغط هنا وعلّم عليها في جدول صلاتك ✅",
-    url: who.staff ? "/teacher/prayer/" : "/kid/prayer/" };
+    url: who.prayerUrl || (who.staff ? "/teacher/prayer/" : "/kid/prayer/") };
+}
+
+// أذكار الصباح (am) والمساء (pm) و«ذكر جديد» (azn): للكبار فضل من فضائل الأذكار بمرجعه، وللطفل رسالة تحمّسه (ولد/بنت)
+function azkarText(item, t) {
+  const a = (t && t.azkar) || {}, who = (t && t.who) || {}, am = item.kind === "am";
+  const url = who.azkarUrl || (who.staff ? "/teacher/azkar/" : "/kid/azkar/");
+  const kids = (a.kids || {})[who.girl ? "girls" : "boys"] || {};
+  if (item.kind === "azn") { const x = pick(kids.new, item.idx) || { title: who.girl ? "ذكر جديد ينتظركِ 🌟" : "ذكر جديد ينتظرك 🌟", body: "افتح أذكارك واقرأه" }; return { title: x.title, body: x.body, url }; }
+  if (who.staff) {
+    const x = pick((a.adults || {})[item.kind], item.idx);
+    if (!x) return { title: am ? "أذكار الصباح 🌅" : "أذكار المساء 🌙", body: "حان وقت أذكارك", url };
+    const body = x.ref && (x.body.length + x.ref.length) < 170 ? x.body + " (" + x.ref + ")" : x.body;
+    return { title: x.title, body, url };
+  }
+  const x = pick(kids[item.kind], item.idx) || { title: am ? "أذكار الصباح 🌅" : "أذكار المساء 🌙", body: "هيا نذكر الله ونحصّن أنفسنا بأذكارنا 🤍" };
+  return { title: x.title, body: x.body, url };
 }
 
 function textFor(item, t) {
   const r = (t && t.reminders) || {};
   if (item.title) return { title: item.title, body: item.body || "", url: item.url || "/kid/" };
   if (/^ask:/.test(item.kind)) return askText(item, t);
+  if (/^(am|pm|azn)$/.test(item.kind)) return azkarText(item, t);
   if (/^(pre|p):/.test(item.kind)) return prayerText(item, t || {});
   if (item.kind === "duha") { const x = pick(r.duha, item.idx) || { title: "صلاة الضحى", body: "ركعتان من الضحى" }; return { ...x, url: "/kid/prayer/" }; }
   if (item.kind === "fri") { const x = pick(r.friday, item.idx) || { title: "جمعة مباركة", body: "اقرأ سورة الكهف" }; return { ...x, url: "/kid/prayer/" }; }

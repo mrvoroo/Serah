@@ -18,7 +18,7 @@ export async function putChunks(url: string, file: File, onProgress: (p: number)
 }
 
 // رفع ملف صوت أو صورة لدرايف ويرجع معرّفه
-export async function uploadFile(file: File, kind: "audio" | "image", onProgress: (p: number) => void) {
-  const { uploadUrl } = await api<{ uploadUrl: string }>("startUpload", { name: file.name, mime: file.type || (kind === "audio" ? "audio/mpeg" : "image/jpeg"), kind, origin: window.location.origin });
+export async function uploadFile(file: File, kind: "audio" | "image" | "file", onProgress: (p: number) => void) {
+  const { uploadUrl } = await api<{ uploadUrl: string }>("startUpload", { name: file.name, mime: file.type || (kind === "audio" ? "audio/mpeg" : kind === "file" ? "application/pdf" : "image/jpeg"), kind, origin: window.location.origin });
   return putChunks(uploadUrl, file, onProgress);
 }

@@ -75,7 +75,7 @@ function boot() {
     } },
     DriveApp: { getFileById: (id) => {
       const parents = [{ getId: () => (foreign(id) ? 'owner-root' : /img|^p|^I/.test(id) ? 'fi' : 'fa') }];
-      return { setSharing() { shared.push(id); }, getParents: () => { let i = 0; return { hasNext: () => i < parents.length, next: () => parents[i++] }; } };
+      return { getMimeType: () => (/^img/.test(id) ? 'image/png' : /^pdf/.test(id) ? 'application/pdf' : 'audio/webm'), setSharing() { shared.push(id); }, getParents: () => { let i = 0; return { hasNext: () => i < parents.length, next: () => parents[i++] }; } };
     }, getFolderById: () => ({ createFile: (blob) => { saved.push({ ...(blob && blob._b) }); return { getId: () => 'drv' + (++drv) }; } }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
   const g = new Function(...Object.keys(env), code + '\nreturn { pushTick, vapidJwt_, vapid_, handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN, oggOpusToWebm_ };')(...Object.values(env));
@@ -1676,6 +1676,9 @@ test('أذكار: الأدمن تفتح ذكرًا لفصول معيّنة، و�
   assert.match(t.call('saveAzkarRelease', { zikr_id: 'falaq', classes: ['C1'], file_id: 'ext1', file_kind: 'image' }, admin).error, /ليس من ملفات المنصة/);
   assert.ok(t.call('saveAzkarRelease', { zikr_id: 'falaq', classes: ['C1'], file_id: 'img9', file_kind: 'image', file_name: 'صورة' }, admin).ok);
   assert.ok(t.shared.includes('img9'), 'image shared for kids');
+  // نوع مختار لا يطابق الملف الفعلي يُرفض (تسجيل صوتي على أنه صورة)
+  assert.strictEqual(t.call('saveAzkarRelease', { zikr_id: 'nas', classes: ['C1'], file_id: 'aud1', file_kind: 'image' }, admin).error, 'نوع المرفق لا يطابق الملف');
+  assert.ok(!t.shared.includes('aud1'));
 });
 
 test('أذكار: نجمتان مرة واحدة لكل فترة في اليوم، ولا نجوم بلا ذكر مفتوح ولا ليوم بعيد', () => {
@@ -1759,8 +1762,9 @@ test('أولياء الأمور: كود من المعلمة لمرة واحدة�
   assert.strictEqual(d.data.kid.name, 'يوسف');
   assert.strictEqual(t.call('parentKid', { kid_id: 'S2' }, par).error, 'هذا الطفل غير مربوط بحسابك');
   // ممنوع على إجراءات الطفل والمعلمة، ومسموح بالصلاة والرحلة والإشعارات
-  for (const a of ['lectures', 'me', 'students', 'leaderboard', 'quizzes', 'kidAzkar', 'games', 'dashboard', 'salahExtras']) assert.strictEqual(t.call(a, {}, par).error, 'ليس لديك صلاحية', a);
+  for (const a of ['lectures', 'me', 'students', 'leaderboard', 'quizzes', 'kidAzkar', 'games', 'dashboard']) assert.strictEqual(t.call(a, {}, par).error, 'ليس لديك صلاحية', a);
   assert.ok(t.call('journey', {}, par).ok);
+  assert.ok(t.call('salahExtras', {}, par).ok);
   assert.ok(t.call('prayerLog', { from: todayIso(), to: todayIso() }, par).ok);
   assert.ok(t.call('markPrayer', { date: todayIso(), prayer: 'fajr', done: true }, par).ok);
   // الطفل والمعلمة لا يصلان لإجراءات ولي الأمر

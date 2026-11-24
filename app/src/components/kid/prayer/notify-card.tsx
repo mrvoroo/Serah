@@ -11,6 +11,7 @@ import { disablePush, enablePush, pushState, syncPush, type PushState } from "@/
 
 const ITEMS: { id: keyof NotifyPrefs; label: string; hint: string }[] = [
   { id: "prayer", label: "مواعيد الصلاة", hint: "تنبيه قبل كل صلاة بـ١٠ دقائق، وتنبيه عند الأذان" },
+  { id: "azkar", label: "أذكار الصباح والمساء", hint: "تذكير بعد الفجر وبعد العصر بفضل من فضائل الأذكار" },
   { id: "dhikr", label: "اذكر الله", hint: "٣ أذكار في أوقات مختلفة من اليوم" },
   { id: "duha", label: "صلاة الضحى", hint: "تذكير كل يوم في وقت الضحى" },
   { id: "friday", label: "يوم الجمعة", hint: "سورة الكهف والصلاة على النبي ﷺ وساعة الإجابة" },
@@ -79,4 +80,4 @@ export function NotifyCard() {
     </section>
   );
 }
-function loadPrefsSafe(): NotifyPrefs { return { prayer: true, dhikr: true, duha: true, friday: true, tasks: true }; }
+function loadPrefsSafe(): NotifyPrefs { return { prayer: true, dhikr: true, duha: true, friday: true, tasks: true, azkar: true }; }
