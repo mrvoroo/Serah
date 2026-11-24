@@ -42,7 +42,16 @@ const SCHEMA = {
   // محتوى الصلاة من الأدمن: روابط فيديوهات يوتيوب لأماكن ثابتة (key = how:<id> أو vid:<id>)، وأذكار إضافية للأطفال
   // (أذكار salah.json الأصلية ثابتة لا تُعدَّل من هنا)
   SalahVideos:  ['key', 'youtube_id', 'updated_by', 'updated_at'],
-  ExtraAzkar:   ['zikr_id', 'text', 'count', 'ref', 'virtue', 'after', 'sort', 'visible', 'created_by', 'created_at', 'updated_at', 'grade', 'approved', 'approved_by', 'updated_by']
+  ExtraAzkar:   ['zikr_id', 'text', 'count', 'ref', 'virtue', 'after', 'sort', 'visible', 'created_by', 'created_at', 'updated_at', 'grade', 'approved', 'approved_by', 'updated_by'],
+  // أذكار الصباح والمساء للأطفال: الأدمن تفتح كل ذكر لفصول معيّنة (classes = معرّفات مفصولة بفواصل) مع ملاحظة/مرفق
+  AzkarRelease: ['zikr_id', 'classes', 'note', 'file_id', 'file_kind', 'file_name', 'released_at', 'updated_by', 'updated_at'],
+  // نجوم تُعطى مرة واحدة لكل مفتاح (أذكار اليوم، حفظ حديث، إتمام سورة)
+  StarLog:      ['key', 'user_id', 'kind', 'ref', 'stars', 'at', 'by'],
+  // أولياء الأمور: كود لمرة واحدة من المعلمة لكل طفل (يُحفظ بصمته فقط)، والربط بين ولي الأمر وأطفاله
+  ParentCodes:  ['code_hash', 'kid_id', 'created_by', 'created_at', 'expires_at', 'used_by', 'used_at', 'revoked'],
+  ParentLinks:  ['key', 'parent_id', 'kid_id', 'created_at', 'created_by'],
+  // الألعاب: مستوى مكتمل لكل طفل (key = user:game:level)
+  GameProgress: ['key', 'user_id', 'game', 'level', 'best', 'stars', 'at']
 };
 const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من تيليجرام (20MB)
 
@@ -133,7 +142,9 @@ function remove_(name, keyCol, keyVal) {
   const sh = ss_().getSheetByName(name);
   const v = sh.getDataRange().getValues();
   const ki = v[0].indexOf(keyCol);
-  for (let i = v.length - 1; i >= 1; i--) if (String(v[i][ki]) === String(keyVal)) sh.deleteRow(i + 1);
+  let n = 0;
+  for (let i = v.length - 1; i >= 1; i--) if (String(v[i][ki]) === String(keyVal)) { sh.deleteRow(i + 1); n++; }
+  return n > 0;
 }
 function id_(p) { return p + Utilities.getUuid().slice(0, 8); }
 function now_() { return new Date().toISOString(); }
@@ -191,7 +202,8 @@ function auth_(token) {
   return { user_id, role, class_id, imp: imp || '' };
 }
 // الرتب: المطوّر (superadmin) فوق المعلمة الأدمن فوق المعلمة فوق الطفل
-const RANK = { student: 0, teacher: 1, admin: 2, superadmin: 3 };
+// ولي الأمر (parent) رتبته تحت الطفل: لا يصل إلا لما عليه parent: 1 أو roles فيها parent
+const RANK = { parent: -1, student: 0, teacher: 1, admin: 2, superadmin: 3 };
 function need_(me, role) { if (!me || (RANK[me.role] || 0) < RANK[role]) throw new Error('ليس لديك صلاحية'); }
 function needTeacher_(me) { if (!me || (RANK[me.role] || 0) < RANK.teacher) throw new Error('للمعلمات فقط'); }
 // الفصل الذي تعمل عليه العملية: المعلمة والطفل على فصلهما دائمًا؛ الأدمن والمطوّر يديران كل الفصول
@@ -262,7 +274,7 @@ const POLICY = {
   setRole: { min: 'superadmin', write: 1, audit: 1 },
   setUserActive: { min: 'superadmin', write: 1, audit: 1 },
   setUserPin: { min: 'superadmin', write: 1, audit: 1 },
-  journey: { min: 'student' }, prophet: { min: 'student' }, journeyAdmin: { min: 'admin' },
+  journey: { min: 'student', parent: 1 }, prophet: { min: 'student', parent: 1 }, journeyAdmin: { min: 'admin' },
   seedProphets: { min: 'admin', write: 1, audit: 1 },
   saveProphet: { min: 'admin', write: 1, audit: 1 },
   deleteProphet: { min: 'admin', write: 1, audit: 1 },
@@ -284,8 +296,8 @@ const POLICY = {
   updateTeacher: { min: 'admin', write: 1, audit: 1 },
   deleteTeacher: { min: 'admin', write: 1, audit: 1 },
   repairAudio: { min: 'superadmin', write: 1, audit: 1 },
-  config: { min: 'student' },
-  audioChunk: { min: 'student' },
+  config: { min: 'student', parent: 1 },
+  audioChunk: { min: 'student', parent: 1 },
   audioCheck: { min: 'superadmin' },
   // الاختبارات والواجبات
   quizzes: { min: 'student' }, quiz: { min: 'student' },
@@ -314,7 +326,8 @@ function handle_(action, p, token) {
     let me = null;
     if (pol.min) {
       me = auth_(token);
-      need_(me, pol.min);
+      if (me.role === 'parent') { if (!pol.parent && !(pol.roles && pol.roles.indexOf('parent') >= 0)) throw new Error('ليس لديك صلاحية'); }
+      else { need_(me, pol.min); if (pol.roles && pol.roles.indexOf(me.role) < 0) throw new Error('ليس لديك صلاحية'); }
       if (me.imp && pol.write) throw new Error('وضع المعاينة للعرض فقط — لا يمكن الحفظ');
     }
     const data = fn(p, me);
@@ -497,7 +510,7 @@ const ACTIONS = {
   // رفع ملف كبير: ننشئ جلسة رفع متصلة على درايف ويرفع المتصفح مباشرة
   startUpload: (p, me) => {
     needTeacher_(me);
-    const kind = p.kind === 'image' ? 'images' : 'audio';
+    const kind = p.kind === 'image' || p.kind === 'file' ? 'images' : 'audio';
     const meta = { name: String(p.name || 'file').slice(0, 120), parents: [prop_('FOLDER_' + kind)] };
     const res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', {
       method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify(meta),
@@ -1166,7 +1179,7 @@ const ACTIONS = {
   setRole: (p, me) => {
     const u = targetUser_(me, p.user_id);
     if (['teacher', 'admin'].indexOf(p.role) < 0) throw new Error('الدور: معلمة أو معلمة أدمن');
-    if (u.role === 'student') throw new Error('لا يمكن تغيير دور طفل');
+    if (u.role === 'student' || u.role === 'parent') throw new Error('لا يمكن تغيير دور طفل أو ولي أمر');
     update_('Users', 'user_id', u.user_id, { role: p.role });
     return true;
   },
@@ -1256,7 +1269,7 @@ function platformFile_(id) {
 // نوع الملف في جلسة الرفع: صوت/صورة فقط، وإلا النوع الافتراضي
 function uploadMime_(mime, kind) {
   const m = String(mime || '').toLowerCase();
-  if (kind === 'images') return /^image\/(jpeg|png|webp|gif|heic|heif)$/.test(m) ? m : 'image/jpeg';
+  if (kind === 'images') return /^(image\/(jpeg|png|webp|gif|heic|heif)|application\/pdf)$/.test(m) ? m : 'image/jpeg';
   return /^(audio|video)\/[a-z0-9.+-]{1,40}$/.test(m) ? m : 'audio/mpeg';
 }
 
@@ -1547,7 +1560,9 @@ function canHearAudio_(me, p, id) {
   if (!id) return false;
   const isT = RANK[me.role] >= RANK.teacher;
   if (rows_('Lectures').some(l => l.audio_file_id === id && l.class_id === cls_(me, p) && (isT || l.status === 'published'))) return true;
-  return rows_('ProphetContent').some(c => c.kind === 'audio' && c.file_id === id && (isT || (truthy_(c.approved) && truthy_(c.visible))));
+  if (rows_('ProphetContent').some(c => c.kind === 'audio' && c.file_id === id && (isT || (truthy_(c.approved) && truthy_(c.visible))))) return true;
+  // تسجيل صوتي مرفق بذكر: للمعلمات، وللطفل لو الذكر مفتوح لفصله
+  return rows_('AzkarRelease').some(r => r.file_kind === 'audio' && String(r.file_id) === String(id) && (isT || classList_(r.classes).indexOf(String(me.class_id)) >= 0));
 }
 // Ogg/Opus ← WebM/Opus (نفس الصوت). لو فشل التحويل لأي سبب نحتفظ بالملف كما هو
 function webmBlob_(blob, name) {
@@ -1934,13 +1949,13 @@ function dayOffset_(n) { const d = new Date(Date.now() + n * 864e5); return Numb
 // خوادم الإشعارات المعروفة فقط (حتى لا يُستغل الخادم لإرسال طلبات لأي عنوان)
 const PUSH_HOSTS = /^https:\/\/(fcm\.googleapis\.com|android\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.push\.apple\.com|[a-z0-9.-]+\.notify\.windows\.com)\//;
 // ask: «صليت الظهر؟» بعد الأذان بنصف ساعة (يفتح جدول الصلاة ليعلّم عليها)
-const PUSH_KINDS = /^((p|pre|ask):(fajr|dhuhr|asr|maghrib|isha)|dhikr|duha|fri)$/;
+const PUSH_KINDS = /^((p|pre|ask):(fajr|dhuhr|asr|maghrib|isha)|dhikr|duha|fri|am|pm)$/;
 const PUSH_PRAYER = /^(p|pre|ask):/;
 const PUSH_MAX_PLAN = 400;
 
 Object.assign(POLICY, {
-  prayerLog: { min: 'student' }, markPrayer: { min: 'student', write: 1 },
-  pushConfig: { min: 'student' }, pushSubscribe: { min: 'student', write: 1 }, pushUnsubscribe: { min: 'student', write: 1 },
+  prayerLog: { min: 'student', parent: 1 }, markPrayer: { min: 'student', write: 1, parent: 1 },
+  pushConfig: { min: 'student', parent: 1 }, pushSubscribe: { min: 'student', write: 1, parent: 1 }, pushUnsubscribe: { min: 'student', write: 1, parent: 1 },
   pullNotices: { min: null }
 });
 
@@ -2127,6 +2142,8 @@ function pushTick() {
       const hits = plan.filter(e => e[0] > Math.max(last, now - 1800) && e[0] <= now);
       let hit = hits.length ? hits[hits.length - 1] : null;
       if (hit && /^ask:/.test(hit[1]) && markedSince_(s.user_id, hit[1].slice(4), hit[0] - 1800)) hit = null; // علّم عليها خلاص
+      // تذكير الأذكار للطفل فقط لو فصله فُتح له ذكر واحد على الأقل
+      if (hit && /^(am|pm)$/.test(hit[1]) && users[s.user_id].role === 'student' && !releasedClasses_()[String(users[s.user_id].class_id)]) hit = null;
       if (hit) queuePush_(s.sub_id, { kind: hit[1], idx: hit[2] });
       if (hit || due.indexOf(s.sub_id) >= 0) send.push(s);
     });
@@ -2839,3 +2856,348 @@ function installBackupTrigger() {
 }
 ACTIONS.backupNow = () => { rate_('backup', 6, 3600); return { last: weeklyBackup() }; };
 
+
+/* ============ أذكار الصباح والمساء + النجوم ============ */
+// نصوص الأذكار ثابتة في الموقع (morning-evening.json المراجَع)؛ هنا فقط: أي ذكر مفتوح لأي فصل، وملاحظته ومرفقه
+const AZKAR_ID = /^[a-z0-9-]{2,40}$/;
+const AZKAR_STARS = 2, GAME_STARS = 2, HADITH_STARS = 2, SURAH_STARS = 10;
+
+Object.assign(POLICY, {
+  azkarReleases: { min: 'admin' },
+  saveAzkarRelease: { min: 'admin', write: 1, audit: 1 },
+  kidAzkar: { min: 'student' },
+  azkarDone: { min: 'student', write: 1 },
+  kidAchievement: { min: 'teacher', write: 1, audit: 1 },
+  deleteKidAchievement: { min: 'teacher', write: 1, audit: 1 },
+  kidAchievements: { min: 'teacher' }
+});
+
+function classList_(v) { return String(v || '').split(',').map(x => x.trim()).filter(Boolean); }
+function releaseOut_(r) {
+  return { zikr_id: String(r.zikr_id), classes: classList_(r.classes), note: String(r.note || ''), file_id: String(r.file_id || ''),
+    file_kind: String(r.file_kind || ''), file_name: String(r.file_name || ''), released_at: String(r.released_at || '') };
+}
+// كل الإطلاقات مخزّنة دقيقة (الأطفال يفتحون الصفحة كثيرًا)، وتُمسح مع أي تعديل
+function azkarRows_() {
+  const c = CacheService.getScriptCache(), hit = c.get('azr');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* نقرأ من جديد */ } }
+  const out = rows_('AzkarRelease').map(releaseOut_);
+  try { c.put('azr', JSON.stringify(out), 60); } catch (e) { console.error(e); }
+  return out;
+}
+function releasedFor_(class_id) { return azkarRows_().filter(r => r.classes.indexOf(String(class_id)) >= 0); }
+// الفصول التي فُتح لها ذكر واحد على الأقل (للإشعارات)
+function releasedClasses_() { const m = {}; azkarRows_().forEach(r => r.classes.forEach(c => { m[c] = 1; })); return m; }
+
+// نجوم لمرة واحدة لكل مفتاح (يُستدعى والقفل محجوز): يرجع false لو أُعطيت قبل كده
+function awardOnce_(key, user_id, kind, ref, stars, reason, by) {
+  if (rows_('StarLog').some(r => String(r.key) === key)) return false;
+  append_('StarLog', { key, user_id, kind, ref: String(ref || '').slice(0, 80), stars, at: now_(), by: by || user_id });
+  addPoints_(user_id, stars, reason);
+  return true;
+}
+
+// إشعار «ذكر جديد» لأطفال الفصول التي فُتح لها (مرة كل ١٠ دقائق لكل فصل مهما كثر الفتح)
+function notifyAzkarRelease_(classIds) {
+  try {
+    const c = CacheService.getScriptCache();
+    const fresh = classIds.filter(id => !c.get('azn:' + id));
+    if (!fresh.length) return;
+    fresh.forEach(id => c.put('azn:' + id, '1', 600));
+    const users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
+    const subs = rows_('PushSubs').filter(s => { const u = users[s.user_id]; return u && !inactive_(u) && u.role === 'student' && fresh.indexOf(String(u.class_id)) >= 0; });
+    if (!subs.length) return;
+    subs.forEach(s => queuePush_(s.sub_id, { kind: 'azn', idx: Math.floor(Math.random() * 3) }));
+    UrlFetchApp.fetchAll(subs.map(s => pushRequest_(s.endpoint)));
+  } catch (e) { console.error(e); }
+}
+
+Object.assign(ACTIONS, {
+  azkarReleases: () => rows_('AzkarRelease').map(releaseOut_),
+
+  // classes = الفصول المفتوح لها الذكر الآن (قائمة فاضية = مقفول للكل)، مع ملاحظة ومرفق واحد (صورة/صوت/PDF)
+  saveAzkarRelease: (p, me) => {
+    const id = String(p.zikr_id || '');
+    if (!AZKAR_ID.test(id)) throw new Error('الذكر غير معروف');
+    const known = rows_('Classes').map(c => String(c.class_id));
+    const want = (Array.isArray(p.classes) ? p.classes : classList_(p.classes)).map(String).filter((x, i, a) => known.indexOf(x) >= 0 && a.indexOf(x) === i);
+    const kind = ['image', 'audio', 'file'].indexOf(String(p.file_kind || '')) >= 0 ? String(p.file_kind) : '';
+    const file_id = p.file_id ? platformFile_(p.file_id) : '';
+    if (file_id && !kind) throw new Error('نوع المرفق غير معروف');
+    rate_('azr:' + me.user_id, 120, 600);
+    const f = { classes: want.join(','), note: String(p.note || '').trim().slice(0, 600), file_id, file_kind: file_id ? kind : '',
+      file_name: file_id ? String(p.file_name || '').slice(0, 80) : '', updated_by: me.user_id, updated_at: now_() };
+    let added = [];
+    withLock_(() => {
+      const old = rows_('AzkarRelease').find(r => String(r.zikr_id) === id);
+      const before = old ? classList_(old.classes) : [];
+      added = want.filter(x => before.indexOf(x) < 0);
+      // وقت الفتح يتجدد لما يُفتح لفصل جديد (يظهر «ذكر الأسبوع» للأحدث)
+      if (added.length) f.released_at = now_();
+      if (old) update_('AzkarRelease', 'zikr_id', id, f);
+      else append_('AzkarRelease', Object.assign({ zikr_id: id, released_at: '' }, f));
+    });
+    try { CacheService.getScriptCache().remove('azr'); } catch (e) { console.error(e); }
+    if (file_id && kind !== 'audio') share_(file_id); // الصور والملفات تُعرض للأطفال من درايف
+    if (added.length) notifyAzkarRelease_(added);
+    return releaseOut_(rows_('AzkarRelease').find(r => String(r.zikr_id) === id));
+  },
+
+  // الطفل: الأذكار المفتوحة لفصله (الأحدث أولًا)؛ المعلمة/الأدمن تعاين فصلًا
+  kidAzkar: (p, me) => {
+    const list = releasedFor_(cls_(me, p)).sort((a, b) => String(b.released_at).localeCompare(String(a.released_at)));
+    return list.map(r => { const o = Object.assign({}, r); delete o.classes; return o; });
+  },
+
+  // الطفل أكمل أذكار الصباح (am) أو المساء (pm): نجمتان مرة واحدة لكل فترة في اليوم
+  azkarDone: (p, me) => {
+    if (me.role !== 'student') return { stars: 0 };
+    const period = String(p.period || '');
+    if (period !== 'am' && period !== 'pm') throw new Error('الفترة غير معروفة');
+    const day = dayNum_(p.date);
+    if (day > dayOffset_(1) || day < dayOffset_(-1)) throw new Error('لا يمكن تسجيل هذا اليوم');
+    if (!releasedFor_(me.class_id).length) throw new Error('لم تُفتح أذكار بعد');
+    rate_('azd:' + me.user_id, 30, 3600);
+    const reason = period === 'am' ? 'أذكار الصباح' : 'أذكار المساء';
+    const first = withLock_(() => awardOnce_('az:' + me.user_id + ':' + day + ':' + period, me.user_id, 'azkar', period, AZKAR_STARS, reason));
+    return { stars: first ? AZKAR_STARS : 0 };
+  },
+
+  // المعلمة تسجّل إنجازًا للطفل: حفظ حديث (نجمتان) أو إتمام سورة/جزء بشهادة (١٠ نجوم) — مرة لكل عنوان
+  kidAchievement: (p, me) => {
+    const kid = kidFor_(me, p.user_id);
+    const kind = String(p.kind || '');
+    if (kind !== 'hadith' && kind !== 'surah') throw new Error('نوع الإنجاز غير معروف');
+    const title = String(p.title || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+    if (title.length < 2) throw new Error(kind === 'surah' ? 'اكتبي اسم السورة أو الجزء' : 'اكتبي الحديث أو عنوانه');
+    rate_('ach:' + me.user_id, 120, 3600);
+    const stars = kind === 'surah' ? SURAH_STARS : HADITH_STARS;
+    const key = (kind === 'surah' ? 'su:' : 'hd:') + kid.user_id + ':' + normName_(title);
+    const reason = (kind === 'surah' ? 'إتمام ' : 'حفظ حديث: ') + title;
+    const ok = withLock_(() => awardOnce_(key, kid.user_id, kind, title, stars, reason, me.user_id));
+    if (!ok) throw new Error('مسجّل قبل كده لهذا الطفل');
+    return { stars };
+  },
+
+  deleteKidAchievement: (p, me) => withLock_(() => {
+    const r = rows_('StarLog').find(x => String(x.key) === String(p.key || '') && (x.kind === 'hadith' || x.kind === 'surah'));
+    const kid = r && rows_('Users').find(u => u.user_id === r.user_id);
+    if (!r || !kid || !sameClass_(me, kid.class_id)) throw new Error('الإنجاز غير موجود');
+    remove_('StarLog', 'key', r.key);
+    addPoints_(kid.user_id, -Number(r.stars || 0), 'إلغاء: ' + r.ref);
+    return true;
+  }),
+
+  kidAchievements: (p, me) => achievementsOf_(kidFor_(me, p.user_id).user_id)
+});
+function achievementsOf_(user_id) {
+  return rows_('StarLog').filter(r => r.user_id === user_id && (r.kind === 'hadith' || r.kind === 'surah'))
+    .map(r => ({ key: String(r.key), kind: String(r.kind), title: String(r.ref), stars: Number(r.stars), at: String(r.at) }))
+    .sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/* ============ أولياء الأمور ============ */
+// المعلمة تصدر لكل طفل كودًا (٨ حروف، ١٤ يومًا، لمرة واحدة)، وولي الأمر ينشئ حسابه به ثم يربط باقي أولاده بأكواد
+const PARENT_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const PARENT_CODE_DAYS = 14, MAX_PARENTS = 4, MAX_KIDS = 10;
+
+Object.assign(POLICY, {
+  parentCode: { min: 'teacher', write: 1, audit: 1 },
+  parentLinks: { min: 'teacher' },
+  unlinkParent: { min: 'teacher', write: 1, audit: 1 },
+  parentRegister: { min: null },
+  parentLink: { min: 'student', roles: ['parent'], write: 1 },
+  parentKids: { min: 'student', roles: ['parent'] },
+  parentKid: { min: 'student', roles: ['parent'] }
+});
+
+function codeHash_(code) { return sign_('pc|' + code).slice(0, 32); }
+function cleanParentCode_(v) { return normDigits_(v).toUpperCase().replace(/[\s-]+/g, ''); }
+function newParentCode_() {
+  const hex = (Utilities.getUuid() + Utilities.getUuid()).replace(/[^0-9a-f]/g, '');
+  let out = '';
+  for (let i = 0; out.length < 8; i += 2) out += PARENT_CODE_CHARS[parseInt(hex.substr(i, 2), 16) % PARENT_CODE_CHARS.length];
+  return out;
+}
+function kidFor_(me, user_id) {
+  const kid = rows_('Users').find(u => u.user_id === String(user_id || '') && u.role === 'student' && !inactive_(u));
+  if (!kid || !sameClass_(me, kid.class_id)) throw new Error('الطالب غير موجود');
+  return kid;
+}
+function badParentCode_() {
+  codeFail_('parentCodeFails');
+  return new Error('الكود غير صحيح أو انتهت صلاحيته — اطلب كودًا جديدًا من المعلمة');
+}
+// يتحقق من الكود ويربطه (يُستدعى والقفل محجوز). check = تحقق فقط بدون استهلاك
+function redeemParentCode_(code, parent_id, check) {
+  const c = cleanParentCode_(code);
+  if (!/^[A-Z2-9]{8}$/.test(c)) throw badParentCode_();
+  const h = codeHash_(c), row = rows_('ParentCodes').find(r => String(r.code_hash) === h);
+  if (!row || truthy_(row.revoked) || row.used_by || new Date(row.expires_at).getTime() < Date.now()) throw badParentCode_();
+  const kid = rows_('Users').find(u => u.user_id === row.kid_id && u.role === 'student' && !inactive_(u));
+  if (!kid) throw badParentCode_();
+  const links = rows_('ParentLinks');
+  if (parent_id && links.some(l => l.parent_id === parent_id && l.kid_id === kid.user_id)) throw new Error('هذا الطفل مربوط بحسابك بالفعل');
+  if (links.filter(l => l.kid_id === kid.user_id).length >= MAX_PARENTS) throw new Error('وصل عدد أولياء الأمور لهذا الطفل للحد الأقصى');
+  if (parent_id && links.filter(l => l.parent_id === parent_id).length >= MAX_KIDS) throw new Error('وصلت للحد الأقصى من الأطفال');
+  if (check) return kid;
+  update_('ParentCodes', 'code_hash', h, { used_by: parent_id, used_at: now_() });
+  append_('ParentLinks', { key: parent_id + ':' + kid.user_id, parent_id, kid_id: kid.user_id, created_at: now_(), created_by: row.created_by });
+  return kid;
+}
+function parentKidsOf_(parent_id) {
+  const ids = rows_('ParentLinks').filter(l => l.parent_id === parent_id).map(l => l.kid_id);
+  const classes = rows_('Classes');
+  return rows_('Users').filter(u => ids.indexOf(u.user_id) >= 0 && u.role === 'student' && !inactive_(u)).map(u => {
+    const c = classes.find(x => x.class_id === u.class_id);
+    return { user_id: u.user_id, name: u.name, avatar: u.avatar, gender: genderOf_(u), class_name: c ? c.name : '' };
+  });
+}
+const WEAK_PIN = /^(\d)\1{5}$|^(012345|123456|234567|345678|456789|987654|876543|765432|654321|543210)$/;
+
+Object.assign(ACTIONS, {
+  // كود جديد يلغي أي كود سابق لم يُستخدم لنفس الطفل؛ الكود يظهر مرة واحدة فقط (المحفوظ بصمته)
+  parentCode: (p, me) => {
+    const kid = kidFor_(me, p.user_id);
+    rate_('pc:' + me.user_id, 40, 3600);
+    const code = newParentCode_(), expires_at = new Date(Date.now() + PARENT_CODE_DAYS * 864e5).toISOString();
+    withLock_(() => {
+      rows_('ParentCodes').filter(r => r.kid_id === kid.user_id && !r.used_by && !truthy_(r.revoked)).forEach(r => update_('ParentCodes', 'code_hash', r.code_hash, { revoked: true }));
+      append_('ParentCodes', { code_hash: codeHash_(code), kid_id: kid.user_id, created_by: me.user_id, created_at: now_(), expires_at, used_by: '', used_at: '', revoked: false });
+    });
+    return { code, expires_at, name: kid.name };
+  },
+
+  parentLinks: (p, me) => {
+    const kid = kidFor_(me, p.user_id);
+    const users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
+    const parents = rows_('ParentLinks').filter(l => l.kid_id === kid.user_id && users[l.parent_id] && !inactive_(users[l.parent_id]))
+      .map(l => ({ parent_id: l.parent_id, name: users[l.parent_id].name, gender: genderOf_(users[l.parent_id]), linked_at: String(l.created_at) }));
+    const open = rows_('ParentCodes').find(r => r.kid_id === kid.user_id && !r.used_by && !truthy_(r.revoked) && new Date(r.expires_at).getTime() > Date.now());
+    return { parents, code_expires_at: open ? String(open.expires_at) : '' };
+  },
+
+  unlinkParent: (p, me) => {
+    const kid = kidFor_(me, p.user_id);
+    return withLock_(() => {
+      if (!remove_('ParentLinks', 'key', String(p.parent_id || '') + ':' + kid.user_id)) throw new Error('ولي الأمر غير مربوط بهذا الطفل');
+      return true;
+    });
+  },
+
+  // تسجيل ولي أمر جديد بالكود: اسم مميّز (للدخول) ورمز ٦ أرقام، والجنس للشخصية (أب/أم) والمخاطبة
+  parentRegister: (p) => {
+    const name = String(p.name || '').trim().replace(/\s+/g, ' ').slice(0, 40), pin = normDigits_(p.pin);
+    if (name.length < 3) throw new Error('اكتب اسمًا من ٣ حروف على الأقل (مثال: أم زيد محمد)');
+    if (!/^\d{6}$/.test(pin)) throw new Error('الرمز السري ٦ أرقام');
+    if (WEAK_PIN.test(pin)) throw new Error('اختر رمزًا أصعب من ذلك');
+    rate_('preg', 60, 3600);
+    const gender = cleanGender_(p.gender);
+    const u = withLock_(() => {
+      redeemParentCode_(p.code, '', true); // الكود صالح قبل إنشاء الحساب
+      uniqueStaffName_(name);
+      const nu = append_('Users', { user_id: id_('P'), role: 'parent', name, class_id: '', avatar: gender === 'f' ? 'mother' : 'father', pin_hash: hashPin_(pin),
+        city: '', country: '', telegram_id: '', active: true, created_at: now_(), last_login_at: now_(), gender });
+      redeemParentCode_(p.code, nu.user_id);
+      return nu;
+    });
+    return { token: makeToken_(u), user: { user_id: u.user_id, name: u.name, role: 'parent', class_id: '', avatar: u.avatar, gender } };
+  },
+
+  parentLink: (p, me) => {
+    rate_('plink:' + me.user_id, 20, 3600);
+    const kid = withLock_(() => redeemParentCode_(p.code, me.user_id));
+    return { user_id: kid.user_id, name: kid.name };
+  },
+
+  parentKids: (p, me) => parentKidsOf_(me.user_id),
+
+  // متابعة طفل مربوط (للعرض فقط): النجوم والترتيب والمحاضرات والاختبارات والواجبات والصلوات والإنجازات
+  parentKid: (p, me) => {
+    const kid_id = String(p.kid_id || '');
+    if (!rows_('ParentLinks').some(l => l.parent_id === me.user_id && l.kid_id === kid_id)) throw new Error('هذا الطفل غير مربوط بحسابك');
+    const kid = rows_('Users').find(u => u.user_id === kid_id && u.role === 'student' && !inactive_(u));
+    if (!kid) throw new Error('الطالب غير موجود');
+    const pts = {};
+    rows_('Points').forEach(r => { pts[r.user_id] = (pts[r.user_id] || 0) + Number(r.points); });
+    const mates = rows_('Users').filter(u => u.class_id === kid.class_id && u.role === 'student' && !inactive_(u)).map(u => ({ id: u.user_id, p: pts[u.user_id] || 0 })).sort((a, b) => b.p - a.p);
+    const published = rows_('Lectures').filter(l => l.class_id === kid.class_id && l.status === 'published').sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const att = {}; rows_('Attendance').forEach(a => { if (a.user_id === kid_id) att[a.lecture_id] = String(a.at); });
+    const quizzes = {}; rows_('Quizzes').forEach(z => { quizzes[z.quiz_id] = z; });
+    const results = rows_('Results').filter(r => r.user_id === kid_id && quizzes[r.quiz_id])
+      .map(r => ({ title: String(quizzes[r.quiz_id].title), score: Number(r.score), total: Number(r.total), stars: Number(r.stars || 0), at: String(r.at) }))
+      .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20);
+    const subs = {}; rows_('Submissions').forEach(s => { if (s.user_id === kid_id) subs[s.assignment_id] = String(s.status); });
+    const hw = rows_('Assignments').filter(a => a.class_id === kid.class_id).sort(byNewest_).slice(0, 20)
+      .map(a => ({ title: String(a.title), due: a.due ? day_(a.due) : '', status: subs[a.assignment_id] || '' }));
+    const prayers = userPrayers_(kid_id), days = {}, from = dayOffset_(-13);
+    Object.keys(prayers).forEach(k => { if (Number(k) >= from) days[k.slice(0, 4) + '-' + k.slice(4, 6) + '-' + k.slice(6, 8)] = prayers[k]; });
+    const azkar = rows_('StarLog').filter(r => r.user_id === kid_id && r.kind === 'azkar' && Number(String(r.key).split(':')[2]) >= from).length;
+    const cls = rows_('Classes').find(c => c.class_id === kid.class_id);
+    return {
+      kid: { user_id: kid.user_id, name: kid.name, avatar: kid.avatar, gender: genderOf_(kid), class_name: cls ? cls.name : '' },
+      points: pts[kid_id] || 0, rank: mates.findIndex(m => m.id === kid_id) + 1, total: mates.length,
+      lectures: { published: published.length, attended: published.filter(l => att[l.lecture_id]).length,
+        recent: published.slice(0, 6).map(l => ({ title: String(l.title), date: day_(l.date), attended: !!att[l.lecture_id] })) },
+      quizzes: results, homework: hw, prayers: days, azkar14: azkar, achievements: achievementsOf_(kid_id)
+    };
+  }
+});
+
+/* ============ الألعاب ============ */
+// كل الألعاب مفتوحة، وداخل كل لعبة ٣ مستويات بالترتيب. ألعاب الأنبياء تحتاج أنبياء ظاهرين في الرحلة بعدد المستوى
+const GAMES = { asma: 0, akhlaq: 0, match: 1, order: 1, who: 1 }; // 1 = من أنبياء الرحلة
+const GAME_NEED = [3, 5, 7], GAME_MIN_SEC = [8, 12, 16], GAME_PASS = 60;
+
+Object.assign(POLICY, {
+  games: { min: 'student' },
+  gameStart: { min: 'student', write: 1 },
+  gameDone: { min: 'student', write: 1 }
+});
+
+// عدد الأنبياء الظاهرين (جدول فاضي = الموقع يعرض بياناته الاحتياطية كلها)
+function visibleProphets_() { const all = rows_('Prophets'); return all.length ? all.filter(r => truthy_(r.visible)).length : 25; }
+function gameLevel_(p) {
+  const game = String(p.game || ''), level = Math.floor(Number(p.level));
+  if (!Object.prototype.hasOwnProperty.call(GAMES, game)) throw new Error('اللعبة غير معروفة');
+  if (!(level >= 1 && level <= 3)) throw new Error('المستوى غير معروف');
+  return { game, level };
+}
+function gameDoneKeys_(user_id) { const m = {}; rows_('GameProgress').forEach(r => { if (r.user_id === user_id) m[r.game + ':' + Number(r.level)] = r; }); return m; }
+
+Object.assign(ACTIONS, {
+  games: (p, me) => {
+    const done = gameDoneKeys_(me.user_id);
+    return { prophets: visibleProphets_(), need: GAME_NEED, stars: GAME_STARS,
+      progress: Object.keys(done).map(k => ({ game: String(done[k].game), level: Number(done[k].level), best: Number(done[k].best) })) };
+  },
+
+  gameStart: (p, me) => {
+    const { game, level } = gameLevel_(p);
+    rate_('gs:' + me.user_id, 200, 3600);
+    if (level > 1 && !gameDoneKeys_(me.user_id)[game + ':' + (level - 1)]) throw new Error('أكمل المستوى السابق أولًا');
+    if (GAMES[game] && visibleProphets_() < GAME_NEED[level - 1]) throw new Error('يفتح هذا المستوى لما تقابل أنبياء أكثر في رحلتك');
+    CacheService.getScriptCache().put('gst:' + me.user_id + ':' + game + ':' + level, String(Date.now()), 7200);
+    return { ok: true };
+  },
+
+  // النتيجة ٠–١٠٠، والنجاح من ٦٠٪. لازم بدء مسجّل ووقت أدنى (لا نجوم بسكريبت)، والنجوم لأول نجاح فقط
+  gameDone: (p, me) => {
+    const { game, level } = gameLevel_(p);
+    const score = Math.floor(Number(p.score));
+    if (!(score >= 0 && score <= 100)) throw new Error('نتيجة غير صحيحة');
+    const c = CacheService.getScriptCache(), ck = 'gst:' + me.user_id + ':' + game + ':' + level, at = Number(c.get(ck) || 0);
+    if (!at) throw new Error('ابدأ المستوى من جديد');
+    if (Date.now() - at < GAME_MIN_SEC[level - 1] * 1000) throw new Error('أسرع من اللازم — العب المستوى بهدوء');
+    c.remove(ck);
+    if (score < GAME_PASS) return { passed: false, stars: 0 };
+    if (me.role !== 'student') return { passed: true, stars: 0 }; // المعلمة تجرّب فقط
+    return withLock_(() => {
+      const key = me.user_id + ':' + game + ':' + level, old = rows_('GameProgress').find(r => String(r.key) === key);
+      if (old) { if (score > Number(old.best)) update_('GameProgress', 'key', key, { best: score }); return { passed: true, stars: 0 }; }
+      append_('GameProgress', { key, user_id: me.user_id, game, level, best: score, stars: GAME_STARS, at: now_() });
+      addPoints_(me.user_id, GAME_STARS, 'لعبة: ' + game + ' — المستوى ' + level);
+      return { passed: true, stars: GAME_STARS };
+    });
+  }
+});
