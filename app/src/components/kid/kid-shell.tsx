@@ -27,16 +27,17 @@ const STAFF_NAV = [
   { href: "/kid/quran/", label: "القرآن", icon: BookOpen },
 ];
 
-export const homeOf = (role: string) => (role === "student" ? "/kid/" : role === "superadmin" ? "/admin/" : "/teacher/");
+export const homeOf = (role: string) => (role === "student" ? "/kid/" : role === "parent" ? "/parent/" : role === "superadmin" ? "/admin/" : "/teacher/");
 
 export function useRequireRole(roles: string[]) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   useEffect(() => {
     const u = session.user();
-    if (!u || !session.token()) { router.replace(roles.includes("student") ? "/" : "/teacher/login/"); return; }
+    if (!u || !session.token()) { router.replace(roles.includes("student") ? "/" : roles.length === 1 && roles[0] === "parent" ? "/parent/login/" : "/teacher/login/"); return; }
     // داخل بحساب آخر: نرجعه لصفحته بدل صفحة الدخول
     if (!roles.includes(u.role)) { router.replace(homeOf(u.role)); return; }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- قراءة الجلسة من التخزين مرة بعد التحميل
     setUser(u);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -45,13 +46,13 @@ export function useRequireRole(roles: string[]) {
 
 export function KidShell({ children }: { children: ReactNode }) {
   const path = usePathname();
-  const user = useRequireRole(STAFF_PATHS.test(path) ? ["student", "teacher", "admin", "superadmin"] : ["student"]);
+  const user = useRequireRole(STAFF_PATHS.test(path) ? ["student", "teacher", "admin", "superadmin", "parent"] : ["student"]);
   const staff = !!user && user.role !== "student";
   const nav = staff ? [...STAFF_NAV, { href: homeOf(user.role), label: "لوحتي", icon: LayoutDashboard }] : NAV;
   const router = useRouter();
   const animate = useMotionAllowed();
   // الخروج يوقف إشعارات الجهاز (حتى لا تصل إشعارات طفل لطفل آخر على نفس الجهاز)
-  const logout = async () => { if (viewAsInfo()) return stopViewAs(); if (!staff) await Promise.race([disablePush().catch(() => {}), new Promise((r) => setTimeout(r, 3000))]); session.clear(); router.replace(staff ? "/teacher/login/" : "/"); };
+  const logout = async () => { if (viewAsInfo()) return stopViewAs(); if (!staff || user?.role === "parent") await Promise.race([disablePush().catch(() => {}), new Promise((r) => setTimeout(r, 3000))]); session.clear(); router.replace(user?.role === "parent" ? "/parent/login/" : staff ? "/teacher/login/" : "/"); };
   // التخطيط يبقى مركّبًا بين صفحات /kid، وفحص الدور يجري مرة واحدة: لو خرجت المعلمة من الرحلة/النبي/القرآن
   // (مثل رابط محاضرة في صفحة النبي) لصفحات الطفل فقط نرجعها للوحتها ولا نعرض الصفحة (حتى لا تُسجَّل لها حضور ونقاط)
   const staffBlocked = staff && !STAFF_PATHS.test(path);

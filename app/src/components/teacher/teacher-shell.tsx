@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles, ClipboardCheck, NotebookPen, Info, Radio, Clock, BookHeart, School, BookOpen } from "lucide-react";
+import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles, ClipboardCheck, NotebookPen, Info, Radio, Clock, BookHeart, School, BookOpen, Sun, SunMedium, Star } from "lucide-react";
 import { session, type Role } from "@/lib/api";
 import { ROLE_LABEL, stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useRequireRole } from "@/components/kid/kid-shell";
@@ -15,7 +15,7 @@ import { BrandMark } from "@/components/brand-logo";
 import { HomeBack } from "@/components/home-back";
 import { useLiveReady } from "@/components/live/live-banner";
 
-const RANK: Record<Role, number> = { student: 0, teacher: 1, admin: 2, superadmin: 3 };
+const RANK: Record<Role, number> = { parent: -1, student: 0, teacher: 1, admin: 2, superadmin: 3 };
 
 // كل عنصر يظهر لمن رتبته >= min (المطوّر يرى كل شيء)
 export const TEACHER_NAV: { href: string; label: string; icon: typeof Users; min?: Role }[] = [
@@ -28,7 +28,10 @@ export const TEACHER_NAV: { href: string; label: string; icon: typeof Users; min
   { href: "/teacher/live/", label: "المحاضرة المباشرة", icon: Radio },
   { href: "/teacher/quran/", label: "القرآن الكريم", icon: BookOpen },
   { href: "/teacher/prayer/", label: "جدول الصلوات", icon: Clock },
+  { href: "/teacher/azkar/", label: "أذكار الصباح والمساء", icon: Sun },
+  { href: "/teacher/names/", label: "الأسماء الحسنى", icon: Star },
   { href: "/teacher/prayer-content/", label: "محتوى الصلاة", icon: BookHeart, min: "admin" },
+  { href: "/teacher/azkar-release/", label: "أذكار الأطفال", icon: SunMedium, min: "admin" },
   { href: "/teacher/lectures/", label: "المحاضرات", icon: Headphones },
   { href: "/teacher/upload/", label: "رفع تسجيل", icon: Upload },
   { href: "/teacher/quizzes/", label: "الاختبارات", icon: ClipboardCheck },

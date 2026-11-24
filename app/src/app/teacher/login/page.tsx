@@ -31,6 +31,7 @@ export default function TeacherLogin() {
     try {
       const d = await api<{ token: string; user: User }>("login", { name: name.trim(), pin });
       if (d.user.role === "student") throw new Error("هذه الصفحة للمعلمات فقط");
+      if (d.user.role === "parent") { session.save(d); clearLogoutReason(); router.replace("/parent/"); return; }
       session.save(d); clearLogoutReason(); setMood("happy");
       const next = new URLSearchParams(window.location.search).get("next");
       router.replace(next === "upload" ? "/teacher/upload/" : d.user.role === "superadmin" ? "/admin/" : "/teacher/");
@@ -62,7 +63,7 @@ export default function TeacherLogin() {
           <Button type="submit" variant="hero" size="xl" disabled={busy}>{busy ? <Loader2 className="animate-spin" /> : <>دخول <LogIn /></>}</Button>
           <p role="alert" className="min-h-5 text-center text-sm font-bold text-destructive">{err || reason}</p>
         </form>
-        <Link href="/about/" className="text-sm font-bold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">من نحن ✨</Link>
+        <div className="flex gap-4"><Link href="/parent/login/" className="text-sm font-bold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">دخول أولياء الأمور</Link><Link href="/about/" className="text-sm font-bold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">من نحن ✨</Link></div>
       </main>
     </div>
   );

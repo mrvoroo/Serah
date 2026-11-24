@@ -64,7 +64,10 @@ export default function Welcome() {
     <div className="relative flex min-h-svh flex-col">
       <Ambient />
       <div className="flex items-center justify-between p-4">
-        <Link href="/teacher/login/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>دخول المعلمة</Link>
+        <div className="flex gap-2">
+          <Link href="/teacher/login/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>دخول المعلمة</Link>
+          <Link href="/parent/login/" className={buttonVariants({ variant: "secondary", size: "lg2" })}>أولياء الأمور</Link>
+        </div>
         <ThemeToggle />
       </div>
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 pb-10">

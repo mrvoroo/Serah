@@ -18,6 +18,7 @@ import { isProphet, menuName } from "@/lib/prophets";
 import type { Station } from "./stations";
 import { RT } from "@/components/religious-text";
 import { g } from "@/lib/kid-text";
+import { session } from "@/lib/api";
 
 // قائمة المحطات: الأنبياء مقسّمون لمجموعات بالترتيب (حتى 7 في المجموعة، أو عند إبراهيم ويوسف وسليمان)، وكل نبي برقم محطته
 const BREAKS = new Set(["ibrahim", "yusuf", "sulayman"]);
@@ -106,6 +107,14 @@ const AT_KEY = "serah_journey_at";
 const rememberStation = (id: string) => { try { sessionStorage.setItem(AT_KEY, id); } catch { /* لا شيء */ } };
 
 export function Journey({ stations }: { stations: Station[] }) {
+  // الكبار (ولي الأمر والمعلمات) يرون ترحيبًا وكلامًا مخصصًا لهم بدل كلام الطفل
+  const role = session.user()?.role;
+  const parent = role === "parent", teacherRole = role === "teacher" || role === "admin" || role === "superadmin";
+  const startTag = (t: string) => (parent ? "أهلًا بكم" : role === "superadmin" ? "أهلًا بك" : teacherRole ? "أهلًا بكِ" : g(t, t.replace("يا بطل", "يا بطلة")));
+  const startText = (t: string) => (parent ? "رحلة مع أنبياء الله خطوة خطوة: في كل محطة حكاية نبي، تقرؤونها وتحكونها لأطفالكم وتعيشون معهم دروسها."
+    : teacherRole ? "رحلة مع أنبياء الله خطوة خطوة، كما يراها الأطفال: في كل محطة حكاية نبي مراجَعة."
+    : g(t, t.replace("انزل معانا", "انزلي معانا")));
+  const siraText = (t: string) => (parent || teacherRole ? t.replace("تعالَ نتعرّف", "تعالوا نتعرّف") : g(t, t.replace("تعالَ نتعرّف", "تعالي نتعرّف")));
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scope = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
@@ -301,7 +310,7 @@ export function Journey({ stations }: { stations: Station[] }) {
                   {i === 0 && <KidBuddy mood="helping" size={84} />}
                   {i === stations.length - 1 && <KidBuddy mood="happy" size={84} />}
                   <div>
-                    <span className="inline-block rounded-full bg-secondary px-3 py-1 text-xs font-bold text-secondary-foreground">{s.id === "start" ? g(s.tag, s.tag.replace("يا بطل", "يا بطلة")) : s.tag}</span>
+                    <span className="inline-block rounded-full bg-secondary px-3 py-1 text-xs font-bold text-secondary-foreground">{s.id === "start" ? startTag(s.tag) : s.tag}</span>
                     {i === 0 ? (
                       <SplitText text={s.title} tag="h1" className="mt-2 text-4xl font-extrabold leading-tight text-foreground md:text-5xl" splitType="words" effect="rise" trigger="load" textAlign="right" />
                     ) : (
@@ -309,7 +318,7 @@ export function Journey({ stations }: { stations: Station[] }) {
                     )}
                   </div>
                 </div>
-                <p className="mt-3 text-base leading-8 text-muted-foreground"><RT text={s.id === "start" ? g(s.text, s.text.replace("انزل معانا", "انزلي معانا")) : s.id === "sira" ? g(s.text, s.text.replace("تعالَ نتعرّف", "تعالي نتعرّف")) : s.text} /></p>
+                <p className="mt-3 text-base leading-8 text-muted-foreground"><RT text={s.id === "start" ? startText(s.text) : s.id === "sira" ? siraText(s.text) : s.text} /></p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {i === 0 ? (
                     <button type="button" onClick={() => go(1)} className={buttonVariants({ variant: "gold", size: "lg2" })}>

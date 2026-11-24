@@ -26,6 +26,8 @@ const TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] =
   { href: "/kid/stars/", label: "لوحة النجوم", icon: "trophy", tone: "from-[#FFB020] to-[#E07A00]" },
   { href: "/kid/quran/", label: "القرآن الكريم", icon: "open-book", tone: "from-[#1FA37F] to-[#0E6B52]" },
   { href: "/kid/prayer/", label: "جدول الصلوات", icon: "mosque", tone: "from-[#1E8C72] to-[#0B4A3E]" },
+  { href: "/kid/azkar/", label: "أذكار الصباح والمساء", icon: "sun", tone: "from-[#F59E0B] to-[#C2410C]" },
+  { href: "/kid/games/", label: "الألعاب", icon: "game", tone: "from-[#EC4899] to-[#7C3AED]" },
   { href: "/kid/names/", label: "أسماء الله الحسنى", icon: "sparkles", tone: "from-[#3A2A8F] to-[#120A30]" },
 ];
 

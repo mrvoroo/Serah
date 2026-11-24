@@ -51,8 +51,11 @@ export const fmtDay = (d: Date, o: Intl.DateTimeFormatOptions = { weekday: "long
 export const fmtHijri = (d: Date) => { try { return d.toLocaleDateString("ar-SA-u-ca-islamic-umalqura", { day: "numeric", month: "long", year: "numeric" }); } catch { return ""; } };
 
 /* ===== جدول الإشعارات (١٤ يومًا) يُرسل للخادم الذي يرسلها في وقتها ===== */
-export type NotifyPrefs = { prayer: boolean; dhikr: boolean; duha: boolean; friday: boolean; tasks: boolean };
-export const DEFAULT_PREFS: NotifyPrefs = { prayer: true, dhikr: true, duha: true, friday: true, tasks: true };
+export type NotifyPrefs = { prayer: boolean; dhikr: boolean; duha: boolean; friday: boolean; tasks: boolean; azkar: boolean };
+export const DEFAULT_PREFS: NotifyPrefs = { prayer: true, dhikr: true, duha: true, friday: true, tasks: true, azkar: true };
+// تذكير أذكار الصباح بعد الفجر بـ٤٥ دقيقة، والمساء بعد العصر بـ٤٥ دقيقة (للطفل يرسله الخادم فقط لو فصله فُتح له ذكر)
+export const AZKAR_AFTER_SEC = 45 * 60;
+const AZ_POOL = 13;
 const PREFS_KEY = "serah_notify_prefs";
 export function loadPrefs(): NotifyPrefs { try { return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") }; } catch { return DEFAULT_PREFS; } }
 export function savePrefs(p: NotifyPrefs) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* لا شيء */ } }
@@ -84,6 +87,7 @@ export function buildPlan(place: Place, prefs: NotifyPrefs, girl: boolean, from 
         out.push([sec(d), "dhikr", Math.floor(r() * R.dhikr.length)]); n++;
       }
     }
+    if (prefs.azkar) { out.push([sec(t.fajr) + AZKAR_AFTER_SEC, "am", Math.floor(r() * AZ_POOL)]); out.push([sec(t.asr) + AZKAR_AFTER_SEC, "pm", Math.floor(r() * AZ_POOL)]); }
     // الضحى: منتصف ما بين الشروق والظهر
     if (prefs.duha) out.push([sec(new Date((t.sunrise.getTime() + t.dhuhr.getTime()) / 2)), "duha", i % Math.max(1, R.duha.length)]);
     if (prefs.friday && day.getDay() === 5) {
