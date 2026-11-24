@@ -1832,6 +1832,22 @@ test('الألعاب: المستويات بالترتيب، وقت أدنى، ن
   } finally { Date.now = realNow; }
 });
 
+test('الاقتراحات: المعلمة والأدمن ترسلان، والإدارة ترى الكل، والمعلمة ترى أطفال فصلها واقتراحها فقط', () => {
+  const t = setup();
+  const admin = t.login({ name: 'المعلمة', pin: '482615' }), teacher = t.login({ name: 'معلمة ثانية', pin: '222222' }), kid = t.login({ user_id: 'S1', pin: '1111' }), dev = t.login({ name: 'م.احمد', pin: '987654' });
+  const sub = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/adm', plan: [] }, admin);
+  assert.ok(t.call('suggest', { text: 'فكرة من الطفل' }, kid).ok);
+  assert.ok(t.call('suggest', { text: 'فكرة من المعلمة' }, teacher).ok);
+  assert.ok(t.call('suggest', { text: 'فكرة من الأدمن' }, admin).ok);
+  assert.deepStrictEqual(t.call('pullNotices', { key: sub.data.key }).data.items.map(x => x.title), ['اقتراح جديد من معلمة']);
+  const all = t.call('suggestions', {}, dev).data;
+  assert.deepStrictEqual(all.map(x => [x.text, x.role]).sort(), [['فكرة من الأدمن', 'admin'], ['فكرة من الطفل', 'student'], ['فكرة من المعلمة', 'teacher']]);
+  assert.strictEqual(t.call('suggestions', {}, admin).data.length, 3);
+  const mineT = t.call('suggestions', {}, teacher).data;
+  assert.deepStrictEqual(mineT.map(x => x.text).sort(), ['فكرة من الطفل', 'فكرة من المعلمة']);
+  assert.ok(mineT.find(x => x.text === 'فكرة من المعلمة').mine);
+});
+
 for (const [name, fn] of tests) {
   try { fn(); console.log('✔', name); } catch (e) { failed++; console.log('✘', name, '\n   ', e.message); }
 }

@@ -14,7 +14,7 @@ import { MatchBoard, OrderBoard, WhoBoard } from "@/components/games/boards";
 import { isGirl, g } from "@/lib/kid-text";
 import { useMotionAllowed } from "@/lib/tier";
 import type { ProphetRow } from "@/lib/prophets";
-import { MIN_SEC, PASS, akhlaqPairs, akhlaqWhy, asmaPairs, gameMeta, matchPairs, orderSet, visibleProphets, whoRounds, type GameId } from "@/lib/games";
+import { MIN_SEC, PASS, akhlaqPairs, akhlaqWhy, asmaPairs, symbolRef, gameMeta, matchPairs, orderSet, visibleProphets, whoRounds, type GameId } from "@/lib/games";
 import { cn } from "@/lib/utils";
 
 // شاشة اللعب: نبدأ المستوى عند الخادم (يتحقق أنه مفتوح)، ونرسل النتيجة بعد الحد الأدنى للوقت
@@ -51,7 +51,7 @@ function Play() {
     const girl = isGirl();
     if (game === "asma") return { kind: "match" as const, pairs: asmaPairs(level), l: "الاسم", r: "معناه" };
     if (game === "akhlaq") return { kind: "match" as const, pairs: akhlaqPairs(level, girl), l: "الاسم", r: "خُلُقي" };
-    if (game === "match") return { kind: "match" as const, pairs: matchPairs(level, vps), l: "النبي", r: "رمزه في الرحلة" };
+    if (game === "match") return { kind: "match" as const, pairs: matchPairs(level, vps), l: "النبي", r: "من قصّته في القرآن" };
     if (game === "order") return { kind: "order" as const, items: orderSet(level, vps) };
     return { kind: "who" as const, rounds: whoRounds(level, vps) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -106,7 +106,7 @@ function Play() {
           {meta.prophets && <p className="mb-3 text-center text-sm font-bold text-muted-foreground">الأنبياء عليهم الصلاة والسلام</p>}
           {board.kind !== "match" && (board.kind === "order" ? board.items.length : board.rounds.length) < 2 ? (
             <p className="rounded-[28px] border bg-card p-6 text-center font-bold">{g("قابل", "قابلي")} أنبياء أكثر في رحلتك وارجع للعبة دي ✨</p>
-          ) : board.kind === "match" ? <MatchBoard key={round} pairs={board.pairs} leftLabel={board.l} rightLabel={board.r} onDone={finish} noteOf={game === "akhlaq" ? akhlaqWhy : undefined} />
+          ) : board.kind === "match" ? <MatchBoard key={round} pairs={board.pairs} leftLabel={board.l} rightLabel={board.r} onDone={finish} noteOf={game === "akhlaq" ? akhlaqWhy : game === "match" ? symbolRef : undefined} />
             : board.kind === "order" ? <OrderBoard key={round} items={board.items} onDone={finish} />
             : <WhoBoard key={round} rounds={board.rounds} onDone={finish} />}
         </div>

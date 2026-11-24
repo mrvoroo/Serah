@@ -1,6 +1,5 @@
 import asma from "@/content/asma-husna.json";
 import akhlaq from "@/content/asma-akhlaq.json";
-import pc from "@/content/prophets-content.json";
 import clues from "@/content/prophet-clues.json";
 import type { Icon3DName } from "@/components/icon3d";
 import type { ProphetRow } from "@/lib/prophets";
@@ -31,11 +30,9 @@ const take = <T,>(a: T[], n: number) => shuffle(a).slice(0, n);
 export type Pair = { id: string; left: string; right: string };
 type AsmaName = { n: number; plain: string; meaning: string };
 type AkhlaqItem = { n: number; plain: string; trait: { boy: string; girl: string }; why: string };
-type PC = { id: string; name: string; symbol: { main: string; label: string; unified?: boolean } };
 type Clue = { id: string; clues: string[] };
 const NAMES = (asma as unknown as { names: AsmaName[] }).names;
 const AKH = (akhlaq as unknown as { items: AkhlaqItem[] }).items;
-const PCL = (pc as unknown as { prophets: PC[] }).prophets;
 const CLUES = (clues as unknown as { items: Clue[] }).items;
 
 // أسماء معانيها متقاربة لا تجتمع في جولة واحدة (مراجعة الشيخ: حتى لا يُخطَّأ الطفل في معنى يصدق على الاسمين)
@@ -82,11 +79,37 @@ export function visibleProphets(rows: ProphetRow[] | undefined) {
 }
 export type VP = ReturnType<typeof visibleProphets>[number];
 
-// الرمز الموحّد («نبيّ كريم») لا يصلح للمطابقة فيُستبعد أصحابه
+// رموز لعبة المطابقة: قائمة مستقلة راجعها الشيخ (من قصة كل نبي في القرآن أو السنة الصحيحة، ومختصة به حتى لا يُخطَّأ الطفل وهو محق).
+// رسوم مجسم الرحلة الزخرفية تبقى كما هي ولا يُختبر فيها الطفل.
+// خارج اللعبة: ذو الكفل وإلياس واليسع (لا رمز ثابت مختص)، وإسحاق حتى يُعتمد البديل «بشارة سارة» (هود ٧١)
+export const GAME_SYMBOLS: Record<string, { label: string; ref: string }> = {
+  adam: { label: "الشجرة", ref: "﴿وَلَا تَقْرَبَا هَٰذِهِ الشَّجَرَةَ﴾ — البقرة ٣٥" },
+  idris: { label: "المكان العلي", ref: "﴿وَرَفَعْنَاهُ مَكَانًا عَلِيًّا﴾ — مريم ٥٧" },
+  noah: { label: "السفينة", ref: "﴿فَأَنجَيْنَاهُ وَأَصْحَابَ السَّفِينَةِ﴾ — العنكبوت ١٥" },
+  hud: { label: "الريح", ref: "﴿بِرِيحٍ صَرْصَرٍ عَاتِيَةٍ﴾ — الحاقة ٦" },
+  salih: { label: "الناقة", ref: "﴿نَاقَةَ اللَّهِ وَسُقْيَاهَا﴾ — الشمس ١٣" },
+  ibrahim: { label: "النار بردًا وسلامًا", ref: "﴿يَا نَارُ كُونِي بَرْدًا وَسَلَامًا عَلَىٰ إِبْرَاهِيمَ﴾ — الأنبياء ٦٩" },
+  lut: { label: "الخروج قبل الصبح", ref: "﴿فَأَسْرِ بِأَهْلِكَ بِقِطْعٍ مِّنَ اللَّيْلِ﴾ — هود ٨١" },
+  ismail: { label: "الكبش", ref: "﴿وَفَدَيْنَاهُ بِذِبْحٍ عَظِيمٍ﴾ — الصافات ١٠٧" },
+  yaqub: { label: "عودة البصر", ref: "﴿فَارْتَدَّ بَصِيرًا﴾ — يوسف ٩٦" },
+  yusuf: { label: "رؤيا الكواكب", ref: "﴿إِنِّي رَأَيْتُ أَحَدَ عَشَرَ كَوْكَبًا وَالشَّمْسَ وَالْقَمَرَ﴾ — يوسف ٤" },
+  ayyub: { label: "عين الماء", ref: "﴿هَٰذَا مُغْتَسَلٌ بَارِدٌ وَشَرَابٌ﴾ — ص ٤٢" },
+  shuayb: { label: "الميزان", ref: "﴿فَأَوْفُوا الْكَيْلَ وَالْمِيزَانَ﴾ — الأعراف ٨٥" },
+  musa: { label: "العصا", ref: "﴿وَمَا تِلْكَ بِيَمِينِكَ يَا مُوسَىٰ﴾ — طه ١٧" },
+  harun: { label: "اللسان الفصيح", ref: "﴿وَأَخِي هَارُونُ هُوَ أَفْصَحُ مِنِّي لِسَانًا﴾ — القصص ٣٤" },
+  dawud: { label: "الدرع", ref: "﴿وَعَلَّمْنَاهُ صَنْعَةَ لَبُوسٍ لَّكُمْ﴾ — الأنبياء ٨٠" },
+  sulayman: { label: "النملة", ref: "﴿قَالَتْ نَمْلَةٌ يَا أَيُّهَا النَّمْلُ﴾ — النمل ١٨" },
+  yunus: { label: "الحوت", ref: "﴿فَالْتَقَمَهُ الْحُوتُ﴾ — الصافات ١٤٢" },
+  zakariya: { label: "المحراب", ref: "﴿وَهُوَ قَائِمٌ يُصَلِّي فِي الْمِحْرَابِ﴾ — آل عمران ٣٩" },
+  yahya: { label: "خُذِ الكتاب بقوة", ref: "﴿يَا يَحْيَىٰ خُذِ الْكِتَابَ بِقُوَّةٍ﴾ — مريم ١٢" },
+  isa: { label: "المائدة", ref: "﴿أَنزِلْ عَلَيْنَا مَائِدَةً مِّنَ السَّمَاءِ﴾ — المائدة ١١٤" },
+  muhammad: { label: "القرآن الكريم", ref: "﴿نَزَلَ بِهِ الرُّوحُ الْأَمِينُ * عَلَىٰ قَلْبِكَ﴾ — الشعراء ١٩٣–١٩٤" },
+};
 export function matchPairs(level: number, vps: VP[]): Pair[] {
-  const ok = vps.map((p) => ({ p, c: PCL.find((x) => x.id === p.id) })).filter((x) => x.c && !x.c.symbol.unified);
-  return take(ok, Math.min(LEVEL_NEED[level - 1], ok.length)).map(({ p, c }) => ({ id: p.id, left: p.short, right: c!.symbol.label }));
+  const ok = vps.filter((p) => GAME_SYMBOLS[p.id]);
+  return take(ok, Math.min(LEVEL_NEED[level - 1], ok.length)).map((p) => ({ id: p.id, left: p.short, right: GAME_SYMBOLS[p.id].label }));
 }
+export const symbolRef = (id: string) => GAME_SYMBOLS[id]?.ref ?? "";
 // «رتّب الأنبياء» يصحّح فقط ترتيبًا ثابتًا بالدليل أو الاتفاق (مراجعة الشيخ)، برتبة ثابتة هنا لا بترتيب جدول الرحلة.
 // خارج اللعبة فقط (لا من الرحلة): إدريس، لوط، أيوب، شعيب، هارون، ذو الكفل، إلياس، اليسع، يونس، يحيى — ترتيبهم مختلف فيه
 const ORDER_RANK = ["adam", "noah", "hud", "salih", "ibrahim", "ismail", "ishaq", "yaqub", "yusuf", "musa", "dawud", "sulayman", "zakariya", "isa", "muhammad"];

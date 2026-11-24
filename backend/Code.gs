@@ -496,7 +496,7 @@ const ACTIONS = {
     needTeacher_(me);
     const users = {}; rows_('Users').forEach(u => users[u.user_id] = u);
     return classSuggestions_(me).slice(-50).reverse().map(s => ({ id: s.id, text: s.text, status: s.status, at: s.at,
-      name: users[s.from_user] ? users[s.from_user].name : '' }));
+      name: users[s.from_user] ? users[s.from_user].name : '', role: users[s.from_user] ? users[s.from_user].role : String(s.role || ''), mine: s.from_user === me.user_id }));
   },
 
   // صندوق الاقتراحات: يراه المشرف فقط
@@ -505,6 +505,7 @@ const ACTIONS = {
     if (!text) throw new Error('اكتب اقتراحك');
     rate_('suggest:' + me.user_id, 10, 3600);
     append_('Suggestions', { id: id_('s'), from_user: me.user_id, role: me.role, text, status: 'جديد', at: now_() });
+    if (RANK[me.role] >= RANK.teacher) notifyStaffSuggestion_(me, text);
     return true;
   },
 
@@ -1337,8 +1338,23 @@ function sameClass_(me, cid) { return me.role === 'superadmin' || me.role === 'a
 function classSuggestions_(me) {
   const all = rows_('Suggestions');
   if (me.role === 'superadmin' || me.role === 'admin') return all;
-  const cls = {}; rows_('Users').forEach(u => cls[u.user_id] = String(u.class_id));
-  return all.filter(s => cls[s.from_user] === String(me.class_id));
+  // المعلمة: اقتراحات أطفال فصلها، واقتراحاتها هي (اقتراحات المعلمات الأخريات للإدارة فقط)
+  const u = {}; rows_('Users').forEach(x => { u[x.user_id] = x; });
+  return all.filter(s => s.from_user === me.user_id || (u[s.from_user] && u[s.from_user].role === 'student' && String(u[s.from_user].class_id) === String(me.class_id)));
+}
+// اقتراح من معلمة أو أدمن: إشعار للأدمن والمطوّر (عدا صاحبته)، مرة كل ٥ دقائق مهما كثرت
+function notifyStaffSuggestion_(me, text) {
+  try {
+    const c = CacheService.getScriptCache();
+    if (c.get('sgn')) return;
+    c.put('sgn', '1', 300);
+    const staff = {}; rows_('Users').forEach(u => { if (!inactive_(u) && (u.role === 'admin' || u.role === 'superadmin') && u.user_id !== me.user_id) staff[u.user_id] = 1; });
+    const subs = rows_('PushSubs').filter(s => staff[s.user_id]);
+    if (!subs.length) return;
+    const item = { kind: 'review', title: 'اقتراح جديد من ' + String(me.role === 'admin' ? 'أدمن' : 'معلمة'), body: String(text).replace(/\s+/g, ' ').slice(0, 90), url: '/teacher/suggestions/' };
+    subs.forEach(s => queuePush_(s.sub_id, item));
+    UrlFetchApp.fetchAll(subs.map(s => pushRequest_(s.endpoint)));
+  } catch (e) { console.error(e); }
 }
 // قسم حرج على الشيت (قراءة ثم كتابة) لا يتداخل مع طلب آخر
 function withLock_(fn) {

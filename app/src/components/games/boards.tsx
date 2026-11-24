@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Check, Lightbulb } from "lucide-react";
 import { useMotionAllowed } from "@/lib/tier";
+import { RT } from "@/components/religious-text";
 import { g } from "@/lib/kid-text";
 import { shuffle, scoreOf, type Pair, type VP, type WhoRound } from "@/lib/games";
 import { cn } from "@/lib/utils";
@@ -53,7 +54,7 @@ export function MatchBoard({ pairs, leftLabel, rightLabel, onDone, noteOf }: { p
           );
         })}
       </ul>
-      {noteOf && done.length > 0 && noteOf(done[done.length - 1]) && <p aria-live="polite" className="col-span-2 rounded-2xl bg-emerald-500/10 p-3 text-center text-sm leading-7">💡 {noteOf(done[done.length - 1])}</p>}
+      {noteOf && done.length > 0 && noteOf(done[done.length - 1]) && <p aria-live="polite" className="col-span-2 rounded-2xl bg-emerald-500/10 p-3 text-center text-sm leading-7">💡 <RT text={noteOf(done[done.length - 1])} /></p>}
       <p className="col-span-2 text-center text-xs text-muted-foreground">{g("اختر", "اختاري")} من العمود الأول ثم ما يناسبه · الأخطاء: {ar(wrong)}</p>
     </div>
   );
