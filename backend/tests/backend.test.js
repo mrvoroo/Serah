@@ -486,7 +486,8 @@ test('البوت: محاضرة كاملة بالأزرار — صوت، نبي،
   assert.strictEqual(t.g.rows_('LectureImages').filter(i => i.lecture_id === l.lecture_id).length, 2);
   const note = last(1);
   assert.match(note.text, /محاضرة جديدة بانتظار مراجعتكِ الكريمة/);
-  assert.strictEqual(note.reply_markup.inline_keyboard[0][0].url, 'https://mrvoroo.github.io/Serah/teacher/lectures/');
+  // بدون SITE_ORIGIN: الدومين الخاص من الجذر
+  assert.strictEqual(note.reply_markup.inline_keyboard[0][0].url, 'https://imuntaha.com/teacher/lectures/');
   assert.ok(buttons(2).includes(B.NEW), 'back to main menu');
   send(2, B.MINE);
   assert.match(last(2).text, /📝 مسودة — قصة سيدنا نوح عليه السلام/);
@@ -2092,6 +2093,15 @@ test('الشهادات: سورة بعد تأكيد الحفظ، ومرحلة ر�
   assert.strictEqual(t.call('certificates', { kid_id: 'S1' }, par).data.items.length, 2);
   assert.strictEqual(t.call('certificates', { kid_id: s3 }, par).error, 'هذا الطفل غير مربوط بحسابك');
   assert.strictEqual(t.call('certificates', { user_id: s3 }, teacher).error, 'الطالب غير موجود');
+});
+
+test('رابط الموقع في البوت: imuntaha.com من الجذر، والعنوان القديم على github.io تحت /Serah', () => {
+  const t = setup();
+  const sub = (o) => { if (o === null) delete t.props.SITE_ORIGIN; else t.props.SITE_ORIGIN = o; const jwt = t.g.vapidJwt_('https://fcm.googleapis.com/' + Math.random()); return JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString()).sub; };
+  assert.strictEqual(sub(null), 'https://imuntaha.com/');
+  assert.strictEqual(sub('https://imuntaha.com'), 'https://imuntaha.com/');
+  assert.strictEqual(sub('https://mrvoroo.github.io'), 'https://mrvoroo.github.io/Serah/');
+  assert.strictEqual(sub('https://mrvoroo.github.io/Serah'), 'https://mrvoroo.github.io/Serah/');
 });
 
 for (const [name, fn] of tests) {

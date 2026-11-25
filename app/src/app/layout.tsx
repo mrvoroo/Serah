@@ -12,9 +12,19 @@ const ruqaa = localFont({ src: "../fonts/ruqaa.woff2", variable: "--font-ruqaa",
 const quran = Amiri_Quran({ subsets: ["arabic"], weight: "400", variable: "--font-quran", display: "swap" });
 const cinzel = Cinzel({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-cinzel", display: "swap" });
 
+// معاينة الرابط (واتساب وتيليجرام وفيسبوك…): الصورة لازم برابط كامل على الدومين
+const SITE = "https://imuntaha.com";
+const DESC = "المُنْتَهَى — منصة رحلة مع الأنبياء والقرآن الكريم للأطفال";
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE),
   title: "المُنْتَهَى | Muntaha",
-  description: "المُنْتَهَى — منصة رحلة مع الأنبياء والقرآن الكريم للأطفال",
+  description: DESC,
+  openGraph: {
+    type: "website", url: SITE + "/", siteName: "المُنْتَهَى | Muntaha", locale: "ar_EG",
+    title: "المُنْتَهَى | Muntaha", description: DESC,
+    images: [{ url: SITE + "/brand/og.jpg", width: 1200, height: 630, alt: "شعار المُنْتَهَى — رحلة مع الأنبياء والقرآن الكريم للأطفال" }],
+  },
+  twitter: { card: "summary_large_image", title: "المُنْتَهَى | Muntaha", description: DESC, images: [SITE + "/brand/og.jpg"] },
   applicationName: "Muntaha",
   appleWebApp: { capable: true, title: "Muntaha", statusBarStyle: "black-translucent" },
   manifest: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/manifest.webmanifest`,

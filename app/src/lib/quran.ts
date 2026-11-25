@@ -25,7 +25,7 @@ function store(key: string, v: unknown) { try { localStorage.setItem(key, JSON.s
 export async function surahList(): Promise<SurahInfo[]> {
   const hit = cached<SurahInfo[]>("serah_q_list");
   if (hit?.length === 114) return hit;
-  const r = await fetch(`${API}/surah`);
+  const r = await fetch(`${API}/surah`).catch(() => { throw new Error("تعذّر تحميل المصحف — تأكد من الإنترنت ثم أعد المحاولة"); });
   if (!r.ok) throw new Error("تعذّر تحميل قائمة السور، تأكد من الإنترنت");
   const j = await r.json();
   const list: SurahInfo[] = j.data.map((s: { number: number; name: string; numberOfAyahs: number }) => ({ number: s.number, name: s.name, ayahs: s.numberOfAyahs }));
@@ -46,7 +46,7 @@ export async function surahText(n: number): Promise<Ayah[]> {
   // النسخة ٢ من الحفظ فيها رقم الصفحة
   const hit = cached<Ayah[]>(`serah_q2_${n}`);
   if (hit?.length) return hit;
-  const r = await fetch(`${API}/surah/${n}/quran-uthmani`);
+  const r = await fetch(`${API}/surah/${n}/quran-uthmani`).catch(() => { throw new Error("تعذّر تحميل السورة — تأكد من الإنترنت ثم أعد المحاولة"); });
   if (!r.ok) throw new Error("تعذّر تحميل السورة، تأكد من الإنترنت");
   const j = await r.json();
   // المصدر يضع أحيانًا علامة مخفية (BOM) في أول النص — نزيلها قبل أي معالجة

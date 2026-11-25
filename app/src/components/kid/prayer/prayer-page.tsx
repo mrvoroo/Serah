@@ -139,12 +139,12 @@ export function PrayerPage() {
         {next ? (
           <p className="mt-3 rounded-2xl bg-white/10 px-4 py-2 text-center font-bold" aria-live="polite">
             الصلاة القادمة: {PRAYER_NAMES[next]} — {fmtTime(todayTimes[next])}
-            <span className="ms-2 text-sm text-white/70">(بعد {ar(Math.max(1, Math.round((todayTimes[next].getTime() - now.getTime()) / 60e3)))} دقيقة)</span>
+            <span className="ms-2 whitespace-nowrap text-sm text-white/70">(بعد {ar(Math.max(1, Math.round((todayTimes[next].getTime() - now.getTime()) / 60e3)))} دقيقة)</span>
           </p>
         ) : <p className="mt-3 rounded-2xl bg-white/10 px-4 py-2 text-center font-bold">انتهت صلوات اليوم — {g("تصبح", "تصبحي")} على خير 🌙</p>}
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
           <span className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5"><MapPin className="size-4" /> {place.name}</span>
-          <button type="button" onClick={locate} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25"><LocateFixed className="size-4" /> استخدم موقعي</button>
+          <button type="button" onClick={locate} className="flex min-h-10 items-center gap-1 rounded-full bg-white/15 px-3 py-2 font-bold hover:bg-white/25"><LocateFixed className="size-4" /> {g("استخدم موقعي", "استخدمي موقعي")}</button>
           {place.auto && <button type="button" onClick={resetPlace} className="rounded-full px-3 py-1.5 text-white/70 underline">المدينة الافتراضية</button>}
         </div>
       </section>
