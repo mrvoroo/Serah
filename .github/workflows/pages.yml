@@ -30,7 +30,7 @@ jobs:
       - run: npm ci
       - run: npx next build
         env:
-          NEXT_PUBLIC_BASE_PATH: /Serah
+          NEXT_PUBLIC_BASE_PATH: ""  # الموقع على imuntaha.com من الجذر (التطوير المحلي يبقى تحت /Serah)
           NEXT_TELEMETRY_DISABLED: "1"
       - run: touch out/.nojekyll
       - uses: actions/configure-pages@v5

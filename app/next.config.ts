@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 
-// موقع ثابت على GitHub Pages تحت المسار /Serah
+// موقع ثابت: على imuntaha.com من الجذر (pages.yml يمرر مسارًا فارغًا)، ومحليًا تحت /Serah
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "/Serah";
 // رقم النسخة: يُكتب في public/version.json، والتطبيق يقارنه برقمه ليعرض زر «حدّث الآن» (dev = بدون فحص)
 // (ثابت في كل عمليات البناء: رقم الـ commit، وليس الوقت)
