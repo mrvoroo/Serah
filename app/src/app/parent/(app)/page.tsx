@@ -58,7 +58,8 @@ export default function ParentHome() {
   const kidId = list.some((k) => k.user_id === sel) ? sel : list[0]?.user_id ?? "";
   const detail = useApi<KidDetail>("parentKid", { kid_id: kidId }, { enabled: !!kidId });
   const digest = useApi<Digest>("parentDigest", { kid_id: kidId }, { enabled: !!kidId });
-  const wk = digest.data;
+  // نعرض الكارت فقط لو الرد بالشكل المتوقع (خطأ أو رد قديم لا يُسقط الصفحة)
+  const wk = digest.data && typeof digest.data.prayers === "number" ? digest.data : undefined;
   const d = detail.data;
   const pick = (id: string) => { setSel(id); try { localStorage.setItem(KID_KEY, id); } catch { /* لا شيء */ } };
   const [linkOpen, setLinkOpen] = useState(false);
