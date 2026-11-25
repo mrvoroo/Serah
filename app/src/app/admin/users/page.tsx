@@ -6,6 +6,7 @@ import { api, type Role } from "@/lib/api";
 import { invalidate, useApi } from "@/hooks/use-api";
 import { ROLE_LABEL, startViewAs } from "@/lib/view-as";
 import { KidAvatar } from "@/components/kid/kid-avatar";
+import { Father, Mother } from "@/components/family";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,10 +61,10 @@ export default function AdminUsers() {
             return (
               <li key={u.user_id} data-testid="user-row" className={cn("flex flex-col gap-3 rounded-[24px] border bg-card p-3 shadow-soft", !u.active && "opacity-60")}>
                 <div className="flex items-center gap-3">
-                  <KidAvatar value={u.avatar || "🌟"} size={44} />
+                  {u.role === "parent" ? (u.avatar === "mother" ? <Mother mood="happy" size={44} float={false} /> : <Father mood="happy" size={44} float={false} />) : <KidAvatar value={u.avatar || "🌟"} size={44} />}
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{u.name} <span className="ms-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">{ROLE_LABEL[u.role]}</span></p>
-                    <p className="truncate text-xs text-muted-foreground">{u.class_name || "كل الفصول"} · آخر دخول: {fmt(u.last_login_at)}</p>
+                    <p className="truncate text-xs text-muted-foreground">{u.role === "parent" ? "ولي أمر" : u.class_name || "كل الفصول"} · آخر دخول: {fmt(u.last_login_at)}</p>
                   </div>
                 </div>
                 {!locked && (

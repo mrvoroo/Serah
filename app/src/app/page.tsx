@@ -83,7 +83,7 @@ export default function Welcome() {
             {step === "code" && (
               <motion.form key="code" onSubmit={submitCode} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="flex flex-col gap-3">
                 <Label htmlFor="code" className="justify-center font-heading text-xl font-extrabold">اكتب كود الفصل</Label>
-                <Input id="code" inputMode="numeric" autoComplete="off" disabled={!ready} value={code} onChange={(e) => { setCode(e.target.value); setMood("happy"); }} placeholder="مثلًا 7391" className={cn("h-16 rounded-2xl text-center font-heading text-3xl placeholder:text-xl placeholder:tracking-normal", code && "tracking-[0.4em]")} />
+                <Input id="code" inputMode="text" autoCapitalize="characters" autoCorrect="off" spellCheck={false} autoComplete="off" disabled={!ready} value={code} onChange={(e) => { setCode(e.target.value); setMood("happy"); }} placeholder="مثلًا AB12" className={cn("h-16 rounded-2xl text-center font-heading text-3xl placeholder:text-xl placeholder:tracking-normal", code && "tracking-[0.4em]")} />
                 <Button type="submit" variant="gold" size="xl" disabled={busy || !code.trim()}>
                   {busy ? <Loader2 className="animate-spin" /> : <>يلا نبدأ الرحلة <ArrowLeft /></>}
                 </Button>
@@ -91,7 +91,7 @@ export default function Welcome() {
             )}
             {step === "kid" && cls && (
               <motion.div key="kid" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="flex flex-col gap-3">
-                <p className="text-center font-heading text-xl font-extrabold">مين أنت؟</p>
+                <p className="text-center font-heading text-xl font-extrabold">اسمك فين؟ 👇</p>
                 {cls.kids.length === 0 ? (
                   <p className="text-center text-muted-foreground">لم تُضف المعلمة أي طفل بعد</p>
                 ) : (
@@ -112,7 +112,7 @@ export default function Welcome() {
             {step === "pin" && kid && (
               <motion.div key="pin" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="flex flex-col items-center gap-3">
                 <KidAvatar value={kid.avatar} size={64} />
-                <p className="font-heading text-xl font-extrabold">أهلًا يا {kid.name}! اكتب رمزك</p>
+                <p className="font-heading text-xl font-extrabold">أهلًا يا {kid.name}! {kid.gender === "f" ? "اكتبي رمزك" : "اكتب رمزك"}</p>
                 <div dir="ltr">
                   <InputOTP ref={pinRef} maxLength={4} value={pin} onChange={(v) => { setPin(v); setMood("thinking"); if (v.length === 4) login(v); }} inputMode="numeric" autoFocus disabled={busy}>
                     <InputOTPGroup className="gap-2">

@@ -94,7 +94,7 @@ export default function ParentHome() {
         <div className="rounded-[28px] border bg-card p-6 text-center">
           <Icon3D name="students" size={64} className="mx-auto" />
           <p className="mt-2 font-bold">لا يوجد طفل مربوط بحسابك الآن</p>
-          <p className="text-sm text-muted-foreground">اطلب كود ولي الأمر من معلمة الفصل ثم اضغط «ربط طفل»</p>
+          <p className="text-sm text-muted-foreground">{mom ? "اطلبي كود ولي الأمر من معلمة الفصل ثم اضغطي «ربط طفل»" : "اطلب كود ولي الأمر من معلمة الفصل ثم اضغط «ربط طفل»"}</p>
         </div>
       )}
 

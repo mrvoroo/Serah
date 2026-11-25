@@ -57,7 +57,7 @@ export default function KidHome() {
             <div className="flex-1">
               <p className="text-white/80">السلام عليكم</p>
               <h1 className="font-heading text-3xl font-extrabold">يا {user?.name ?? g("بطل", "بطلة")}!</h1>
-              <p className="mt-1 text-white/85">{newOnes > 0 ? `عندك ${newOnes} محاضرة جديدة تستناك` : g("جاهز لمغامرة جديدة؟", "جاهزة لمغامرة جديدة؟")}</p>
+              <p className="mt-1 text-white/85">{newOnes > 0 ? (newOnes === 1 ? "عندك محاضرة جديدة تستناك" : `عندك ${newOnes.toLocaleString("ar-EG")} ${newOnes <= 10 ? "محاضرات جديدة" : "محاضرة جديدة"} تستناك`) : g("جاهز لمغامرة جديدة؟", "جاهزة لمغامرة جديدة؟")}</p>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3">
@@ -81,7 +81,7 @@ export default function KidHome() {
         <div key={x.notice_id} role="status" data-testid="kid-notice" className="flex items-start gap-3 rounded-[24px] border-2 border-gold/60 bg-gold/15 p-4">
           <Bell className="mt-1 size-5 shrink-0 text-gold" aria-hidden />
           <p className="flex-1 font-bold leading-7"><RT text={x.text} /></p>
-          <button type="button" aria-label="تمام، قرأته" onClick={() => readNotice(x.notice_id)} className="grid size-9 shrink-0 place-items-center rounded-full bg-secondary"><X className="size-4" /></button>
+          <button type="button" aria-label="تمام، قرأته" onClick={() => readNotice(x.notice_id)} className="grid size-11 shrink-0 place-items-center rounded-full bg-secondary"><X className="size-4" /></button>
         </div>
       ))}
 
@@ -107,7 +107,7 @@ export default function KidHome() {
           {todo > 0 && <ShineBorder shineColor={["#FFC24D", "#FFFFFF"]} borderWidth={2} />}
           <Icon3D name="thinking" size={56} float />
           <div className="flex-1">
-            <p className="font-heading text-lg font-extrabold">اختبر نفسك</p>
+            <p className="font-heading text-lg font-extrabold">{g("اختبر نفسك", "اختبري نفسك")}</p>
             <p className="text-sm text-white/90">{todo > 0 ? `عندك ${todo.toLocaleString("ar-EG")} ${todo === 1 ? "حاجة جديدة" : "حاجات جديدة"} تستناك` : g("اختبارات وواجبات تكسب منها نجوم", "اختبارات وواجبات تكسبي منها نجوم")}</p>
           </div>
           <ArrowLeft className="size-6" />

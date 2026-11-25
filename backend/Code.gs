@@ -370,7 +370,7 @@ const ACTIONS = {
     const c = rows_('Classes').find(x => String(x.join_code).toUpperCase() === normDigits_(p.code).toUpperCase().replace(/\s+/g, ''));
     if (!c) { codeFail_(); throw new Error('كود الفصل غير صحيح'); }
     const kids = rows_('Users').filter(u => u.class_id === c.class_id && u.role === 'student' && u.active !== false)
-      .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar }));
+      .map(u => ({ user_id: u.user_id, name: u.name, avatar: u.avatar, gender: genderOf_(u) })); // الجنس لمخاطبة الطفل/الطفلة في شاشة الرمز
     return { class_id: c.class_id, name: c.name, kids };
   },
 
@@ -3054,7 +3054,7 @@ function kidFor_(me, user_id) {
 }
 function badParentCode_() {
   codeFail_('parentCodeFails');
-  return new Error('الكود غير صحيح أو انتهت صلاحيته — اطلب كودًا جديدًا من المعلمة');
+  return new Error('الكود غير صحيح أو انتهت صلاحيته — يُرجى طلب كود جديد من المعلمة');
 }
 // يتحقق من الكود ويربطه (يُستدعى والقفل محجوز). check = تحقق فقط بدون استهلاك
 function redeemParentCode_(code, parent_id, check) {

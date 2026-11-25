@@ -56,7 +56,7 @@ export const STATIONS: Station[] = [
     // ﷺ كحرف واحد يتكدس كنقاط، فنكتبها سطرًا صغيرًا تحت الاسم في المجسم
     sub: id === "muhammad" ? "صلى الله عليه وسلم" : undefined,
     title: id === "muhammad" ? "سيدنا محمد ﷺ" : `سيدنا ${name} عليه السلام`,
-    tag: symbolName ? `المحطة ${num(i + 1)} · ${symbolName}` : `المحطة ${num(i + 1)}`,
+    tag: symbolName ? `المحطة ${num(i + 1)} — ${symbolName}` : `المحطة ${num(i + 1)}`,
     text,
     symbol,
     symbolName,

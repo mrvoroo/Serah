@@ -98,7 +98,7 @@ export default function ParentLogin() {
           )}
           <Label htmlFor="pn">{fresh ? "اسم الدخول (مميّز، مثال: أم زيد محمد)" : "الاسم"}</Label>
           <Input id="pn" disabled={!ready} value={name} maxLength={40} onChange={(e) => { setName(e.target.value); setMood("happy"); }} onFocus={() => !busy && setMood("happy")} autoComplete="username" className="h-12 rounded-xl text-base" required />
-          <Label htmlFor="pp">الرمز السري {fresh && "(٦ أرقام تختارها)"}</Label>
+          <Label htmlFor="pp">الرمز السري {fresh && "(٦ أرقام من اختيارك)"}</Label>
           <Input id="pp" disabled={!ready} type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => { setPin(e.target.value); setMood("thinking"); }} onFocus={() => !busy && setMood("thinking")} autoComplete={fresh ? "new-password" : "current-password"} className="h-12 rounded-xl text-base" required />
           <Button type="submit" variant="hero" size="xl" disabled={busy}>{busy ? <Loader2 className="animate-spin" /> : fresh ? <>إنشاء الحساب <KeyRound /></> : <>دخول <LogIn /></>}</Button>
           <p role="alert" className="min-h-5 text-center text-sm font-bold text-destructive">{err || reason}</p>

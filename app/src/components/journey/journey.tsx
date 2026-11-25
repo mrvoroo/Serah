@@ -273,7 +273,7 @@ export function Journey({ stations }: { stations: Station[] }) {
                   <span className={cn("relative size-2 rounded-full transition-all", s.id === current ? "scale-125 bg-gold" : s.symbol ? "bg-muted-foreground/60" : "bg-muted-foreground/30")} />
                 </button>
               } />
-              <TooltipContent side="left" className="font-bold">{isProphet(s) ? `${(prophets.indexOf(s) + 1).toLocaleString("ar-EG")} · ` : ""}{menuName(s)}</TooltipContent>
+              <TooltipContent side="left" className="font-bold">{isProphet(s) ? `${(prophets.indexOf(s) + 1).toLocaleString("ar-EG")}. ` : ""}{menuName(s)}</TooltipContent>
             </Tooltip>
           )) : menu()}
         </div>
@@ -302,7 +302,7 @@ export function Journey({ stations }: { stations: Station[] }) {
             key={s.id}
             id={`station-${s.id}`}
             data-station={s.id}
-            className={cn("flex min-h-svh items-end px-4 pb-32 pt-24 md:items-center md:px-[6vw] md:pb-16 lg:pe-16", dots ? "lg:ps-[84px]" : "lg:ps-[250px]", i % 2 ? "md:justify-end" : "md:justify-start")}
+            className={cn("flex min-h-svh items-end px-4 pt-24 md:items-center md:px-[6vw] md:pb-16", i === 0 ? "pb-56" : "pb-32", " lg:pe-16", dots ? "lg:ps-[84px]" : "lg:ps-[250px]", i % 2 ? "md:justify-end" : "md:justify-start")}
           >
             <BlurFade inView inViewMargin="-20% 0px" className="w-full md:max-w-md">
               <div data-card className="rounded-[28px] border bg-card/90 p-5 shadow-soft backdrop-blur-md md:p-6">

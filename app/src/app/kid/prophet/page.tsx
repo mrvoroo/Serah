@@ -36,7 +36,7 @@ function Inner() {
         : <ProphetView prophet={data.prophet} items={data.items} lectures={lectures} lectureHref={staff && role !== "parent" ? () => "/teacher/lectures/" : undefined} />}
       {!!quizzes?.length && (
         <section aria-labelledby="h-prophet-quiz" className="flex flex-col gap-2 rounded-[28px] border bg-card p-4 shadow-soft">
-          <h2 id="h-prophet-quiz" className="flex items-center gap-2 font-heading text-xl font-extrabold"><Icon3D name="thinking" size={40} /> اختبر نفسك</h2>
+          <h2 id="h-prophet-quiz" className="flex items-center gap-2 font-heading text-xl font-extrabold"><Icon3D name="thinking" size={40} /> {g("اختبر نفسك", "اختبري نفسك")}</h2>
           {quizzes.map((z) => (
             <Link key={z.quiz_id} href={`/kid/quiz/?id=${z.quiz_id}`} className="flex min-h-14 items-center justify-between gap-2 rounded-2xl bg-hero px-4 py-2 font-bold text-white transition-transform active:scale-[0.98]">
               <span className="line-clamp-2 leading-snug">{z.title}</span>
