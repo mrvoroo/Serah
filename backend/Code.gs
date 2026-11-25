@@ -3393,7 +3393,7 @@ function digestFor_(kid_id) {
   const log = rows_('StarLog').filter(r => r.user_id === kid_id);
   const azkar = log.filter(r => r.kind === 'azkar' && Number(String(r.key).split(':')[2]) >= fromDay).length;
   const duas = log.filter(r => r.kind === 'dua' && Number(String(r.key).split(':')[2]) >= fromDay).length;
-  const achievements = log.filter(r => (r.kind === 'hadith' || r.kind === 'surah') && sinceMs_(r.at) >= fromMs).map(r => String(r.ref)).slice(0, 10);
+  const achievements = log.filter(r => (r.kind === 'hadith' || r.kind === 'surah') && sinceMs_(r.at) >= fromMs).reverse().map(r => String(r.ref)).slice(0, 10); // الأحدث أولًا (الكارت والإشعار يعرضان أوله)
   const homework = rows_('Submissions').filter(s => s.user_id === kid_id && s.status === 'approved' && sinceMs_(s.reviewed_at) >= fromMs).length;
   let stars = 0; rows_('Points').forEach(r => { if (r.user_id === kid_id && sinceMs_(r.at) >= fromMs) stars += Number(r.points) || 0; });
   const recitations = rows_('Recitations').filter(r => r.user_id === kid_id && sinceMs_(r.created_at) >= fromMs).length;

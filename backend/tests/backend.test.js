@@ -1900,8 +1900,11 @@ test('الملخص الأسبوعي: ولي الأمر يرى أرقام طفل�
   t.call('markPrayer', { date: isoDay(0), prayer: 'fajr', done: true }, kid);
   t.call('markPrayer', { date: isoDay(0), prayer: 'dhuhr', done: true }, kid);
   t.call('kidAchievement', { user_id: 'S1', kind: 'surah', title: 'سورة الناس' }, teacher);
-  const d = t.call('parentDigest', { kid_id: 'S1' }, par).data;
+  let d = t.call('parentDigest', { kid_id: 'S1' }, par).data;
   assert.strictEqual(d.prayers, 2); assert.strictEqual(d.stars, 10); assert.deepStrictEqual(d.achievements, ['سورة الناس']);
+  t.call('kidAchievement', { user_id: 'S1', kind: 'surah', title: 'سورة الفلق' }, teacher);
+  d = t.call('parentDigest', { kid_id: 'S1' }, par).data;
+  assert.deepStrictEqual(d.achievements, ['سورة الفلق', 'سورة الناس'], 'newest first');
   assert.strictEqual(t.call('parentDigest', { kid_id: s3 }, par).error, 'هذا الطفل غير مربوط بحسابك');
   assert.ok(!t.call('parentDigest', { kid_id: 'S1' }, kid).ok, 'kid cannot call');
   const pk = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/par', plan: [], prefs: { digest: true } }, par).data.key;
