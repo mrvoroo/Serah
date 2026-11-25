@@ -1538,12 +1538,14 @@ function prophetKb_(list, other) {
 function teacherTitle_(u) { const n = String(u.name || '').trim(); if (!n || /^(أ|د|م)\s*[./]/.test(n)) return n; return (u.role === 'superadmin' ? 'م. ' : 'أ. ') + n; }
 function honored_(p) { const n = String(p.name).replace(/\s*(ﷺ|عليه السلام)\s*$/, ''); return p.prophet_id === 'muhammad' ? n + ' ﷺ' : n + ' عليه السلام'; }
 function suggestTitle_(p) { return p.prophet_id === 'muhammad' ? 'من سيرة سيدنا محمد ﷺ' : 'قصة سيدنا ' + honored_(p); }
-// SITE_ORIGIN قد يُكتب بالمسار (https://mrvoroo.github.io/Serah) كما في README: نفصل الأصل عن رابط الموقع
-function siteOrigin_() { const m = String(prop_('SITE_ORIGIN') || '').match(/^https?:\/\/[^/]+/); return m ? m[0] : 'https://mrvoroo.github.io'; }
+// الموقع على https://imuntaha.com من الجذر. SITE_ORIGIN قد يُكتب بالمسار (الشكل القديم https://mrvoroo.github.io/Serah): نفصل الأصل عن رابط الموقع
+function siteOrigin_() { const m = String(prop_('SITE_ORIGIN') || '').match(/^https?:\/\/[^/]+/); return m ? m[0] : 'https://imuntaha.com'; }
 function siteUrl_() {
   if (prop_('SITE_URL')) return prop_('SITE_URL').replace(/\/$/, '');
   const s = String(prop_('SITE_ORIGIN') || '').replace(/\/$/, '');
-  return /^https?:\/\/[^/]+\/./.test(s) ? s : siteOrigin_() + '/Serah';
+  if (/^https?:\/\/[^/]+\/./.test(s)) return s;
+  // عنوان GitHub Pages القديم كان تحت /Serah؛ الدومين الخاص من الجذر
+  return /\.github\.io$/.test(siteOrigin_()) ? siteOrigin_() + '/Serah' : siteOrigin_();
 }
 // أصل الصفحة التي ترفع: الموقع نفسه أو التجربة المحلية فقط
 function uploadOrigin_(o) {
@@ -2277,7 +2279,7 @@ function vapidJwt_(aud) {
   const cache = CacheService.getScriptCache(), ck = 'vjwt:' + aud;
   const hit = cache.get(ck); if (hit) return hit;
   const b64 = (o) => Utilities.base64EncodeWebSafe(JSON.stringify(o)).replace(/=+$/, '');
-  const body = b64({ typ: 'JWT', alg: 'ES256' }) + '.' + b64({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: 'https://mrvoroo.github.io/Serah/' });
+  const body = b64({ typ: 'JWT', alg: 'ES256' }) + '.' + b64({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: siteUrl_() + '/' });
   const jwt = body + '.' + es256_(body);
   cache.put(ck, jwt, 6 * 3600);
   return jwt;

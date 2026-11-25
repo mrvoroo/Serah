@@ -1,6 +1,6 @@
 // عامل خدمة آمن مع سفاري: لا يتدخل في فتح الصفحات نهائيًا (سفاري يرفض الصفحة لو مرّت بتحويل عبر عامل الخدمة)
 // ويخزن فقط الملفات الثابتة (الخطوط، الأيقونات، ملفات الواجهة) لتسريع الفتح. لا يخزن الـ API ولا الصوت.
-const V = "serah-v15";
+const V = "serah-v16";
 // إعدادات الإشعارات (مفتاح الجهاز ورابط الخلفية ونصوص التذكير) يكتبها التطبيق هنا، ولا تُحذف مع تحديث النسخة
 const NOTIFY = "serah-notify";
 self.addEventListener("install", () => self.skipWaiting());
@@ -14,8 +14,10 @@ self.addEventListener("fetch", (e) => {
   const u = new URL(req.url);
   if (u.origin !== location.origin) return;
   if (!/\/_next\/static\/|\/3d\/|\/scenes\/|\.(woff2|svg|png|webp)$/.test(u.pathname)) return;
-  e.respondWith(caches.open(V).then((c) => c.match(req).then((hit) => hit || fetch(req).then((res) => {
-    if (res.ok && !res.redirected) c.put(req, res.clone());
+  // لو التحميل فشل (نت ضعيف أو اتقطع على آيفون) نحاول مرة ثانية بدل ما الصورة تفضل مكسورة
+  const get = () => fetch(req).catch(() => new Promise((r) => setTimeout(r, 600)).then(() => fetch(req)));
+  e.respondWith(caches.open(V).then((c) => c.match(req).then((hit) => hit || get().then((res) => {
+    if (res.ok && !res.redirected && res.type === "basic") c.put(req, res.clone());
     return res;
   }))));
 });
