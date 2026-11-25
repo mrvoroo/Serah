@@ -112,7 +112,7 @@ export function KidDuas() {
                   <p className="mt-2 rounded-2xl bg-gold/10 p-3 text-sm leading-7">💡 {d.kidNote}</p>
                   {r.note && <p className="mt-2 rounded-2xl bg-primary/10 p-3 text-sm leading-7"><b>من المعلمة:</b> {r.note}</p>}
                   <ReleaseAttachment r={r} />
-                  <button type="button" aria-expanded={more} onClick={() => setOpen(more ? null : d.id)} className="mt-2 flex items-center gap-1 text-sm font-bold text-primary">
+                  <button type="button" aria-expanded={more} onClick={() => setOpen(more ? null : d.id)} className="mt-2 flex min-h-10 items-center gap-1 rounded-xl px-1 text-sm font-bold text-primary">
                     <ChevronDown className={cn("size-4 transition", more && "rotate-180")} /> الدليل
                   </button>
                   {more && (

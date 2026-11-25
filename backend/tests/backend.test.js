@@ -1889,6 +1889,7 @@ test('أدعية اليوم والأحاديث: الأدمن تفتح لفصل،
   // الحديث يسجّله المعلمة، والطفل يرى إنجازاته
   assert.ok(t.call('kidAchievement', { user_id: 'S1', kind: 'hadith', title: 'إنما الأعمال بالنيات' }, teacher).ok);
   assert.deepStrictEqual(t.call('myAchievements', {}, kid1).data.map(a => a.title), ['إنما الأعمال بالنيات']);
+  assert.ok(t.call('notices', {}, kid1).data.some(n => /حفظت حديث «إنما الأعمال بالنيات»/.test(n.text)));
 });
 
 test('الملخص الأسبوعي: ولي الأمر يرى أرقام طفله المربوط فقط، والمشغّل يرسل لأجهزة أولياء الأمور فقط', () => {
@@ -1980,6 +1981,7 @@ test('حديقة جزء عمّ: نفس قائمة الموقع، مراجعة م
   const before = pointsOf(t, 'S1');
   assert.strictEqual(t.call('confirmSurah', { user_id: 'S1', surah: 112 }, teacher).data.stars, 10);
   assert.strictEqual(t.call('confirmSurah', { user_id: 'S1', surah: 112 }, teacher).data.stars, 0);
+  assert.deepStrictEqual(t.call('notices', {}, kid).data.filter(n => /أكدت حفظك لسورة الإخلاص/.test(n.text)).length, 1, 'one notice');
   assert.strictEqual(t.call('kidAchievement', { user_id: 'S1', kind: 'surah', title: 'سورة الإخلاص' }, teacher).error, 'مسجّل قبل كده لهذا الطفل');
   assert.strictEqual(pointsOf(t, 'S1') - before, 10);
   assert.ok(t.call('garden', {}, kid).data.items.find(i => i.surah === 112).confirmed);

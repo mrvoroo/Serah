@@ -87,7 +87,7 @@ export function KidRecite() {
       <div className="flex flex-col gap-3 rounded-[28px] border bg-card p-4 shadow-soft">
         <label className="flex flex-col gap-1.5 text-sm font-bold">السورة
           <select value={surah} disabled={state !== "idle"} onChange={(e) => setSurah(Number(e.target.value))} className="h-12 rounded-2xl border bg-background px-3 font-heading text-lg">
-            {JUZ_KID.map((s) => <option key={s.n} value={s.n}>سورة {s.name} ({ar(s.ayahs)} آيات)</option>)}
+            {JUZ_KID.map((s) => <option key={s.n} value={s.n}>سورة {s.name} ({ar(s.ayahs)} {s.ayahs <= 10 ? "آيات" : "آية"})</option>)}
           </select>
         </label>
         {state === "recording" ? (

@@ -44,7 +44,7 @@ export function GardenGrid({ data, onPick, busy }: { data: Garden; onPick: (n: n
               className={cn("flex w-full flex-col items-center gap-0.5 rounded-[22px] border bg-card p-2 text-center shadow-soft transition active:scale-95", st === 4 && "border-emerald-500/70 bg-emerald-500/5")}>
               {busy === s.n ? <Loader2 className="my-6 size-6 animate-spin" /> : <Tree stage={st} size={64} />}
               <span className="text-sm font-bold"><SurahName name={s.name} /></span>
-              <span className="text-[11px] text-muted-foreground">{STAGE_NAME[st]}{it?.reviews ? ` · ${ar(it.reviews)}` : ""}</span>
+              <span className="text-[11px] text-muted-foreground">{STAGE_NAME[st]}{it?.reviews ? ` (${ar(it.reviews)})` : ""}</span>
             </button>
           </li>
         );
@@ -66,7 +66,7 @@ export function KidGarden() {
     setBusy(true);
     try {
       const r = await api<{ reviews: number; already: boolean }>("gardenReview", { surah: pick, date: isoToday() });
-      if (r.already) toast(g("راجعتها النهارده خلاص — تعالى بكرة 🌱", "راجعتيها النهارده خلاص — تعالي بكرة 🌱"));
+      if (r.already) toast(g("راجعتها النهارده خلاص — تعالَ بكرة 🌱", "راجعتيها النهارده خلاص — تعالي بكرة 🌱"));
       else { toast.success(`${g("شجرتك كبرت", "شجرتكِ كبرت")}! 🌳`); if (animate) confetti({ particleCount: 40, spread: 50, origin: { y: 0.7 }, colors: ["#22C55E", "#F59E0B"] }); }
       invalidate("garden"); invalidate("me"); await reload(); setPick(null);
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
@@ -98,7 +98,7 @@ export function KidGarden() {
             <DialogDescription>{it?.confirmed ? `ما شاء الله! المعلمة أكدت ${g("حفظك", "حفظكِ")} لها 🍎` : g("راجع السورة من المصحف أو من حفظك، وبعدين اضغط «راجعتها»", "راجعي السورة من المصحف أو من حفظكِ، وبعدين اضغطي «راجعتها»")}</DialogDescription>
           </DialogHeader>
           <div className="flex justify-center"><Tree stage={stageOf(it?.reviews ?? 0, !!it?.confirmed)} size={120} /></div>
-          <p className="text-center text-sm font-bold">{ar(it?.reviews ?? 0)} مراجعة{it?.last_day === today ? " · راجعتها النهارده ✓" : ""}</p>
+          <p className="text-center text-sm font-bold">{ar(it?.reviews ?? 0)} مراجعة{it?.last_day === today ? ` — ${g("راجعتها", "راجعتيها")} النهارده ✓` : ""}</p>
           <DialogFooter className="gap-2">
             <Link href="/kid/quran/" className={buttonVariants({ variant: "secondary", size: "lg2" })}><BookOpen /> {g("افتح", "افتحي")} المصحف</Link>
             <Button variant="hero" size="lg2" disabled={busy || it?.last_day === today} onClick={() => void review()}>{busy ? <Loader2 className="animate-spin" /> : <Check />} راجعتها</Button>

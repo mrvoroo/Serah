@@ -55,7 +55,7 @@ export function KidChallenges() {
         <Icon3D name="trophy" size={56} float />
         <div>
           <h1 id="kc-title" className="font-heading text-2xl font-extrabold">تحديات الفصل</h1>
-          <p className="text-sm text-muted-foreground">الفصل كله فريق واحد! {g("سجّل", "سجّلي")} اللي {g("عملته", "عملتيه")} النهارده، ولما نوصل للهدف كل واحد ساهم ياخد ٥ نجوم ⭐</p>
+          <p className="text-sm text-muted-foreground">الفصل كله فريق واحد! {g("سجّل", "سجّلي")} اللي {g("عملته", "عملتيه")} النهارده، ولما الفصل يوصل للهدف، كل اللي ساهموا لحد اللحظة دي ياخدوا ٥ نجوم ⭐</p>
         </div>
       </header>
       {loading && !data ? <Skeleton className="h-48 rounded-[28px]" /> : error && !data ? (
@@ -141,7 +141,7 @@ export function TeacherChallenges() {
         </div>
         <div className="flex flex-wrap gap-2">
           {season.templates.map((t) => (
-            <button key={t.title} type="button" data-testid="template" onClick={() => setF({ ...f, title: t.title, unit: t.unit, goal: t.goal })} className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold">{t.title}</button>
+            <button key={t.title} type="button" data-testid="template" onClick={() => setF({ ...f, title: t.title, unit: t.unit, goal: t.goal })} className="min-h-10 rounded-full bg-secondary px-3 py-2 text-xs font-bold">{t.title}</button>
           ))}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -163,8 +163,8 @@ export function TeacherChallenges() {
               <div className="flex items-start justify-between gap-2">
                 <div><p className="font-heading text-lg font-extrabold">{seasonOf(c.season).icon} {c.title}</p><p className="text-xs text-muted-foreground">{fmtDate(c.starts)} — {fmtDate(c.ends)} · {ar(c.kids)} طفل ساهم{c.active ? "" : " · انتهى"}</p></div>
                 <div className="flex gap-1">
-                  {c.active && <Button variant="secondary" size="lg2" disabled={busy} onClick={() => { if (window.confirm("إنهاء التحدي؟ الأطفال لن يسجلوا بعده")) void run(() => api("endChallenge", { ch_id: c.ch_id }), "انتهى التحدي"); }}><Square /> إنهاء</Button>}
-                  <Button variant="ghost" size="icon-xl" aria-label="حذف التحدي" disabled={busy} onClick={() => { if (window.confirm("حذف التحدي وكل مساهماته؟")) void run(() => api("deleteChallenge", { ch_id: c.ch_id }), "اتحذف التحدي"); }}><Trash2 className="text-destructive" /></Button>
+                  {c.active && <Button variant="secondary" size="lg2" disabled={busy} onClick={() => { if (window.confirm(`إنهاء تحدي «${c.title}»؟ الأطفال لن يسجلوا بعده`)) void run(() => api("endChallenge", { ch_id: c.ch_id }), "انتهى التحدي"); }}><Square /> إنهاء</Button>}
+                  <Button variant="ghost" size="icon-xl" aria-label={`حذف تحدي ${c.title}`} disabled={busy} onClick={() => { if (window.confirm(`حذف تحدي «${c.title}» وكل مساهماته؟`)) void run(() => api("deleteChallenge", { ch_id: c.ch_id }), "اتحذف التحدي"); }}><Trash2 className="text-destructive" /></Button>
                 </div>
               </div>
               <ChallengeBar c={c} />

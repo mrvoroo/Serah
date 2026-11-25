@@ -23,7 +23,7 @@ export function CertificateView({ data, cert }: { data: Certs; cert: Cert }) {
   const f = data.kid.gender === "f";
   const [head, tail] = cert.title.split(":");
   const what = cert.kind === "stage" ? <>{f ? "قد أتمّت" : "قد أتمّ"} <b>{head}</b> من رحلة الأنبياء{tail ? <>:<br /><b>{tail.trim()}</b></> : null}</>
-    : <>{f ? "قد أتمّت حفظ" : "قد أتمّ حفظ"} <b className="surah-name text-[1.4em]">{cert.title}</b></>;
+    : <>{f ? "قد أتمّت حفظ" : "قد أتمّ حفظ"} <b className="surah-name text-[1.4em]" style={{ color: "#8A5E10" }}>{cert.title}</b></>;
   return (
     <div data-testid="certificate" style={{ containerType: "inline-size" }} className="cert-print relative mx-auto aspect-[297/210] w-full max-w-4xl overflow-hidden rounded-[18px] bg-[#FFFDF6] text-[#3A2A10] shadow-soft print:rounded-none print:shadow-none" dir="rtl">
       <svg viewBox="0 0 297 210" className="absolute inset-0 size-full" aria-hidden preserveAspectRatio="none">
@@ -63,6 +63,7 @@ export function Certificates({ parent = false }: { parent?: boolean }) {
   useEffect(() => { if (parent) { try { setSel(localStorage.getItem(KID_KEY) || ""); } catch { /* لا شيء */ } } }, [parent]); // eslint-disable-line react-hooks/set-state-in-effect
   const kid = klist.find((k) => k.user_id === sel) ?? klist[0];
   const { data, loading, error } = useApi<Certs>("certificates", parent ? { kid_id: kid?.user_id ?? "" } : {}, { enabled: !parent || !!kid });
+  const noKids = parent && !kids.loading && !kids.error && klist.length === 0;
   const base = parent ? "/parent/certificates/" : "/kid/certificates/";
   const cert = data?.items.find((c) => c.id === open);
   const f = data?.kid.gender === "f";
@@ -96,19 +97,19 @@ export function Certificates({ parent = false }: { parent?: boolean }) {
           ))}
         </div>
       )}
-      {loading && !data ? <Skeleton className="h-40 rounded-[24px]" /> : error && !data ? <p className="rounded-[24px] border bg-card p-5 text-center">{error}</p> : !data || data.items.length === 0 ? (
+      {noKids ? <p className="rounded-[24px] border bg-card p-5 text-center text-sm text-muted-foreground">لا يوجد طفل مربوط بحسابك بعد</p> : parent && kids.error && !kids.data ? <p role="alert" className="rounded-[24px] border bg-card p-5 text-center">تعذّر التحميل، يُرجى المحاولة بعد قليل</p> : loading && !data ? <Skeleton className="h-40 rounded-[24px]" /> : error && !data ? <p className="rounded-[24px] border bg-card p-5 text-center">{error}</p> : !data || data.items.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">
           <Award className="size-12 text-amber-500" />
           <p className="font-heading text-lg font-extrabold">لسه مفيش شهادات</p>
           <p className="text-sm leading-7 text-muted-foreground">{parent ? "الشهادة بتظهر لما المعلمة تأكد حفظ سورة، أو لما يكمّل الطفل مرحلة من الرحلة." : f ? "احفظي سورة وسمّعيها للمعلمة في حديقة جزء عمّ، وتظهر شهادتك هنا 🌱" : "احفظ سورة وسمّعها للمعلمة في حديقة جزء عمّ، وتظهر شهادتك هنا 🌱"}</p>
         </div>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {data.items.map((c) => (
-            <li key={c.id}>
+            <li key={c.id} className="min-w-0">
               <Link href={`${base}?c=${c.id}`} data-testid="cert-item" className="flex items-center gap-3 rounded-[24px] border bg-card p-4 shadow-soft transition active:scale-[0.98]">
                 <span aria-hidden className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gold/15 text-2xl">{KIND[c.kind].icon}</span>
-                <div className="min-w-0"><p className="text-xs font-bold text-muted-foreground">{KIND[c.kind].label}</p><p className="truncate font-heading text-lg font-extrabold">{c.title}</p><p className="text-xs text-muted-foreground">{fmtLong(c.at)}</p></div>
+                <div className="min-w-0 flex-1"><p className="text-xs font-bold text-muted-foreground">{KIND[c.kind].label}</p><p className="truncate font-heading text-lg font-extrabold">{c.title}</p><p className="text-xs text-muted-foreground">{fmtLong(c.at)}</p></div>
               </Link>
             </li>
           ))}

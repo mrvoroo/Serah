@@ -46,7 +46,7 @@ export function ReleaseBoard({ kind, items, title, hint, icon }: { kind: Release
   };
   const toggle = (id: string, c: ClassRow) => {
     const cur = rowOf(id)?.classes ?? [], on = cur.includes(c.class_id);
-    void save(id, { classes: on ? cur.filter((x) => x !== c.class_id) : [...cur, c.class_id] }, on ? `اتقفل عن ${c.name}` : `اتفتح لـ ${c.name} ✨`);
+    void save(id, { classes: on ? cur.filter((x) => x !== c.class_id) : [...cur, c.class_id] }, on ? `اتقفل عن ${c.name}` : `اتفتح لـ«${c.name}» ✨`);
   };
   const pickFile = async (f: File | undefined) => {
     if (!f || !edit) return;

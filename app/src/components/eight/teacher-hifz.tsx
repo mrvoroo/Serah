@@ -63,7 +63,7 @@ export function TeacherHifz() {
         <Icon3D name="open-book" size={48} float />
         <div>
           <h1 className="font-heading text-2xl font-extrabold">حفظ الطلاب</h1>
-          <p className="text-sm text-muted-foreground">اختاري الطفل، ثم أكّدي السور التي سمعتِها منه (١٠ نجوم وشهادة)، وسجّلي الأحاديث المحفوظة (نجمتان).</p>
+          <p className="text-sm text-muted-foreground">اختاري الطفل، ثم أكّدي السور التي سمعتِها (١٠ نجوم وشهادة)، وسجّلي الأحاديث المحفوظة (نجمتان).</p>
         </div>
       </div>
       <ClassSelect scope={scope} />

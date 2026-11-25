@@ -97,7 +97,8 @@ export function ParentDeeds() {
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
   const del = async (id: string) => {
-    if (!window.confirm("حذف الملصق؟ تُسحب نجمته")) return;
+    const d = list.find((x) => x.deed_id === id);
+    if (!window.confirm(d?.stars ? "حذف الملصق؟ تُسحب نجمته" : "حذف الملصق؟")) return;
     setBusy(id);
     try { await api("deleteDeed", { deed_id: id }); invalidate("parentDeeds"); invalidate("parentDigest"); invalidate("parentKid"); await deeds.reload(); } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };

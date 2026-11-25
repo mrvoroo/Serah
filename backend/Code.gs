@@ -3026,6 +3026,7 @@ Object.assign(ACTIONS, {
     const reason = (kind === 'surah' ? 'إتمام ' : 'حفظ حديث: ') + title;
     const ok = withLock_(() => awardOnce_(key, kid.user_id, kind, title, stars, reason, me.user_id));
     if (!ok) throw new Error('مسجّل قبل كده لهذا الطفل');
+    kidNotice_(kid, (kind === 'surah' ? 'أتممت ' + title + ' ' : 'حفظت حديث «' + title + '» ') + '— ما شاء الله! +' + arNum_(stars) + ' نجوم ⭐');
     return { stars };
   },
 
@@ -3334,6 +3335,14 @@ Object.assign(ACTIONS, {
 });
 
 
+// رسالة للطفل في صفحته الرئيسية؛ «ت» المخاطب تتحول لصيغة البنت (أتممتِ، حفظتِ، حفظكِ)
+function kidNotice_(kid, text) {
+  try {
+    const t = genderOf_(kid) === 'f' ? text.replace(/^أتممت /, 'أتممتِ ').replace(/^حفظت /, 'حفظتِ ').replace(/حفظك /, 'حفظكِ ') : text;
+    append_('Notices', { notice_id: id_('N'), user_id: kid.user_id, text: t, at: now_(), read: false });
+  } catch (e) { console.error(e); }
+}
+
 /* ============ الملخص الأسبوعي لولي الأمر ============ */
 Object.assign(POLICY, { parentDigest: { min: 'student', roles: ['parent'] } });
 
@@ -3564,7 +3573,7 @@ Object.assign(ACTIONS, {
       else if (on) append_('Garden', Object.assign({ key: gk, user_id: kid.user_id, surah: s[0], reviews: 0, last_day: '' }, patch));
       let stars = 0, juz = false;
       if (on) {
-        if (awardOnce_(key, kid.user_id, 'surah', 'سورة ' + s[1], SURAH_STARS, 'حفظ سورة ' + s[1], me.user_id)) stars += SURAH_STARS;
+        if (awardOnce_(key, kid.user_id, 'surah', 'سورة ' + s[1], SURAH_STARS, 'حفظ سورة ' + s[1], me.user_id)) { stars += SURAH_STARS; kidNotice_(kid, 'المعلمة أكدت حفظك لسورة ' + s[1] + ' 🍎 وطلعت لها شهادة — +١٠ نجوم ⭐'); }
         const have = {}; rows_('StarLog').forEach(r => { if (r.user_id === kid.user_id) have[String(r.key)] = 1; });
         if (JUZ_AMMA.every(x => have[surahKey_(kid.user_id, x[1])]) && awardOnce_(juzKey_(kid.user_id), kid.user_id, 'surah', JUZ_TITLE, SURAH_STARS, 'إتمام ' + JUZ_TITLE, me.user_id)) { stars += SURAH_STARS; juz = true; }
       } else {
