@@ -27,6 +27,13 @@ const TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] =
   { href: "/kid/quran/", label: "القرآن الكريم", icon: "open-book", tone: "from-[#1FA37F] to-[#0E6B52]" },
   { href: "/kid/prayer/", label: "جدول الصلوات", icon: "mosque", tone: "from-[#1E8C72] to-[#0B4A3E]" },
   { href: "/kid/azkar/", label: "أذكار الصباح والمساء", icon: "sun", tone: "from-[#F59E0B] to-[#C2410C]" },
+  { href: "/kid/duas/", label: "أدعية اليوم والليلة", icon: "moon", tone: "from-[#6366F1] to-[#312E81]" },
+  { href: "/kid/hadith/", label: "أحاديث نحفظها", icon: "books", tone: "from-[#0EA5E9] to-[#1E40AF]" },
+  { href: "/kid/garden/", label: "حديقة جزء عمّ", icon: "sparkles", tone: "from-[#22C55E] to-[#166534]" },
+  { href: "/kid/recite/", label: "سجّل تلاوتك", icon: "mic", tone: "from-[#14B8A6] to-[#0F766E]" },
+  { href: "/kid/challenges/", label: "تحديات الفصل", icon: "trophy", tone: "from-[#F97316] to-[#9A3412]" },
+  { href: "/kid/deeds/", label: "أعمالي الصالحة", icon: "gift", tone: "from-[#F43F5E] to-[#9F1239]" },
+  { href: "/kid/certificates/", label: "شهاداتي", icon: "medal1", tone: "from-[#EAB308] to-[#A16207]" },
   { href: "/kid/games/", label: "الألعاب", icon: "game", tone: "from-[#EC4899] to-[#7C3AED]" },
   { href: "/kid/names/", label: "أسماء الله الحسنى", icon: "sparkles", tone: "from-[#3A2A8F] to-[#120A30]" },
 ];
@@ -117,9 +124,9 @@ export default function KidHome() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {TILES.filter((t) => live || t.href !== "/kid/live/").map((t, i) => (
           <BlurFade key={t.href} delay={0.18 + i * 0.05} >
-            <Link href={t.href} className={cn("flex flex-col items-center justify-center gap-2 rounded-[28px]", "aspect-square", " bg-gradient-to-br p-2 text-center font-bold text-white shadow-soft transition-transform active:scale-95", t.tone)}>
+            <Link href={t.href} aria-label={t.href === "/kid/recite/" ? g("سجّل تلاوتك", "سجّلي تلاوتكِ") : undefined} className={cn("flex flex-col items-center justify-center gap-2 rounded-[28px]", "aspect-square", " bg-gradient-to-br p-2 text-center font-bold text-white shadow-soft transition-transform active:scale-95", t.tone)}>
               <Icon3D name={t.icon} size={54} float delay={i * 0.3} />
-              <span className="text-sm leading-tight">{t.label}</span>
+              <span className="text-sm leading-tight">{t.href === "/kid/recite/" ? g("سجّل تلاوتك", "سجّلي تلاوتكِ") : t.label}</span>
             </Link>
           </BlurFade>
         ))}

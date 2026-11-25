@@ -28,6 +28,11 @@ type KidDetail = {
 };
 const ar = (n: number) => n.toLocaleString("ar-EG");
 const KID_KEY = "serah_parent_kid";
+type Digest = { name: string; gender: "m" | "f"; prayers: number; prayers_total: number; azkar: number; duas: number; homework: number; stars: number; recitations: number; deeds: number; achievements: string[] };
+const KID_TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] = [
+  { href: "/parent/deeds/", label: "لوحة الأعمال الصالحة", icon: "gift", tone: "from-[#F43F5E] to-[#9F1239]" },
+  { href: "/parent/certificates/", label: "الشهادات", icon: "medal1", tone: "from-[#EAB308] to-[#A16207]" },
+];
 const TILES: { href: string; label: string; icon: Icon3DName; tone: string }[] = [
   { href: "/parent/prayer/", label: "جدول صلاتي", icon: "mosque", tone: "from-[#1E8C72] to-[#0B4A3E]" },
   { href: "/parent/azkar/", label: "أذكار الصباح والمساء", icon: "sun", tone: "from-[#F59E0B] to-[#C2410C]" },
@@ -52,6 +57,8 @@ export default function ParentHome() {
   useEffect(() => { try { setSel(localStorage.getItem(KID_KEY) || ""); } catch { /* لا شيء */ } }, []); // eslint-disable-line react-hooks/set-state-in-effect
   const kidId = list.some((k) => k.user_id === sel) ? sel : list[0]?.user_id ?? "";
   const detail = useApi<KidDetail>("parentKid", { kid_id: kidId }, { enabled: !!kidId });
+  const digest = useApi<Digest>("parentDigest", { kid_id: kidId }, { enabled: !!kidId });
+  const wk = digest.data;
   const d = detail.data;
   const pick = (id: string) => { setSel(id); try { localStorage.setItem(KID_KEY, id); } catch { /* لا شيء */ } };
   const [linkOpen, setLinkOpen] = useState(false);
@@ -112,6 +119,28 @@ export default function ParentHome() {
                 <p className="font-heading text-xl font-extrabold tabular-nums">{s.value}</p>
                 <p className="text-xs font-bold text-muted-foreground">{s.label}</p>
               </div>
+            ))}
+          </div>
+
+          {wk && (
+            <div data-testid="digest" className="rounded-[28px] bg-hero p-4 text-white shadow-soft">
+              <h2 className="font-heading text-lg font-extrabold">ملخص أسبوع {d.kid.name} 🌟</h2>
+              <ul className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                <li className="rounded-2xl bg-white/15 p-2">🕌 الصلوات<br /><b className="text-lg">{ar(wk.prayers)} / {ar(wk.prayers_total)}</b></li>
+                <li className="rounded-2xl bg-white/15 p-2">☀️ الأذكار<br /><b className="text-lg">{ar(wk.azkar)}</b></li>
+                <li className="rounded-2xl bg-white/15 p-2">📝 واجبات معتمدة<br /><b className="text-lg">{ar(wk.homework)}</b></li>
+                <li className="rounded-2xl bg-white/15 p-2">⭐ نجوم الأسبوع<br /><b className="text-lg">{ar(Math.max(0, wk.stars))}</b></li>
+              </ul>
+              <p className="mt-2 text-xs text-white/85">🤲 أيام الأدعية {ar(wk.duas)} · 🎙️ تلاوات {ar(wk.recitations)} · 💗 أعمال صالحة {ar(wk.deeds)}{wk.achievements.length ? ` · 🏅 ${wk.achievements.slice(0, 3).join("، ")}` : ""}</p>
+              <p className="mt-1 text-xs text-white/70">يصلك هذا الملخص كإشعار كل جمعة لو {mom ? "فعّلتِ" : "فعّلت"} الإشعارات.</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            {KID_TILES.map((t) => (
+              <Link key={t.href} href={t.href} className={cn("flex items-center gap-2 rounded-[24px] bg-gradient-to-br p-3 font-bold text-white shadow-soft transition-transform active:scale-95", t.tone)}>
+                <Icon3D name={t.icon} size={40} /> {t.label}
+              </Link>
             ))}
           </div>
 

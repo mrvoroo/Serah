@@ -2955,6 +2955,8 @@ function saveReleaseRow_(sheet, ck, itemId, p, me) {
     const kind = ['image', 'audio', 'file'].indexOf(String(p.file_kind || '')) >= 0 ? String(p.file_kind) : '';
     const file_id = p.file_id ? platformFile_(p.file_id) : '';
     if (file_id && !kind) throw new Error('نوع المرفق غير معروف');
+    // تلاوة طفل خاصة به: لا تُرفق لفصل كامل (وإلا يسمعها كل الأطفال)
+    if (file_id && rows_('Recitations').some(r => String(r.file_id) === file_id)) throw new Error('الملف غير صالح');
     // نوع الملف الفعلي لازم يطابق النوع المختار (حتى لا يُشارَك تسجيل محاضرة غير منشورة على أنه صورة)
     if (file_id) {
       let mime = '';
@@ -3579,8 +3581,7 @@ Object.assign(ACTIONS, {
 
 
 /* ============ لوحة الأعمال الصالحة للأسرة ============ */
-const DEEDS = { birr: 'بر الوالدين', help: 'ساعد في البيت', sadaqa: 'تصدّق', rahim: 'صلة الرحم', road: 'أماط الأذى عن الطريق', truth: 'صدق في كلامه',
-  feed: 'أطعم غيره', animal: 'رحم الحيوان', room: 'رتّب غرفته', neighbor: 'أحسن إلى الجار', smile: 'ابتسم في وجه أخيه', share: 'شارك ألعابه' };
+const DEEDS = { birr: 'بر الوالدين', help: 'مساعدة في البيت', sadaqa: 'صدقة', rahim: 'صلة الرحم', road: 'إماطة الأذى عن الطريق', truth: 'الصدق في الكلام', feed: 'إطعام الطعام', animal: 'الرحمة بالحيوان', room: 'ترتيب الغرفة', neighbor: 'الإحسان إلى الجار', smile: 'الابتسامة في وجوه الناس', share: 'مشاركة الألعاب' };
 const DEED_DAY_MAX = 10, DEED_STARS_DAY = 3;
 
 Object.assign(POLICY, {

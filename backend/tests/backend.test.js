@@ -1956,6 +1956,10 @@ test('تسجيل التلاوة: نوع وبصمة وحجم ومدة، وحد ا
   assert.strictEqual(t.call('deleteRecitation', { rec_id: r1.data.rec_id }, kid2).error, 'التسجيل غير موجود');
   assert.ok(t.call('deleteRecitation', { rec_id: r1.data.rec_id }, teacher).ok);
   assert.ok(t.call('submitRecitation', ok, kid).ok, 'room after review');
+  // تلاوة طفل لا تُرفق صوتًا لذكر أو دعاء (وإلا يسمعها الفصل كله)
+  const other = t.call('myRecitations', {}, kid).data[0].file_id;
+  assert.strictEqual(t.call('saveRelease', { kind: 'dua', item_id: 'sleep', classes: ['C1'], file_id: other, file_kind: 'audio' }, admin).error, 'الملف غير صالح');
+  assert.strictEqual(t.call('saveAzkarRelease', { zikr_id: 'ikhlas', classes: ['C1'], file_id: other, file_kind: 'audio' }, admin).error, 'الملف غير صالح');
 });
 
 test('حديقة جزء عمّ: نفس قائمة الموقع، مراجعة مرة يوميًا، وتأكيد المعلمة ١٠ نجوم مرة واحدة مشتركة مع «إتمام سورة»', () => {
