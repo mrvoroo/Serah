@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles, ClipboardCheck, NotebookPen, Info, Radio, Clock, BookHeart, School, BookOpen, Sun, SunMedium, Star } from "lucide-react";
+import { LayoutDashboard, Users, Headphones, Upload, MessageSquareHeart, Settings, LogOut, Menu, ShieldCheck, UserCog, ScrollText, Map, Sparkles, ClipboardCheck, NotebookPen, Info, Radio, Clock, BookHeart, School, BookOpen, Sun, SunMedium, Star, Moon, Mic, Sprout, Trophy, BookMarked } from "lucide-react";
 import { session, type Role } from "@/lib/api";
 import { ROLE_LABEL, stopViewAs, viewAsInfo } from "@/lib/view-as";
 import { useRequireRole } from "@/components/kid/kid-shell";
@@ -32,6 +32,11 @@ export const TEACHER_NAV: { href: string; label: string; icon: typeof Users; min
   { href: "/teacher/names/", label: "الأسماء الحسنى", icon: Star },
   { href: "/teacher/prayer-content/", label: "محتوى الصلاة", icon: BookHeart, min: "admin" },
   { href: "/teacher/azkar-release/", label: "أذكار الأطفال", icon: SunMedium, min: "admin" },
+  { href: "/teacher/duas-release/", label: "أدعية الأطفال", icon: Moon, min: "admin" },
+  { href: "/teacher/hadith-release/", label: "أحاديث الأطفال", icon: BookMarked, min: "admin" },
+  { href: "/teacher/hifz/", label: "حفظ الطلاب", icon: Sprout },
+  { href: "/teacher/recitations/", label: "تلاوات الأطفال", icon: Mic },
+  { href: "/teacher/challenges/", label: "تحديات المواسم", icon: Trophy },
   { href: "/teacher/lectures/", label: "المحاضرات", icon: Headphones },
   { href: "/teacher/upload/", label: "رفع تسجيل", icon: Upload },
   { href: "/teacher/quizzes/", label: "الاختبارات", icon: ClipboardCheck },

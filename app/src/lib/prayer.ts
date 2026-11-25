@@ -20,6 +20,8 @@ const ZONES: Record<string, Place & { method: string }> = {
 };
 const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; } };
 const zone = () => ZONES[tz()] ?? ZONES["Asia/Riyadh"];
+// لنجوم الأذكار والأدعية: الخادم يحسب «اليوم» بمنطقة الجهاز الزمنية (نفس منطقة مواقيت الصلاة) وخط طول مكان المواقيت
+export const dayContext = () => ({ tz: tz(), lng: Math.round(loadPlace().lng * 100) / 100 });
 export const defaultPlace = (): Place => { const z = zone(); return { name: z.name, lat: z.lat, lng: z.lng }; };
 
 function params(): CalculationParameters {

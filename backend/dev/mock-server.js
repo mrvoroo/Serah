@@ -24,6 +24,8 @@ function boot() {
   }
   const ss = { getSheetByName: (n) => sheets[n] || null, insertSheet: mkSheet, getId: () => 'demo', getSheets: () => Object.values(sheets) };
   const signed = (buf) => Array.from(buf, (b) => (b > 127 ? b - 256 : b));
+  // ملفات التلاوة في الذاكرة (تُسمع عبر audioChunk كأنها على درايف)
+  const files = {}; let fileN = 0;
   const env = {
     SpreadsheetApp: { openById: () => ss },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = String(v); }, setProperties: (o) => { Object.keys(o).forEach(k => { props[k] = String(o[k]); }); }, deleteProperty: (k) => { delete props[k]; } }) },
@@ -34,19 +36,30 @@ function boot() {
       base64EncodeWebSafe: (x) => Buffer.from(typeof x === 'string' ? x : Uint8Array.from(x.map(b => b & 255))).toString('base64url'),
       base64DecodeWebSafe: (s) => [...Buffer.from(s, 'base64url')],
       base64Encode: (x) => Buffer.from(Uint8Array.from(x, (b) => b & 255)).toString('base64'),
-      newBlob: (b, type, name) => ({ getDataAsString: () => Buffer.from(b).toString(), getContentType: () => type, getBytes: () => b, setName() { return this; } }),
-      formatDate: (d) => d.toISOString().slice(0, 10), sleep() {}
+      base64Decode: (s) => signed(Buffer.from(s, 'base64')),
+      newBlob: (b, type, name) => ({ getDataAsString: () => Buffer.from(b).toString(), getContentType: () => type, getBytes: () => b, setName() { return this; }, _b: b, _t: type }),
+      formatDate: (d, tz, fmt) => { const o = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz === 'GMT' ? 'UTC' : (tz || 'UTC'), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(d).map(x => [x.type, x.value])); return String(fmt || 'yyyy-MM-dd').replace('yyyy', o.year).replace('MM', o.month).replace('dd', o.day).replace('HH', o.hour); }, sleep() {}
     },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 1 } },
     CacheService: { getScriptCache: () => ({ get: (k) => { const e = cache[k]; if (!e) return null; if (e.t < Date.now()) { delete cache[k]; return null; } return e.v; }, put: (k, v, sec) => { cache[k] = { v: String(v), t: Date.now() + (sec || 600) * 1000 }; }, remove: (k) => { delete cache[k]; } }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
     ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create() {} }), onWeekDay: () => ({ atHour: () => ({ create() {} }) }) }) }), WeekDay: {}, getOAuthToken: () => 't', getService: () => ({ getUrl: () => 'u' }), deleteTrigger() {} },
     // لا اتصالات خارجية: الإشعارات والرفع ترجع نجاحًا وهميًا
-    UrlFetchApp: { fetchAll: (reqs) => reqs.map(() => ({ getResponseCode: () => 201 })), fetch: () => ({ getResponseCode: () => 500, getHeaders: () => ({}), getContentText: () => '{"ok":false}' }) },
-    DriveApp: { getFileById: () => ({ setSharing() {}, getMimeType: () => 'image/png', getParents: () => { let i = 0; return { hasNext: () => i < 1, next: () => (i++, { getId: () => 'fi' }) }; } }), getFolderById: () => ({}), Access: {}, Permission: {} },
+    UrlFetchApp: { fetchAll: (reqs) => reqs.map(() => ({ getResponseCode: () => 201 })), fetch: (url, opts) => {
+      const m = /drive\/v3\/files\/([^?]+)/.exec(String(url)), f = m && files[decodeURIComponent(m[1])];
+      if (f) {
+        const [, a, b] = /bytes=(\d+)-(\d+)/.exec((opts && opts.headers && opts.headers.Range) || 'bytes=0-0');
+        if (Number(a) >= f.bytes.length) return { getResponseCode: () => 416, getHeaders: () => ({}), getContent: () => [] };
+        const part = f.bytes.slice(Number(a), Math.min(Number(b) + 1, f.bytes.length));
+        return { getResponseCode: () => 206, getHeaders: () => ({ 'Content-Type': f.mime, 'Content-Range': 'bytes ' + a + '-' + (Number(a) + part.length - 1) + '/' + f.bytes.length }), getContent: () => part };
+      }
+      return { getResponseCode: () => 500, getHeaders: () => ({}), getContentText: () => '{"ok":false}' };
+    } },
+    DriveApp: { getFileById: (id) => ({ setSharing() {}, setTrashed() { delete files[id]; }, getMimeType: () => (files[id] ? files[id].mime : 'image/png'), getParents: () => { let i = 0; return { hasNext: () => i < 1, next: () => (i++, { getId: () => (files[id] ? 'fa' : 'fi') }) }; } }),
+      getFolderById: () => ({ createFile: (blob) => { const id = 'rec' + (++fileN); files[id] = { bytes: blob._b, mime: blob._t }; return { getId: () => id }; } }), Access: {}, Permission: {} },
     Logger: { log() {} }, console: { error() {}, log() {} }
   };
-  const g = new Function(...Object.keys(env), code + '\nreturn { handle_, append_, rows_, hashPin_, ensureSheet_, SCHEMA };')(...Object.values(env));
+  const g = new Function(...Object.keys(env), code + '\nreturn { handle_, append_, rows_, hashPin_, ensureSheet_, normName_, SCHEMA };')(...Object.values(env));
   return { g, props };
 }
 
@@ -83,6 +96,25 @@ g.append_('StarLog', { key: 'su:KID1:سوره الفاتحه', user_id: 'KID1', 
 g.append_('AzkarRelease', { zikr_id: 'falaq', classes: 'C1', note: '', file_id: '', file_kind: '', file_name: '', released_at: day(-7), updated_by: 'ADM1', updated_at: now });
 g.append_('AzkarRelease', { zikr_id: 'ikhlas', classes: 'C1', note: 'نحفظها هذا الأسبوع إن شاء الله ونقولها ٣ مرات', file_id: '', file_kind: '', file_name: '', released_at: day(-1), updated_by: 'ADM1', updated_at: now });
 
+// ===== الأفكار الثمانية =====
+const dn = (n) => Number(day(n).replace(/-/g, ''));
+const rel = (sheet, id, cls, note, n) => g.append_(sheet, { zikr_id: id, classes: cls, note: note || '', file_id: '', file_kind: '', file_name: '', released_at: day(n), updated_by: 'ADM1', updated_at: now });
+rel('DuaRelease', 'eat-before', 'C1', 'نقولها قبل كل أكلة هذا الأسبوع', -3); rel('DuaRelease', 'sleep', 'C1', '', -2); rel('DuaRelease', 'leave-home', 'C1', '', -1);
+rel('HadithRelease', 'kalima', 'C1', 'نحفظه ونسمّعه يوم الخميس', -2); rel('HadithRelease', 'niyyah', 'C1', '', -1);
+g.append_('StarLog', { key: 'hd:KID1:' + g.normName_('الكلمة الطيبة صدقة'), user_id: 'KID1', kind: 'hadith', ref: 'الكلمة الطيبة صدقة', stars: 2, at: day(-1), by: 'ADM1' });
+// حديقة زيد: الناس مؤكدة (شهادة)، والفلق شجرة، والإخلاص نبتة
+g.append_('StarLog', { key: 'su:KID1:' + g.normName_('سورة الناس'), user_id: 'KID1', kind: 'surah', ref: 'سورة الناس', stars: 10, at: day(-2), by: 'ADM1' });
+[[114, 9, 'ADM1'], [113, 7, ''], [112, 2, ''], [111, 4, '']].forEach(([n, r, by]) => g.append_('Garden', { key: 'KID1:' + n, user_id: 'KID1', surah: n, reviews: r, last_day: dn(-1), confirmed_by: by, confirmed_at: by ? day(-2) : '' }));
+// حبيبة أكملت المرحلة الأولى من الرحلة (حضرت محاضرة لكل نبي من آدم إلى صالح) ← شهادة مرحلة
+[['L3', 'adam', 'آدم'], ['L4', 'idris', 'إدريس'], ['L5', 'salih', 'صالح']].forEach(([id, pid, n], i) => g.append_('Lectures', { lecture_id: id, class_id: 'C1', title: 'قصة سيدنا ' + n + ' عليه السلام', date: day(-6 + i), audio_file_id: '', duration_sec: 500, status: 'published', notes: '', created_by: 'ADM1', created_at: day(-6 + i), prophet_id: pid }));
+['L1', 'L2', 'L3', 'L4', 'L5'].forEach((l, i) => g.append_('Attendance', { lecture_id: l, user_id: 'KID2', at: day(-5 + i) }));
+// تحدي رمضاني لفصل البراعم (قرب الهدف: ١٢ من ٢٠)
+g.append_('Challenges', { ch_id: 'CH1', class_id: 'C1', title: 'ختمة الفصل الصغيرة', season: 'ramadan', unit: 'صفحة', goal: 20, starts: dn(-3), ends: dn(10), active: true, created_by: 'ADM1', created_at: now });
+g.append_('ChallengeLog', { key: 'CH1:KID2:' + dn(-1), ch_id: 'CH1', user_id: 'KID2', day: dn(-1), count: 7, at: now });
+g.append_('ChallengeLog', { key: 'CH1:KID1:' + dn(-2), ch_id: 'CH1', user_id: 'KID1', day: dn(-2), count: 5, at: now });
+// ملصقات أعمال صالحة من أم زيد
+[['birr', -1, 'قبّل يد جدته'], ['help', -2, ''], ['sadaqa', -4, 'أعطى من مصروفه']].forEach(([d, n, note], i) => g.append_('FamilyDeeds', { deed_id: 'D' + i, parent_id: 'PAR1', kid_id: 'KID1', deed: d, note, day: dn(n), stars: 1, at: day(n) }));
+
 // كود ولي أمر جديد (لتجربة «حساب جديد بكود») لعمر — يصدره حساب المعلمة كما في المنصة
 const login = (name, pin) => JSON.parse(g.handle_('login', { name, pin })).data.token;
 const tTok = login(ACC.teacher.name, ACC.teacher.pin);
@@ -108,7 +140,9 @@ const md = `# حسابات تجريبية (localhost فقط)
 ما الموجود للتجربة:
 - فصل البراعم: ذكرا «الفلق» و«الإخلاص» مفتوحان (الإخلاص «ذكر الأسبوع» بملاحظة)، ومحاضرتان منشورتان، وزيد حضر واحدة وله «سورة الفاتحة» وصلوات آخر ٣ أيام.
 - رحلة الأنبياء: ٦ أنبياء ظاهرون، فألعاب الأنبياء: المستوى ١ و٢ متاحان، و٣ مقفول (يحتاج ٧).
-- لا يعمل هنا: رفع الملفات والصوت (يحتاج جوجل درايف)، والإشعارات الحقيقية على الجوال.
+- الأفكار الثمانية: ٣ أدعية وحديثان مفتوحة لفصل البراعم، وحديقة زيد (الناس مثمرة وعليها شهادة)، وحبيبة عندها شهادة «المرحلة الأولى» من الرحلة، وتحدي «ختمة الفصل الصغيرة» (١٢ من ٢٠)، و٣ ملصقات أعمال صالحة لزيد.
+- تسجيل التلاوة يعمل هنا (الصوت محفوظ في الذاكرة فقط) — يحتاج إذن الميكروفون في المتصفح.
+- لا يعمل هنا: رفع الملفات للأذكار/المحاضرات (يحتاج جوجل درايف)، والإشعارات الحقيقية على الجوال.
 `;
 fs.writeFileSync(path.join(__dirname, 'DEMO-ACCOUNTS.md'), md);
 

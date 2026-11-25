@@ -6,7 +6,7 @@ test("أيقونة فشل تحميلها تظهر إيموجي بديل، وال
   await page.route(/\/3d\/medal1\.png/, (r) => r.abort());
   await page.addInitScript(() => { localStorage.setItem("serah_token", "t"); localStorage.setItem("serah_user", JSON.stringify({ user_id: "S1", name: "عبدالله", role: "student", class_id: "C1", avatar: "", gender: "m" })); });
   await page.goto("/Serah/kid/");
-  await expect(page.locator('[data-icon-fallback="medal1"]')).toHaveText("🥇");
+  await expect(page.locator('[data-icon-fallback="medal1"]').first()).toHaveText("🥇"); // «ترتيبي» وبلاطة «شهاداتي» الاتنين نفس الأيقونة
   // كل الصور الظاهرة اتحمّلت فعلًا (مفيش صورة مكسورة)
   await page.waitForLoadState("networkidle");
   const broken = await page.locator('img[src*="/3d/"]').evaluateAll((imgs) => (imgs as HTMLImageElement[]).filter((i) => i.complete && i.naturalWidth === 0 && i.loading !== "lazy").map((i) => i.src));

@@ -5,7 +5,7 @@
  */
 
 // رقم النسخة: يزيده سكربت النشر (deploy.ps1) تلقائيًا، ويرجع مع ping للتأكد أن الموقع على أحدث نسخة
-const VERSION = 31;
+const VERSION = 32;
 
 /* ============ 1) هيكل الجداول ============ */
 const SCHEMA = {
@@ -51,7 +51,16 @@ const SCHEMA = {
   ParentCodes:  ['code_hash', 'kid_id', 'created_by', 'created_at', 'expires_at', 'used_by', 'used_at', 'revoked'],
   ParentLinks:  ['key', 'parent_id', 'kid_id', 'created_at', 'created_by'],
   // الألعاب: مستوى مكتمل لكل طفل (key = user:game:level)
-  GameProgress: ['key', 'user_id', 'game', 'level', 'best', 'stars', 'at']
+  GameProgress: ['key', 'user_id', 'game', 'level', 'best', 'stars', 'at'],
+  // الأفكار الثمانية: أدعية اليوم والأحاديث تُفتح لكل فصل (نفس أعمدة AzkarRelease)، والتلاوات، وحديقة جزء عمّ،
+  // ولوحة أعمال الأسرة، وتحديات المواسم (day/starts/ends أرقام yyyymmdd)
+  DuaRelease:   ['zikr_id', 'classes', 'note', 'file_id', 'file_kind', 'file_name', 'released_at', 'updated_by', 'updated_at'],
+  HadithRelease:['zikr_id', 'classes', 'note', 'file_id', 'file_kind', 'file_name', 'released_at', 'updated_by', 'updated_at'],
+  Recitations:  ['rec_id', 'user_id', 'class_id', 'surah', 'file_id', 'mime', 'duration_sec', 'status', 'rating', 'note', 'reviewed_by', 'reviewed_at', 'created_at'],
+  Garden:       ['key', 'user_id', 'surah', 'reviews', 'last_day', 'confirmed_by', 'confirmed_at'],
+  FamilyDeeds:  ['deed_id', 'parent_id', 'kid_id', 'deed', 'note', 'day', 'stars', 'at'],
+  Challenges:   ['ch_id', 'class_id', 'title', 'season', 'unit', 'goal', 'starts', 'ends', 'active', 'created_by', 'created_at'],
+  ChallengeLog: ['key', 'ch_id', 'user_id', 'day', 'count', 'at']
 };
 const MAX_BOT_DOWNLOAD = 20 * 1024 * 1024; // حد تنزيل البوت من تيليجرام (20MB)
 
@@ -357,6 +366,7 @@ function migrate_() {
     // مشغّل الإشعارات كل دقيقة — يُنشأ مرة واحدة تلقائيًا (بدون فتح المحرر)
     if (!prop_('VAPID_PUB')) { try { genVapid_(); } catch (e) { console.error(e); } }
     if (prop_('PUSH_TRIGGER') !== '2') { try { installPushTrigger(); props_().setProperty('PUSH_TRIGGER', '2'); } catch (e) { console.error(e); } }
+    if (prop_('DIGEST_TRIGGER') !== '1') { try { installDigestTrigger(); props_().setProperty('DIGEST_TRIGGER', '1'); } catch (e) { console.error(e); } }
     if (prop_('BACKUP_TRIGGER') !== '1') { try { installBackupTrigger(); props_().setProperty('BACKUP_TRIGGER', '1'); } catch (e) { console.error(e); } }
     props_().setProperty('SCHEMA_VERSION', String(VERSION));
   } finally { lock.releaseLock(); }
@@ -1261,6 +1271,8 @@ function rate_(key, max, sec) {
 function platformFile_(id) {
   const v = String(id || '');
   if (!/^[A-Za-z0-9_-]{1,200}$/.test(v)) throw new Error('الملف غير صالح');
+  // تلاوة الطفل خاصة به: لا تُستخدم في محاضرة أو صورة أو مرفق (وإلا تُشارك للعامة ويسمعها الفصل كله)
+  if (rows_('Recitations').some(r => String(r.file_id) === v)) throw new Error('الملف غير صالح');
   const folders = ['audio', 'images'].map(k => prop_('FOLDER_' + k)).filter(Boolean);
   try {
     const it = DriveApp.getFileById(v).getParents();
@@ -1580,8 +1592,14 @@ function canHearAudio_(me, p, id) {
   const isT = RANK[me.role] >= RANK.teacher;
   if (me.role !== 'parent' && rows_('Lectures').some(l => l.audio_file_id === id && l.class_id === cls_(me, p) && (isT || l.status === 'published'))) return true;
   if (rows_('ProphetContent').some(c => c.kind === 'audio' && c.file_id === id && (isT || (truthy_(c.approved) && truthy_(c.visible))))) return true;
-  // تسجيل صوتي مرفق بذكر: للمعلمات، وللطفل لو الذكر مفتوح لفصله
-  return rows_('AzkarRelease').some(r => r.file_kind === 'audio' && String(r.file_id) === String(id) && (isT || classList_(r.classes).indexOf(String(me.class_id)) >= 0));
+  // تسجيل صوتي مرفق بذكر أو دعاء أو حديث: للمعلمات، وللطفل لو مفتوح لفصله
+  if (['AzkarRelease', 'DuaRelease', 'HadithRelease'].some(sh => rows_(sh).some(r => r.file_kind === 'audio' && String(r.file_id) === String(id) && (isT || (me.role === 'student' && classList_(r.classes).indexOf(String(me.class_id)) >= 0))))) return true;
+  // تلاوة طفل: صاحبها، ومعلمات فصله، وولي أمره المربوط فقط (الملف غير مشارك للعامة)
+  const rec = rows_('Recitations').find(r => String(r.file_id) === String(id));
+  if (!rec) return false;
+  if (rec.user_id === me.user_id) return true;
+  if (isT) return sameClass_(me, rec.class_id);
+  return me.role === 'parent' && rows_('ParentLinks').some(l => l.parent_id === me.user_id && l.kid_id === rec.user_id);
 }
 // Ogg/Opus ← WebM/Opus (نفس الصوت). لو فشل التحويل لأي سبب نحتفظ بالملف كما هو
 function webmBlob_(blob, name) {
@@ -2027,6 +2045,7 @@ Object.assign(ACTIONS, {
     rate_('psub:' + me.user_id, 30, 3600);
     const plan = cleanPlan_(p.plan), prefs = cleanPrefs_(p.prefs);
     if (me.role !== 'student') prefs.tasks = false; // إشعارات المهام للأطفال فقط
+    if (me.role !== 'parent') prefs.digest = false; // الملخص الأسبوعي لأولياء الأمور فقط
     return withLock_(() => {
       const old = rows_('PushSubs').find(s => s.endpoint === endpoint);
       if (old) {
@@ -2093,7 +2112,7 @@ function cleanPlan_(plan) {
   kept.sort((a, b) => a[0] - b[0]);
   return kept.slice(0, PUSH_MAX_PLAN);
 }
-function cleanPrefs_(v) { const o = v && typeof v === 'object' ? v : {}; return { tasks: o.tasks !== false && o.tasks !== 'false' }; }
+function cleanPrefs_(v) { const o = v && typeof v === 'object' ? v : {}; return { tasks: o.tasks !== false && o.tasks !== 'false', digest: o.digest !== false && o.digest !== 'false' }; }
 
 // يضيف رسالة لطابور الجهاز (يسحبها عامل الخدمة عند وصول الإشعار)
 function queuePush_(sub_id, item) {
@@ -2908,6 +2927,33 @@ function releasedFor_(class_id) { return azkarRows_().filter(r => r.classes.inde
 // الفصول التي فُتح لها ذكر واحد على الأقل (للإشعارات)
 function releasedClasses_() { const m = {}; azkarRows_().forEach(r => r.classes.forEach(c => { m[c] = 1; })); return m; }
 
+// الأيام المقبولة لنجوم الأذكار والأدعية: «اليوم» عند الطفل فقط (لا بكرة ولا أمس).
+// ١) منطقة الجهاز الزمنية tz (نفس منطقة مواقيت الصلاة في التطبيق) ٢) وإلا خط طول مكان المواقيت lng
+// ٣) وإلا اليوم بتوقيت جرينتش، ومعه اليوم المجاور فقط لو ممكن فعلًا في منطقة ما (من −١٢ إلى +١٤ ساعة).
+// evening: أذكار المساء بعد منتصف الليل وقبل الخامسة تُحسب لليوم السابق (نفس logicalDay في التطبيق)
+function zoneDay_(tz, ms) {
+  try {
+    const s = String(Utilities.formatDate(new Date(ms), tz, 'yyyyMMdd HH'));
+    const m = /^(\d{8}) (\d{2})$/.exec(s);
+    return m ? { day: Number(m[1]), hour: Number(m[2]) } : null;
+  } catch (e) { return null; }
+}
+function kidDays_(p, evening) {
+  const now = Date.now(), tz = String(p.tz || '');
+  let z = null, back = null;
+  if (/^[A-Za-z]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(tz) && tz.length <= 40) { z = zoneDay_(tz, now); back = z && zoneDay_(tz, now - 864e5); }
+  const lng = Number(p.lng);
+  if (!z && p.lng !== undefined && p.lng !== '' && isFinite(lng) && lng >= -180 && lng <= 180) {
+    const off = Math.round(lng / 15) * 3600e3;
+    z = zoneDay_('GMT', now + off); back = zoneDay_('GMT', now + off - 864e5);
+  }
+  if (z) return evening && z.hour < 5 && back ? [z.day, back.day] : [z.day];
+  const h = new Date(now).getUTCHours(), out = [dayOffset_(0)];
+  if (h >= 10) out.push(dayOffset_(1));            // مناطق شرق جرينتش دخلت اليوم التالي
+  if (h < (evening ? 17 : 12)) out.push(dayOffset_(-1)); // مناطق غرب جرينتش لسه في اليوم السابق
+  return out;
+}
+
 // نجوم لمرة واحدة لكل مفتاح (يُستدعى والقفل محجوز): يرجع false لو أُعطيت قبل كده
 function awardOnce_(key, user_id, kind, ref, stars, reason, by) {
   if (rows_('StarLog').some(r => String(r.key) === key)) return false;
@@ -2931,13 +2977,10 @@ function notifyAzkarRelease_(classIds) {
   } catch (e) { console.error(e); }
 }
 
-Object.assign(ACTIONS, {
-  azkarReleases: () => rows_('AzkarRelease').map(releaseOut_),
-
-  // classes = الفصول المفتوح لها الذكر الآن (قائمة فاضية = مقفول للكل)، مع ملاحظة ومرفق واحد (صورة/صوت/PDF)
-  saveAzkarRelease: (p, me) => {
-    const id = String(p.zikr_id || '');
-    if (!AZKAR_ID.test(id)) throw new Error('الذكر غير معروف');
+// حفظ فتح عنصر (ذكر/دعاء/حديث) لفصول، مع ملاحظة ومرفق واحد — يرجع الصف والفصول المضافة حديثًا
+function saveReleaseRow_(sheet, ck, itemId, p, me) {
+    const id = String(itemId || '');
+    if (!AZKAR_ID.test(id)) throw new Error(sheet === 'AzkarRelease' ? 'الذكر غير معروف' : 'العنصر غير معروف');
     const known = rows_('Classes').map(c => String(c.class_id));
     const want = (Array.isArray(p.classes) ? p.classes : classList_(p.classes)).map(String).filter((x, i, a) => known.indexOf(x) >= 0 && a.indexOf(x) === i);
     const kind = ['image', 'audio', 'file'].indexOf(String(p.file_kind || '')) >= 0 ? String(p.file_kind) : '';
@@ -2950,23 +2993,32 @@ Object.assign(ACTIONS, {
       const okMime = kind === 'image' ? /^image\//.test(mime) : kind === 'audio' ? /^(audio|video)\//.test(mime) : mime === 'application/pdf';
       if (!okMime) throw new Error('نوع المرفق لا يطابق الملف');
     }
-    rate_('azr:' + me.user_id, 120, 600);
+    rate_('azr:' + me.user_id, 120, 600); // حد مشترك لكل لوحات الفتح
     const f = { classes: want.join(','), note: String(p.note || '').trim().slice(0, 600), file_id, file_kind: file_id ? kind : '',
       file_name: file_id ? String(p.file_name || '').slice(0, 80) : '', updated_by: me.user_id, updated_at: now_() };
     let added = [];
     withLock_(() => {
-      const old = rows_('AzkarRelease').find(r => String(r.zikr_id) === id);
+      const old = rows_(sheet).find(r => String(r.zikr_id) === id);
       const before = old ? classList_(old.classes) : [];
       added = want.filter(x => before.indexOf(x) < 0);
       // وقت الفتح يتجدد لما يُفتح لفصل جديد (يظهر «ذكر الأسبوع» للأحدث)
       if (added.length) f.released_at = now_();
-      if (old) update_('AzkarRelease', 'zikr_id', id, f);
-      else append_('AzkarRelease', Object.assign({ zikr_id: id, released_at: '' }, f));
+      if (old) update_(sheet, 'zikr_id', id, f);
+      else append_(sheet, Object.assign({ zikr_id: id, released_at: '' }, f));
     });
-    try { CacheService.getScriptCache().remove('azr'); } catch (e) { console.error(e); }
+    try { CacheService.getScriptCache().remove(ck); } catch (e) { console.error(e); }
     if (file_id && kind !== 'audio') share_(file_id); // الصور والملفات تُعرض للأطفال من درايف
-    if (added.length) notifyAzkarRelease_(added);
-    return releaseOut_(rows_('AzkarRelease').find(r => String(r.zikr_id) === id));
+    return { row: releaseOut_(rows_(sheet).find(r => String(r.zikr_id) === id)), added };
+}
+
+Object.assign(ACTIONS, {
+  azkarReleases: () => rows_('AzkarRelease').map(releaseOut_),
+
+  // classes = الفصول المفتوح لها الذكر الآن (قائمة فاضية = مقفول للكل)، مع ملاحظة ومرفق واحد (صورة/صوت/PDF)
+  saveAzkarRelease: (p, me) => {
+    const r = saveReleaseRow_('AzkarRelease', 'azr', p.zikr_id, p, me);
+    if (r.added.length) notifyAzkarRelease_(r.added);
+    return r.row;
   },
 
   // الطفل: الأذكار المفتوحة لفصله (الأحدث أولًا)؛ المعلمة/الأدمن تعاين فصلًا
@@ -2981,7 +3033,7 @@ Object.assign(ACTIONS, {
     const period = String(p.period || '');
     if (period !== 'am' && period !== 'pm') throw new Error('الفترة غير معروفة');
     const day = dayNum_(p.date);
-    if (day > dayOffset_(1) || day < dayOffset_(-1)) throw new Error('لا يمكن تسجيل هذا اليوم');
+    if (kidDays_(p, period === 'pm').indexOf(day) < 0) throw new Error('لا يمكن تسجيل هذا اليوم');
     if (!releasedFor_(me.class_id).length) throw new Error('لم تُفتح أذكار بعد');
     rate_('azd:' + me.user_id, 30, 3600);
     const reason = period === 'am' ? 'أذكار الصباح' : 'أذكار المساء';
@@ -3003,6 +3055,7 @@ Object.assign(ACTIONS, {
     const reason = (kind === 'surah' ? 'إتمام ' : 'حفظ حديث: ') + title;
     const ok = withLock_(() => awardOnce_(key, kid.user_id, kind, title, stars, reason, me.user_id));
     if (!ok) throw new Error('مسجّل قبل كده لهذا الطفل');
+    kidNotice_(kid, (kind === 'surah' ? 'أتممت ' + title + ' ' : 'حفظت حديث «' + title + '» ') + '— ما شاء الله! +' + arNum_(stars) + ' نجوم ⭐');
     return { stars };
   },
 
@@ -3228,5 +3281,538 @@ Object.assign(ACTIONS, {
       addPoints_(me.user_id, GAME_STARS, 'لعبة: ' + game + ' — المستوى ' + level);
       return { passed: true, stars: GAME_STARS };
     });
+  }
+});
+
+
+/* ============ أدعية اليوم والليلة + الأحاديث القصيرة (فتح لكل فصل) ============ */
+// النصوص ثابتة في الموقع (daily-duas.json و hadith-kids.json المراجَعان)؛ هنا فقط: أي عنصر مفتوح لأي فصل
+const RELEASE_SHEETS = { dua: 'DuaRelease', hadith: 'HadithRelease' };
+const DUA_STARS = 1;
+
+Object.assign(POLICY, {
+  releases: { min: 'admin' },
+  saveRelease: { min: 'admin', write: 1, audit: 1 },
+  kidReleases: { min: 'student' },
+  duaDone: { min: 'student', write: 1 },
+  myAchievements: { min: 'student' }
+});
+
+function releaseSheet_(kind) {
+  const k = String(kind || '');
+  if (!Object.prototype.hasOwnProperty.call(RELEASE_SHEETS, k)) throw new Error('النوع غير معروف');
+  return RELEASE_SHEETS[k];
+}
+// كل الإطلاقات مخزّنة دقيقة، وتُمسح مع أي تعديل
+function releaseRows_(sheet) {
+  const c = CacheService.getScriptCache(), ck = 'rel:' + sheet, hit = c.get(ck);
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* نقرأ من جديد */ } }
+  const out = rows_(sheet).map(releaseOut_);
+  try { c.put(ck, JSON.stringify(out), 60); } catch (e) { console.error(e); }
+  return out;
+}
+function releasedOf_(sheet, class_id) { return releaseRows_(sheet).filter(r => r.classes.indexOf(String(class_id)) >= 0); }
+
+// إشعار «دعاء/حديث جديد» لأطفال الفصول المفتوح لها (مرة كل ١٠ دقائق لكل فصل)، بصيغة الولد أو البنت
+function notifyRelease_(kind, classIds) {
+  try {
+    const c = CacheService.getScriptCache();
+    const fresh = classIds.filter(id => !c.get('reln:' + kind + ':' + id));
+    if (!fresh.length) return;
+    fresh.forEach(id => c.put('reln:' + kind + ':' + id, '1', 600));
+    const users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
+    const subs = rows_('PushSubs').filter(s => { const u = users[s.user_id]; return u && !inactive_(u) && u.role === 'student' && fresh.indexOf(String(u.class_id)) >= 0; });
+    if (!subs.length) return;
+    subs.forEach(s => {
+      const f = genderOf_(users[s.user_id]) === 'f';
+      queuePush_(s.sub_id, kind === 'dua'
+        ? { kind: 'rel', title: f ? 'دعاء جديد ينتظركِ 🤲' : 'دعاء جديد ينتظرك 🤲', body: f ? 'افتحي أدعية اليوم وتعلّميه' : 'افتح أدعية اليوم وتعلّمه', url: '/kid/duas/' }
+        : { kind: 'rel', title: f ? 'حديث جديد ينتظركِ 🌿' : 'حديث جديد ينتظرك 🌿', body: f ? 'افتحي الأحاديث واحفظيه' : 'افتح الأحاديث واحفظه', url: '/kid/hadith/' });
+    });
+    UrlFetchApp.fetchAll(subs.map(s => pushRequest_(s.endpoint)));
+  } catch (e) { console.error(e); }
+}
+
+Object.assign(ACTIONS, {
+  releases: (p) => rows_(releaseSheet_(p.kind)).map(releaseOut_),
+
+  saveRelease: (p, me) => {
+    const kind = String(p.kind || ''), sheet = releaseSheet_(kind);
+    const r = saveReleaseRow_(sheet, 'rel:' + sheet, p.item_id, p, me);
+    if (r.added.length) notifyRelease_(kind, r.added);
+    return r.row;
+  },
+
+  // الطفل: المفتوح لفصله (الأحدث أولًا)؛ المعلمة/الأدمن تعاين فصلًا
+  kidReleases: (p, me) => releasedOf_(releaseSheet_(p.kind), cls_(me, p))
+    .sort((a, b) => String(b.released_at).localeCompare(String(a.released_at)))
+    .map(r => { const o = Object.assign({}, r); delete o.classes; return o; }),
+
+  // الطفل مرّ على كل الأدعية المفتوحة له: نجمة مرة واحدة في اليوم
+  duaDone: (p, me) => {
+    if (me.role !== 'student') return { stars: 0 };
+    const day = dayNum_(p.date);
+    if (kidDays_(p, false).indexOf(day) < 0) throw new Error('لا يمكن تسجيل هذا اليوم');
+    if (!releasedOf_('DuaRelease', me.class_id).length) throw new Error('لم تُفتح أدعية بعد');
+    rate_('dud:' + me.user_id, 30, 3600);
+    const first = withLock_(() => awardOnce_('du:' + me.user_id + ':' + day, me.user_id, 'dua', String(day), DUA_STARS, 'أدعية اليوم'));
+    return { stars: first ? DUA_STARS : 0 };
+  },
+
+  // الطفل: إنجازاته (الأحاديث والسور المسجّلة) ليعرف ما حفظه
+  myAchievements: (p, me) => achievementsOf_(me.user_id)
+});
+
+
+// رسالة للطفل في صفحته الرئيسية؛ «ت» المخاطب تتحول لصيغة البنت (أتممتِ، حفظتِ، حفظكِ)
+function kidNotice_(kid, text) {
+  try {
+    const t = genderOf_(kid) === 'f' ? text.replace(/^أتممت /, 'أتممتِ ').replace(/^حفظت /, 'حفظتِ ').replace(/حفظك /, 'حفظكِ ') : text;
+    append_('Notices', { notice_id: id_('N'), user_id: kid.user_id, text: t, at: now_(), read: false });
+  } catch (e) { console.error(e); }
+}
+
+/* ============ الملخص الأسبوعي لولي الأمر ============ */
+Object.assign(POLICY, { parentDigest: { min: 'student', roles: ['parent'] } });
+
+function arNum_(n) { return String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[Number(d)]); }
+function sinceMs_(v) { const t = v instanceof Date ? v.getTime() : new Date(String(v || '')).getTime(); return isNaN(t) ? 0 : t; }
+// طفل مربوط بولي الأمر (وإلا خطأ)
+function linkedKid_(me, kid_id) {
+  const id = String(kid_id || '');
+  if (!rows_('ParentLinks').some(l => l.parent_id === me.user_id && l.kid_id === id)) throw new Error('هذا الطفل غير مربوط بحسابك');
+  const kid = rows_('Users').find(u => u.user_id === id && u.role === 'student' && !inactive_(u));
+  if (!kid) throw new Error('الطالب غير موجود');
+  return kid;
+}
+// أرقام آخر ٧ أيام لطفل: الصلوات من ٣٥، والأذكار، والأدعية، والواجبات المعتمدة، والنجوم، والإنجازات
+function digestFor_(kid_id) {
+  const fromDay = dayOffset_(-6), fromMs = Date.now() - 7 * 864e5;
+  const prayers = userPrayers_(kid_id);
+  let prayed = 0; Object.keys(prayers).forEach(k => { if (Number(k) >= fromDay) prayed += prayers[k].length; });
+  const log = rows_('StarLog').filter(r => r.user_id === kid_id);
+  const azkar = log.filter(r => r.kind === 'azkar' && Number(String(r.key).split(':')[2]) >= fromDay).length;
+  const duas = log.filter(r => r.kind === 'dua' && Number(String(r.key).split(':')[2]) >= fromDay).length;
+  const achievements = log.filter(r => (r.kind === 'hadith' || r.kind === 'surah') && sinceMs_(r.at) >= fromMs).map(r => String(r.ref)).slice(0, 10);
+  const homework = rows_('Submissions').filter(s => s.user_id === kid_id && s.status === 'approved' && sinceMs_(s.reviewed_at) >= fromMs).length;
+  let stars = 0; rows_('Points').forEach(r => { if (r.user_id === kid_id && sinceMs_(r.at) >= fromMs) stars += Number(r.points) || 0; });
+  const recitations = rows_('Recitations').filter(r => r.user_id === kid_id && sinceMs_(r.created_at) >= fromMs).length;
+  const deeds = rows_('FamilyDeeds').filter(r => r.kid_id === kid_id && Number(r.day) >= fromDay).length;
+  return { prayers: prayed, prayers_total: 35, azkar, duas, homework, stars, recitations, deeds, achievements };
+}
+function digestItem_(kid, d) {
+  const parts = ['🕌 الصلوات ' + arNum_(d.prayers) + ' من ٣٥', '☀️ الأذكار ' + arNum_(d.azkar) + ' مرة', '⭐ ' + arNum_(Math.max(0, d.stars)) + ' نجمة'];
+  if (d.homework) parts.push('📝 ' + arNum_(d.homework) + ' واجب معتمد');
+  if (d.achievements.length) parts.push('🏅 ' + d.achievements.slice(0, 2).join('، '));
+  return { kind: 'wk', title: 'ملخص أسبوع ' + kid.name + ' 🌟', body: parts.join(' · ').slice(0, 220), url: '/parent/' };
+}
+
+/** مشغّل أسبوعي (الجمعة عصرًا): إشعار لكل ولي أمر بملخص أسبوع كل طفل مربوط (حد ٣) */
+function weeklyDigest() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return 0;
+  try {
+    const users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
+    const links = rows_('ParentLinks'), memo = {}, send = [];
+    rows_('PushSubs').forEach(s => {
+      const u = users[s.user_id];
+      if (!u || inactive_(u) || u.role !== 'parent') return;
+      let prefs = {}; try { prefs = JSON.parse(s.prefs || '{}'); } catch (e) {}
+      if (prefs.digest === false) return;
+      const kids = links.filter(l => l.parent_id === u.user_id).map(l => users[l.kid_id]).filter(k => k && k.role === 'student' && !inactive_(k)).slice(0, 3); // عامل الخدمة يعرض آخر ٣ عناصر
+      if (!kids.length) return;
+      kids.forEach(k => queuePush_(s.sub_id, digestItem_(k, memo[k.user_id] || (memo[k.user_id] = digestFor_(k.user_id)))));
+      send.push(s);
+    });
+    if (send.length) UrlFetchApp.fetchAll(send.map(s => pushRequest_(s.endpoint)));
+    return send.length;
+  } finally { lock.releaseLock(); }
+}
+function installDigestTrigger() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'weeklyDigest').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('weeklyDigest').timeBased().onWeekDay(ScriptApp.WeekDay.FRIDAY).atHour(16).create();
+}
+
+Object.assign(ACTIONS, {
+  parentDigest: (p, me) => { const kid = linkedKid_(me, p.kid_id); return Object.assign({ name: kid.name, gender: genderOf_(kid) }, digestFor_(kid.user_id)); }
+});
+
+
+/* ============ جزء عمّ (التلاوة والحديقة) ============ */
+// [رقم السورة، الاسم، عدد الآيات] — نفس app/src/content/juz-amma.json (اختبار يتأكد من التطابق)
+const JUZ_AMMA = [[78, 'النبأ', 40], [79, 'النازعات', 46], [80, 'عبس', 42], [81, 'التكوير', 29], [82, 'الانفطار', 19], [83, 'المطففين', 36],
+  [84, 'الانشقاق', 25], [85, 'البروج', 22], [86, 'الطارق', 17], [87, 'الأعلى', 19], [88, 'الغاشية', 26], [89, 'الفجر', 30], [90, 'البلد', 20],
+  [91, 'الشمس', 15], [92, 'الليل', 21], [93, 'الضحى', 11], [94, 'الشرح', 8], [95, 'التين', 8], [96, 'العلق', 19], [97, 'القدر', 5], [98, 'البينة', 8],
+  [99, 'الزلزلة', 8], [100, 'العاديات', 11], [101, 'القارعة', 11], [102, 'التكاثر', 8], [103, 'العصر', 3], [104, 'الهمزة', 9], [105, 'الفيل', 5],
+  [106, 'قريش', 4], [107, 'الماعون', 7], [108, 'الكوثر', 3], [109, 'الكافرون', 6], [110, 'النصر', 3], [111, 'المسد', 5], [112, 'الإخلاص', 4],
+  [113, 'الفلق', 5], [114, 'الناس', 6]];
+function surahOf_(v) {
+  const n = Math.floor(Number(v)), s = JUZ_AMMA.find(x => x[0] === n);
+  if (!s) throw new Error('السورة غير معروفة');
+  return s;
+}
+// نفس مفتاح «إتمام سورة» اليدوي (kidAchievement) حتى لا تتكرر النجوم
+function surahKey_(kid_id, name) { return 'su:' + kid_id + ':' + normName_('سورة ' + name); }
+const JUZ_TITLE = 'جزء عمّ';
+function juzKey_(kid_id) { return 'su:' + kid_id + ':' + normName_(JUZ_TITLE); }
+
+/* ----- تسجيل التلاوة ----- */
+const REC_MAX_BYTES = 2.5 * 1024 * 1024, REC_MAX_SEC = 120, REC_PENDING = 3, REC_DAY = 6, RECITE_STARS = 2;
+const REC_MIME = { 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/mpeg': 'mp3', 'audio/aac': 'aac', 'audio/wav': 'wav', 'audio/x-wav': 'wav' };
+
+Object.assign(POLICY, {
+  submitRecitation: { min: 'student', write: 1 },
+  myRecitations: { min: 'student' },
+  recitations: { min: 'teacher' },
+  reviewRecitation: { min: 'teacher', write: 1, audit: 1 },
+  deleteRecitation: { min: 'student', write: 1 }
+});
+
+// أول بايتات الملف لازم تكون صيغة صوت معروفة (لا يكفي النوع المكتوب): WebM/Ogg/MP4/MP3/AAC/WAV
+function audioMagic_(b) {
+  const u = (i) => (b[i] || 0) & 255, s = (i, t) => t.split('').every((c, k) => u(i + k) === c.charCodeAt(0));
+  return (u(0) === 0x1A && u(1) === 0x45 && u(2) === 0xDF && u(3) === 0xA3) || s(0, 'OggS') || s(4, 'ftyp') || s(0, 'ID3')
+    || (u(0) === 0xFF && (u(1) & 0xE0) === 0xE0) || (s(0, 'RIFF') && s(8, 'WAVE'));
+}
+function recOut_(r, users) {
+  const s = JUZ_AMMA.find(x => x[0] === Number(r.surah)), u = users && users[r.user_id];
+  return { rec_id: String(r.rec_id), user_id: String(r.user_id), name: u ? String(u.name) : '', avatar: u ? String(u.avatar || '') : '', surah: Number(r.surah), surah_name: s ? s[1] : '',
+    file_id: String(r.file_id), duration_sec: Number(r.duration_sec) || 0, status: String(r.status), rating: Number(r.rating) || 0, note: String(r.note || ''),
+    reviewed_at: String(r.reviewed_at || ''), created_at: String(r.created_at || '') };
+}
+function ownRec_(me, rec_id) {
+  const r = rows_('Recitations').find(x => String(x.rec_id) === String(rec_id || ''));
+  if (!r) throw new Error('التسجيل غير موجود');
+  if (me.role === 'student' ? r.user_id !== me.user_id : !sameClass_(me, r.class_id)) throw new Error('التسجيل غير موجود');
+  return r;
+}
+
+Object.assign(ACTIONS, {
+  // الطفل يرسل تسجيله (Base64) — نوع صوت مسموح وبصمة صوت حقيقية، حجم ومدة محدودان، وحد يومي وحد للمنتظر
+  submitRecitation: (p, me) => {
+    if (me.role !== 'student') throw new Error('التسجيل للأطفال فقط');
+    const s = surahOf_(p.surah);
+    const mime = String(p.mime || '').toLowerCase().split(';')[0].trim();
+    if (!Object.prototype.hasOwnProperty.call(REC_MIME, mime)) throw new Error('نوع التسجيل غير مدعوم');
+    const data = String(p.data || '');
+    if (data.length > Math.ceil(REC_MAX_BYTES / 3) * 4 + 8) throw new Error('التسجيل أطول من المسموح — دقيقتان على الأكثر');
+    if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(data)) throw new Error('التسجيل غير صالح');
+    const dur = Math.round(Number(p.duration));
+    if (!(dur >= 1 && dur <= REC_MAX_SEC)) throw new Error('التسجيل أطول من المسموح — دقيقتان على الأكثر');
+    let bytes;
+    try { bytes = Utilities.base64Decode(data.replace(/-/g, '+').replace(/_/g, '/')); } catch (e) { throw new Error('التسجيل غير صالح'); }
+    if (bytes.length < 800) throw new Error('التسجيل قصير جدًا');
+    if (bytes.length > REC_MAX_BYTES) throw new Error('التسجيل أطول من المسموح — دقيقتان على الأكثر');
+    if (!audioMagic_(bytes)) throw new Error('الملف ليس تسجيلًا صوتيًا');
+    return withLock_(() => {
+      if (rows_('Recitations').filter(r => r.user_id === me.user_id && r.status === 'pending').length >= REC_PENDING) throw new Error('عندك ٣ تسجيلات تنتظر المعلمة — بعد ما تسمعها تقدر ترسل غيرها');
+      rate_('rec:' + me.user_id, REC_DAY, 86400); // الحد اليومي يُحسب على التسجيلات المقبولة فقط
+      const folder = DriveApp.getFolderById(prop_('FOLDER_audio'));
+      const f = folder.createFile(Utilities.newBlob(bytes, mime, 'tilawa-' + me.user_id + '-' + s[0] + '-' + Date.now() + '.' + REC_MIME[mime]));
+      const row = append_('Recitations', { rec_id: id_('R'), user_id: me.user_id, class_id: me.class_id, surah: s[0], file_id: f.getId(), mime, duration_sec: dur,
+        status: 'pending', rating: '', note: '', reviewed_by: '', reviewed_at: '', created_at: now_() });
+      return recOut_(row);
+    });
+  },
+
+  myRecitations: (p, me) => rows_('Recitations').filter(r => r.user_id === me.user_id).sort(byNewest_).slice(0, 30).map(r => recOut_(r)),
+
+  // المعلمة: تلاوات فصلها (المنتظرة أولًا ثم الأحدث)
+  recitations: (p, me) => {
+    const cid = cls_(me, p), users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
+    return rows_('Recitations').filter(r => String(r.class_id) === String(cid) && users[r.user_id] && !inactive_(users[r.user_id]))
+      .sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || byNewest_(a, b)).slice(0, 100).map(r => recOut_(r, users));
+  },
+
+  // تقييم ١–٣ وملاحظة؛ أول مراجعة تعطي نجمتين مرة واحدة، وتصل للطفل رسالة
+  reviewRecitation: (p, me) => {
+    const rating = Math.floor(Number(p.rating));
+    if (!(rating >= 1 && rating <= 3)) throw new Error('اختاري التقييم');
+    const note = String(p.note || '').trim().slice(0, 300);
+    rate_('rrev:' + me.user_id, 200, 3600);
+    return withLock_(() => {
+      const r = ownRec_(me, p.rec_id), s = surahOf_(r.surah);
+      update_('Recitations', 'rec_id', r.rec_id, { status: 'reviewed', rating, note, reviewed_by: me.user_id, reviewed_at: now_() });
+      const first = awardOnce_('rc:' + r.rec_id, r.user_id, 'recite', 'سورة ' + s[1], RECITE_STARS, 'تلاوة سورة ' + s[1], me.user_id);
+      if (first) append_('Notices', { notice_id: id_('N'), user_id: r.user_id, text: 'المعلمة سمعت تلاوتك لسورة ' + s[1] + ' ' + '⭐'.repeat(rating) + (note ? ' — ' + note : ''), at: now_(), read: false });
+      return { stars: first ? RECITE_STARS : 0 };
+    });
+  },
+
+  // الطفل يحذف تسجيله المنتظر فقط، والمعلمة أي تسجيل في فصلها
+  deleteRecitation: (p, me) => withLock_(() => {
+    if (me.role === 'parent') throw new Error('ليس لديك صلاحية');
+    const r = ownRec_(me, p.rec_id);
+    if (me.role === 'student' && r.status !== 'pending') throw new Error('سمعته المعلمة، لا يمكن حذفه');
+    remove_('Recitations', 'rec_id', r.rec_id);
+    try { DriveApp.getFileById(String(r.file_id)).setTrashed(true); } catch (e) { console.error(e); }
+    return true;
+  })
+});
+
+/* ----- حديقة الحفظ ----- */
+Object.assign(POLICY, {
+  garden: { min: 'student', parent: 1 },
+  gardenReview: { min: 'student', write: 1 },
+  confirmSurah: { min: 'teacher', write: 1, audit: 1 }
+});
+
+// صاحب الحديقة: الطفل نفسه، أو طفل في فصل المعلمة، أو طفل مربوط بولي الأمر
+function gardenKid_(me, p) {
+  if (me.role === 'student') return rows_('Users').find(u => u.user_id === me.user_id);
+  if (me.role === 'parent') return linkedKid_(me, p.kid_id || p.user_id);
+  return kidFor_(me, p.user_id);
+}
+function gardenOf_(kid_id) {
+  const rows = {}; rows_('Garden').forEach(r => { if (r.user_id === kid_id) rows[Number(r.surah)] = r; });
+  const keys = {}; rows_('StarLog').forEach(r => { if (r.user_id === kid_id && r.kind === 'surah') keys[String(r.key)] = 1; });
+  const items = JUZ_AMMA.map(s => { const r = rows[s[0]]; return { surah: s[0], reviews: r ? Number(r.reviews) || 0 : 0, last_day: r ? Number(r.last_day) || 0 : 0, confirmed: !!keys[surahKey_(kid_id, s[1])] }; });
+  return { items, juz: !!keys[juzKey_(kid_id)] };
+}
+
+Object.assign(ACTIONS, {
+  garden: (p, me) => gardenOf_(gardenKid_(me, p).user_id),
+
+  // مراجعة واحدة لكل سورة في اليوم (تكبر بها الشجرة)
+  gardenReview: (p, me) => {
+    if (me.role !== 'student') throw new Error('للأطفال فقط');
+    const s = surahOf_(p.surah);
+    let day = dayOffset_(0);
+    if (p.date) { const d = dayNum_(p.date); if (d > dayOffset_(1) || d < dayOffset_(-1)) throw new Error('لا يمكن تسجيل هذا اليوم'); day = d; }
+    rate_('gr:' + me.user_id, 40, 86400);
+    return withLock_(() => {
+      const key = me.user_id + ':' + s[0], r = rows_('Garden').find(x => String(x.key) === key);
+      if (r && Number(r.last_day) === day) return { reviews: Number(r.reviews) || 0, already: true };
+      const reviews = (r ? Number(r.reviews) || 0 : 0) + 1;
+      if (r) update_('Garden', 'key', key, { reviews, last_day: day });
+      else append_('Garden', { key, user_id: me.user_id, surah: s[0], reviews, last_day: day, confirmed_by: '', confirmed_at: '' });
+      return { reviews, already: false };
+    });
+  },
+
+  // المعلمة تؤكد حفظ سورة (١٠ نجوم بمفتاح «إتمام سورة») أو تلغيه؛ اكتمال الجزء شهادة و١٠ نجوم مرة واحدة
+  confirmSurah: (p, me) => {
+    const kid = kidFor_(me, p.user_id), s = surahOf_(p.surah), on = !(p.on === false || p.on === 'false');
+    rate_('cs:' + me.user_id, 300, 3600);
+    return withLock_(() => {
+      const key = surahKey_(kid.user_id, s[1]), gk = kid.user_id + ':' + s[0];
+      const g = rows_('Garden').find(x => String(x.key) === gk);
+      const patch = on ? { confirmed_by: me.user_id, confirmed_at: now_() } : { confirmed_by: '', confirmed_at: '' };
+      if (g) update_('Garden', 'key', gk, patch);
+      else if (on) append_('Garden', Object.assign({ key: gk, user_id: kid.user_id, surah: s[0], reviews: 0, last_day: '' }, patch));
+      let stars = 0, juz = false;
+      if (on) {
+        if (awardOnce_(key, kid.user_id, 'surah', 'سورة ' + s[1], SURAH_STARS, 'حفظ سورة ' + s[1], me.user_id)) { stars += SURAH_STARS; kidNotice_(kid, 'المعلمة أكدت حفظك لسورة ' + s[1] + ' 🍎 وطلعت لها شهادة — +١٠ نجوم ⭐'); }
+        const have = {}; rows_('StarLog').forEach(r => { if (r.user_id === kid.user_id) have[String(r.key)] = 1; });
+        if (JUZ_AMMA.every(x => have[surahKey_(kid.user_id, x[1])]) && awardOnce_(juzKey_(kid.user_id), kid.user_id, 'surah', JUZ_TITLE, SURAH_STARS, 'إتمام ' + JUZ_TITLE, me.user_id)) { stars += SURAH_STARS; juz = true; }
+      } else {
+        // الإلغاء يسحب نجوم السورة، ونجوم الجزء لو كانت أُعطيت
+        [key, juzKey_(kid.user_id)].forEach(k => {
+          const r = rows_('StarLog').find(x => String(x.key) === k);
+          if (r) { remove_('StarLog', 'key', k); addPoints_(kid.user_id, -Number(r.stars || 0), 'إلغاء: ' + r.ref); stars -= Number(r.stars || 0); }
+        });
+      }
+      return { stars, juz };
+    });
+  }
+});
+
+
+/* ============ لوحة الأعمال الصالحة للأسرة ============ */
+const DEEDS = { birr: 'بر الوالدين', help: 'مساعدة في البيت', sadaqa: 'صدقة', rahim: 'صلة الرحم', road: 'إماطة الأذى عن الطريق', truth: 'الصدق في الكلام', feed: 'إطعام الطعام', animal: 'الرحمة بالحيوان', room: 'ترتيب الغرفة', neighbor: 'الإحسان إلى الجار', smile: 'الابتسامة في وجوه الناس', share: 'مشاركة الألعاب' };
+const DEED_DAY_MAX = 10, DEED_STARS_DAY = 3;
+
+Object.assign(POLICY, {
+  addDeed: { min: 'student', roles: ['parent'], write: 1 },
+  deleteDeed: { min: 'student', roles: ['parent'], write: 1 },
+  parentDeeds: { min: 'student', roles: ['parent'] },
+  kidDeeds: { min: 'student' }
+});
+
+function deedsOut_(rows, me) {
+  const users = {}; rows_('Users').forEach(u => { users[u.user_id] = u; });
+  return rows.sort((a, b) => sinceMs_(b.at) - sinceMs_(a.at)).slice(0, 200).map(r => {
+    const u = users[r.parent_id];
+    return { deed_id: String(r.deed_id), deed: String(r.deed), note: String(r.note || ''), day: Number(r.day), stars: Number(r.stars) || 0, at: String(r.at),
+      by: u ? String(u.name) : '', by_gender: u ? genderOf_(u) : 'm', mine: !!me && r.parent_id === me.user_id };
+  });
+}
+function deedDay_(p) {
+  if (!p.date) return dayOffset_(0);
+  const d = dayNum_(p.date);
+  if (d > dayOffset_(1) || d < dayOffset_(-1)) throw new Error('لا يمكن تسجيل هذا اليوم');
+  return d;
+}
+
+Object.assign(ACTIONS, {
+  // ولي الأمر يضع ملصق عمل صالح لطفله: نجمة لكل عمل حتى ٣ يوميًا، وحد ١٠ أعمال يوميًا
+  addDeed: (p, me) => {
+    const kid = linkedKid_(me, p.kid_id), deed = String(p.deed || '');
+    if (!Object.prototype.hasOwnProperty.call(DEEDS, deed)) throw new Error('العمل غير معروف');
+    const note = String(p.note || '').trim().replace(/\s+/g, ' ').slice(0, 120), day = deedDay_(p);
+    rate_('deed:' + me.user_id, 60, 86400);
+    return withLock_(() => {
+      const today = rows_('FamilyDeeds').filter(r => r.kid_id === kid.user_id && Number(r.day) === day);
+      if (today.length >= DEED_DAY_MAX) throw new Error('وصلتم للحد اليومي للأعمال — ما شاء الله، كمّلوا بكرة');
+      const got = today.reduce((n, r) => n + (Number(r.stars) || 0), 0), stars = got < DEED_STARS_DAY ? 1 : 0;
+      const row = append_('FamilyDeeds', { deed_id: id_('D'), parent_id: me.user_id, kid_id: kid.user_id, deed, note, day, stars, at: now_() });
+      if (stars) addPoints_(kid.user_id, stars, 'عمل صالح: ' + DEEDS[deed]);
+      return { deed_id: row.deed_id, stars };
+    });
+  },
+
+  // صاحب الملصق فقط، وخلال ٢٤ ساعة (تُسحب نجمته)
+  deleteDeed: (p, me) => withLock_(() => {
+    const r = rows_('FamilyDeeds').find(x => String(x.deed_id) === String(p.deed_id || '') && x.parent_id === me.user_id);
+    if (!r) throw new Error('الملصق غير موجود');
+    if (Date.now() - sinceMs_(r.at) > 864e5) throw new Error('لا يمكن الحذف بعد يوم');
+    remove_('FamilyDeeds', 'deed_id', r.deed_id);
+    if (Number(r.stars)) addPoints_(r.kid_id, -Number(r.stars), 'إلغاء عمل صالح');
+    return true;
+  }),
+
+  parentDeeds: (p, me) => { const kid = linkedKid_(me, p.kid_id), from = dayOffset_(-34); return deedsOut_(rows_('FamilyDeeds').filter(r => r.kid_id === kid.user_id && Number(r.day) >= from), me); },
+  kidDeeds: (p, me) => { const from = dayOffset_(-34); return deedsOut_(rows_('FamilyDeeds').filter(r => r.kid_id === me.user_id && Number(r.day) >= from), null); }
+});
+
+
+/* ============ تحديات المواسم للفصل ============ */
+const SEASONS = ['ramadan', 'dhulhijja', 'other'], CH_MAX_ACTIVE = 3, CH_STARS = 5, CH_MAX_DAYS = 60, CH_DAY_MAX = 20;
+
+Object.assign(POLICY, {
+  challenges: { min: 'student' },
+  saveChallenge: { min: 'teacher', write: 1, audit: 1 },
+  endChallenge: { min: 'teacher', write: 1, audit: 1 },
+  deleteChallenge: { min: 'teacher', write: 1, audit: 1 },
+  challengeLog: { min: 'student', write: 1 }
+});
+
+function dayUtc_(n) { return Date.UTC(Math.floor(n / 1e4), Math.floor(n / 100) % 100 - 1, n % 100); }
+function isoDay_(n) { const s = String(n); return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8); }
+function chOpen_(c) { return truthy_(c.active) && Number(c.ends) >= dayOffset_(-1); }
+function ownChallenge_(me, ch_id) {
+  const c = rows_('Challenges').find(x => String(x.ch_id) === String(ch_id || ''));
+  if (!c || (me.role === 'student' ? String(c.class_id) !== String(me.class_id) : !sameClass_(me, c.class_id))) throw new Error('التحدي غير موجود');
+  return c;
+}
+function chTotals_(ch_id) {
+  const per = {}; let total = 0;
+  rows_('ChallengeLog').forEach(r => { if (String(r.ch_id) === String(ch_id)) { const n = Number(r.count) || 0; per[r.user_id] = (per[r.user_id] || 0) + n; total += n; } });
+  return { per, total };
+}
+
+Object.assign(ACTIONS, {
+  // الفعّالة أولًا ثم المنتهية خلال ٣٠ يومًا، مع تقدّم الفصل ومساهمة الطفل
+  challenges: (p, me) => {
+    // «اليوم» بتاريخ جهاز الطفل (±١ يوم عن الخادم) حتى لا يختلف العداد بعد منتصف الليل المحلي
+    let today = dayOffset_(0);
+    if (p.date) { try { const d = dayNum_(p.date); if (d <= dayOffset_(1) && d >= dayOffset_(-1)) today = d; } catch (e) { /* اليوم حسب الخادم */ } }
+    const cid = me.role === 'student' ? me.class_id : cls_(me, p), old = dayOffset_(-30);
+    const logs = rows_('ChallengeLog');
+    return rows_('Challenges').filter(c => String(c.class_id) === String(cid) && (chOpen_(c) || Number(c.ends) >= old))
+      .sort((a, b) => (chOpen_(a) ? 0 : 1) - (chOpen_(b) ? 0 : 1) || Number(b.starts) - Number(a.starts)).slice(0, 10).map(c => {
+        const mine = logs.filter(r => String(r.ch_id) === String(c.ch_id));
+        const per = {}; let total = 0; mine.forEach(r => { const n = Number(r.count) || 0; per[r.user_id] = (per[r.user_id] || 0) + n; total += n; });
+        const t = mine.find(r => r.user_id === me.user_id && Number(r.day) === today);
+        return { ch_id: String(c.ch_id), title: String(c.title), season: String(c.season), unit: String(c.unit), goal: Number(c.goal), starts: isoDay_(Number(c.starts)), ends: isoDay_(Number(c.ends)),
+          active: chOpen_(c), open: truthy_(c.active) && today >= Number(c.starts) && today <= Number(c.ends), total, kids: Object.keys(per).filter(k => per[k] > 0).length, mine_total: per[me.user_id] || 0, mine_today: t ? Number(t.count) || 0 : 0 };
+      });
+  },
+
+  saveChallenge: (p, me) => {
+    const cid = cls_(me, p);
+    const title = String(p.title || '').trim().replace(/\s+/g, ' ').slice(0, 60), unit = String(p.unit || '').trim().replace(/\s+/g, ' ').slice(0, 20);
+    if (title.length < 3) throw new Error('اكتبي عنوان التحدي');
+    if (!unit) throw new Error('اكتبي وحدة العدّ (مثل: صفحة، صدقة)');
+    const season = SEASONS.indexOf(String(p.season)) >= 0 ? String(p.season) : 'other';
+    const goal = Math.floor(Number(p.goal));
+    if (!(goal >= 10 && goal <= 100000)) throw new Error('الهدف من ١٠ إلى ١٠٠٠٠٠');
+    const starts = dayNum_(p.starts), ends = dayNum_(p.ends);
+    if (ends < starts || (dayUtc_(ends) - dayUtc_(starts)) / 864e5 > CH_MAX_DAYS) throw new Error('مدة التحدي من يوم إلى ٦٠ يومًا');
+    if (ends < dayOffset_(0)) throw new Error('تاريخ النهاية فات');
+    rate_('chs:' + me.user_id, 60, 3600);
+    return withLock_(() => {
+      if (p.ch_id) {
+        const c = ownChallenge_(me, p.ch_id);
+        update_('Challenges', 'ch_id', c.ch_id, { title, season, unit, goal, starts, ends });
+        return { ch_id: String(c.ch_id) };
+      }
+      if (rows_('Challenges').filter(c => String(c.class_id) === String(cid) && chOpen_(c)).length >= CH_MAX_ACTIVE) throw new Error('للفصل ٣ تحديات فعّالة — أنهي واحدًا أولًا');
+      const row = append_('Challenges', { ch_id: id_('CH'), class_id: cid, title, season, unit, goal, starts, ends, active: true, created_by: me.user_id, created_at: now_() });
+      return { ch_id: row.ch_id };
+    });
+  },
+
+  endChallenge: (p, me) => withLock_(() => { const c = ownChallenge_(me, p.ch_id); update_('Challenges', 'ch_id', c.ch_id, { active: false }); return true; }),
+
+  deleteChallenge: (p, me) => withLock_(() => {
+    const c = ownChallenge_(me, p.ch_id);
+    // سجل المساهمات يبقى (يُقرأ دائمًا بمعرّف التحدي)، فلا حذف صف صف تحت القفل
+    remove_('Challenges', 'ch_id', c.ch_id);
+    return true;
+  }),
+
+  // الطفل يسجّل مساهمته في يوم (تعديل في نفس اليوم)؛ لما الفصل يبلغ الهدف: ٥ نجوم لكل من ساهم، مرة واحدة
+  challengeLog: (p, me) => {
+    if (me.role !== 'student') throw new Error('للأطفال فقط');
+    const count = Math.floor(Number(p.count));
+    if (!(count >= 0 && count <= CH_DAY_MAX)) throw new Error('العدد من ٠ إلى ٢٠');
+    const day = dayNum_(p.date);
+    if (day > dayOffset_(1) || day < dayOffset_(-1)) throw new Error('لا يمكن تسجيل هذا اليوم');
+    rate_('chl:' + me.user_id, 60, 3600);
+    return withLock_(() => {
+      const c = ownChallenge_(me, p.ch_id);
+      if (!truthy_(c.active)) throw new Error('انتهى التحدي');
+      if (day < Number(c.starts) || day > Number(c.ends)) throw new Error('التحدي لم يبدأ أو انتهى');
+      const key = c.ch_id + ':' + me.user_id + ':' + day, r = rows_('ChallengeLog').find(x => String(x.key) === key);
+      const was = r ? Number(r.count) || 0 : 0;
+      if (r) update_('ChallengeLog', 'key', key, { count, at: now_() });
+      else append_('ChallengeLog', { key, ch_id: c.ch_id, user_id: me.user_id, day, count, at: now_() });
+      const t = chTotals_(c.ch_id);
+      let stars = 0;
+      // النجوم لحظة بلوغ الهدف فقط، لمن ساهم حتى تلك اللحظة (لا تُكسب بتسجيل ١ بعد اكتماله)
+      if (t.total >= Number(c.goal) && t.total - count + was < Number(c.goal)) Object.keys(t.per).filter(u => t.per[u] > 0).forEach(u => {
+        if (awardOnce_('chg:' + c.ch_id + ':' + u, u, 'challenge', String(c.title), CH_STARS, 'تحدي الفصل: ' + c.title, me.user_id) && u === me.user_id) stars = CH_STARS;
+      });
+      return { total: t.total, goal: Number(c.goal), mine_today: count, stars };
+    });
+  }
+});
+
+
+/* ============ الشهادات ============ */
+// مراحل الرحلة: ٥ مراحل × ٥ أنبياء بالترتيب؛ تكتمل المرحلة بحضور محاضرة منشورة واحدة على الأقل لكل نبي فيها
+const JOURNEY_STAGES = [
+  ['المرحلة الأولى: من آدم إلى صالح عليهم السلام', ['adam', 'idris', 'noah', 'hud', 'salih']],
+  ['المرحلة الثانية: من إبراهيم إلى يعقوب عليهم السلام', ['ibrahim', 'lut', 'ismail', 'ishaq', 'yaqub']],
+  ['المرحلة الثالثة: من يوسف إلى هارون عليهم السلام', ['yusuf', 'ayyub', 'shuayb', 'musa', 'harun']],
+  ['المرحلة الرابعة: من ذي الكفل إلى اليسع عليهم السلام', ['dhulkifl', 'dawud', 'sulayman', 'ilyas', 'alyasa']],
+  ['المرحلة الخامسة: من يونس عليه السلام إلى محمد ﷺ', ['yunus', 'zakariya', 'yahya', 'isa', 'muhammad']]
+];
+Object.assign(POLICY, { certificates: { min: 'student', parent: 1 } });
+
+function certCode_(kid_id, key) { return sign_('cert|' + kid_id + '|' + key).replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase(); }
+
+Object.assign(ACTIONS, {
+  certificates: (p, me) => {
+    const kid = gardenKid_(me, p);
+    const items = rows_('StarLog').filter(r => r.user_id === kid.user_id && r.kind === 'surah').map(r => {
+      const title = String(r.ref), juz = /جزء/.test(title);
+      return { id: certCode_(kid.user_id, String(r.key)), kind: juz ? 'juz' : 'surah', title, at: String(r.at) };
+    });
+    const lectures = {}; rows_('Lectures').forEach(l => { if (String(l.class_id) === String(kid.class_id) && l.status === 'published' && l.prophet_id) lectures[l.lecture_id] = String(l.prophet_id); });
+    const seen = {}; rows_('Attendance').forEach(a => {
+      const pid = a.user_id === kid.user_id && lectures[a.lecture_id];
+      if (pid && (!seen[pid] || sinceMs_(a.at) > sinceMs_(seen[pid]))) seen[pid] = a.at;
+    });
+    JOURNEY_STAGES.forEach((st, i) => {
+      if (!st[1].every(pid => seen[pid])) return;
+      const last = st[1].map(pid => seen[pid]).sort((a, b) => sinceMs_(b) - sinceMs_(a))[0];
+      items.push({ id: certCode_(kid.user_id, 'stage:' + i), kind: 'stage', title: st[0], at: last instanceof Date ? last.toISOString() : String(last) });
+    });
+    const cls = rows_('Classes').find(c => c.class_id === kid.class_id);
+    const t = cls && rows_('Users').find(u => u.user_id === cls.teacher_id);
+    return { kid: { name: String(kid.name), gender: genderOf_(kid), class_name: cls ? String(cls.name) : '' }, teacher: t ? teacherTitle_(t) : '',
+      items: items.sort((a, b) => sinceMs_(b.at) - sinceMs_(a.at)) };
   }
 });

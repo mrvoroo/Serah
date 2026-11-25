@@ -28,7 +28,8 @@ function boot() {
       setFrozenRows() {},
       appendRow: (row) => data.push(row.slice()),
       deleteRow: (i) => { data.splice(i - 1, 1); },
-      getDataRange: () => ({ getValues: () => { const w = sh.getLastColumn(); return data.map(r => Array.from({ length: w }, (_, i) => r[i] ?? '')); } }),
+      // مثل Sheets: النص المسبوق بـ ' (حماية الصيغ في cell_) يُقرأ بدون العلامة
+      getDataRange: () => ({ getValues: () => { const w = sh.getLastColumn(); const un = (v) => (typeof v === 'string' && v[0] === "'" ? v.slice(1) : v); return data.map(r => Array.from({ length: w }, (_, i) => un(r[i] ?? ''))); } }),
       _data: data
     };
     return (sheets[name] = sh);
@@ -43,9 +44,10 @@ function boot() {
       computeHmacSha256Signature: (s, k) => { const b = (x) => (Array.isArray(x) ? Buffer.from(Uint8Array.from(x, (v) => v & 255)) : x); return [...crypto.createHmac('sha256', b(k)).update(b(s)).digest()].map(v => (v > 127 ? v - 256 : v)); },
       base64EncodeWebSafe: (x) => Buffer.from(typeof x === 'string' ? x : Uint8Array.from(x.map(b => b & 255))).toString('base64url'),
       base64DecodeWebSafe: (s) => [...Buffer.from(s, 'base64url')],
+      base64Decode: (s) => [...Buffer.from(s, 'base64')].map(b => (b > 127 ? b - 256 : b)),
       base64Encode: (x) => Buffer.from(Uint8Array.from(x, (b) => b & 255)).toString('base64'),
       newBlob: (b, type, name) => ({ getDataAsString: () => Buffer.from(b).toString(), getContentType: () => type, getBytes: () => b, _b: { type, name, size: b.length } }),
-      formatDate: (d) => d.toISOString().slice(0, 10),
+      formatDate: (d, tz, fmt) => { const o = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz === 'GMT' ? 'UTC' : (tz || 'UTC'), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(d).map(x => [x.type, x.value])); return String(fmt || 'yyyy-MM-dd').replace('yyyy', o.year).replace('MM', o.month).replace('dd', o.day).replace('HH', o.hour); },
       sleep: (ms) => { slept += ms; }
     },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => JSON.parse(t) }), MimeType: { JSON: 1 } },
@@ -78,7 +80,7 @@ function boot() {
       return { getMimeType: () => (/^img/.test(id) ? 'image/png' : /^pdf/.test(id) ? 'application/pdf' : 'audio/webm'), setSharing() { shared.push(id); }, getParents: () => { let i = 0; return { hasNext: () => i < parents.length, next: () => parents[i++] }; } };
     }, getFolderById: () => ({ createFile: (blob) => { saved.push({ ...(blob && blob._b) }); return { getId: () => 'drv' + (++drv) }; } }), Access: {}, Permission: {} }, Logger: { log() {} }, console: { error() {}, log() {} }
   };
-  const g = new Function(...Object.keys(env), code + '\nreturn { pushTick, vapidJwt_, vapid_, handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN, oggOpusToWebm_ };')(...Object.values(env));
+  const g = new Function(...Object.keys(env), code + '\nreturn { weeklyDigest, JUZ_AMMA, pushTick, vapidJwt_, vapid_, handle_, createSuperAdmin, ensureSheet_, rows_, SCHEMA, hashPin_, VERSION, onTelegram_, BTN, oggOpusToWebm_ };')(...Object.values(env));
   return { g, sheets, props, mkSheet, slept: () => slept, tg, saved, fetches, shared, lock, drive: env.DriveApp };
 }
 
@@ -1696,8 +1698,7 @@ test('أذكار: نجمتان مرة واحدة لكل فترة في اليوم
   assert.strictEqual(t.call('azkarDone', { period: 'noon', date: todayIso() }, kid).error, 'الفترة غير معروفة');
   // قفل الذكر عن الفصل يمنع نجوم الأيام القادمة
   t.call('saveAzkarRelease', { zikr_id: 'ikhlas', classes: [] }, admin);
-  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
-  assert.strictEqual(t.call('azkarDone', { period: 'am', date: tomorrow }, kid).error, 'لم تُفتح أذكار بعد');
+  assert.strictEqual(t.call('azkarDone', { period: 'am', date: todayIso() }, kid).error, 'لم تُفتح أذكار بعد');
 });
 
 test('أذكار: فتح ذكر لفصل يرسل إشعار «ذكر جديد» لأطفاله، وتذكير الصباح لا يصل لطفل فصله بلا أذكار', () => {
@@ -1849,6 +1850,250 @@ test('الاقتراحات: المعلمة والأدمن ترسلان، وال�
   assert.ok(mineT.find(x => x.text === 'فكرة من المعلمة').mine);
 });
 
+// ===== الأفكار الثمانية =====
+function parentOf(t, teacher, kidId, name) {
+  const code = t.call('parentCode', { user_id: kidId }, teacher).data.code;
+  const r = t.call('parentRegister', { code, name, pin: '481537', gender: 'f' });
+  assert.ok(r.ok, JSON.stringify(r));
+  return r.data.token;
+}
+const isoDay = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+// تسجيل WebM صغير (بصمة EBML صحيحة) بالحجم المطلوب
+const webm = (size) => { const b = Buffer.alloc(size, 7); b[0] = 0x1A; b[1] = 0x45; b[2] = 0xDF; b[3] = 0xA3; return b.toString('base64'); };
+
+test('أدعية اليوم والأحاديث: الأدمن تفتح لفصل، والطفل يرى المفتوح لفصله فقط، ونجمة الأدعية مرة يوميًا', () => {
+  const t = setup();
+  const { admin, s3 } = twoClasses(t);
+  const teacher = t.login({ name: 'معلمة ثانية', pin: '222222' }), kid1 = t.login({ user_id: 'S1', pin: '1111' }), kid3 = t.login({ user_id: s3, pin: '3333' });
+  assert.strictEqual(t.call('duaDone', { date: isoDay(0) }, kid1).error, 'لم تُفتح أدعية بعد');
+  const sub = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/kd1', plan: [] }, kid1).data.key;
+  assert.ok(!t.call('saveRelease', { kind: 'dua', item_id: 'eat-before', classes: ['C1'] }, teacher).ok, 'teacher cannot release');
+  assert.strictEqual(t.call('saveRelease', { kind: 'music', item_id: 'x1', classes: ['C1'] }, admin).error, 'النوع غير معروف');
+  assert.strictEqual(t.call('saveRelease', { kind: 'dua', item_id: 'BAD ID', classes: ['C1'] }, admin).error, 'العنصر غير معروف');
+  assert.ok(t.call('saveRelease', { kind: 'dua', item_id: 'eat-before', classes: ['C1', 'nope'], note: 'نحفظه اليوم' }, admin).ok);
+  assert.ok(t.call('saveRelease', { kind: 'hadith', item_id: 'niyyah', classes: ['C1'] }, admin).ok);
+  assert.deepStrictEqual(t.call('releases', { kind: 'dua' }, admin).data.map(r => r.classes), [['C1']]);
+  assert.deepStrictEqual(t.call('kidReleases', { kind: 'dua' }, kid1).data.map(r => [r.zikr_id, r.note]), [['eat-before', 'نحفظه اليوم']]);
+  assert.deepStrictEqual(t.call('kidReleases', { kind: 'dua' }, kid3).data, []);
+  assert.deepStrictEqual(t.call('kidReleases', { kind: 'hadith' }, kid1).data.map(r => r.zikr_id), ['niyyah']);
+  assert.ok(!('classes' in t.call('kidReleases', { kind: 'dua' }, kid1).data[0]), 'kid does not see class list');
+  assert.deepStrictEqual(t.call('pullNotices', { key: sub }).data.items.map(x => x.url).sort(), ['/kid/duas/', '/kid/hadith/']);
+  // الأذكار لم تتأثر بفتح الأدعية
+  assert.deepStrictEqual(t.call('kidAzkar', {}, kid1).data, []);
+  const before = pointsOf(t, 'S1');
+  assert.strictEqual(t.call('duaDone', { date: isoDay(0) }, kid1).data.stars, 1);
+  assert.strictEqual(t.call('duaDone', { date: isoDay(0) }, kid1).data.stars, 0);
+  assert.strictEqual(t.call('duaDone', { date: isoDay(5) }, kid1).error, 'لا يمكن تسجيل هذا اليوم');
+  assert.strictEqual(pointsOf(t, 'S1') - before, 1);
+  assert.strictEqual(t.call('duaDone', { date: isoDay(0) }, kid3).error, 'لم تُفتح أدعية بعد');
+  // الحديث يسجّله المعلمة، والطفل يرى إنجازاته
+  assert.ok(t.call('kidAchievement', { user_id: 'S1', kind: 'hadith', title: 'إنما الأعمال بالنيات' }, teacher).ok);
+  assert.deepStrictEqual(t.call('myAchievements', {}, kid1).data.map(a => a.title), ['إنما الأعمال بالنيات']);
+  assert.ok(t.call('notices', {}, kid1).data.some(n => /حفظت حديث «إنما الأعمال بالنيات»/.test(n.text)));
+});
+
+test('الملخص الأسبوعي: ولي الأمر يرى أرقام طفله المربوط فقط، والمشغّل يرسل لأجهزة أولياء الأمور فقط', () => {
+  const t = setup();
+  const { s3 } = twoClasses(t);
+  const teacher = t.login({ name: 'معلمة ثانية', pin: '222222' }), kid = t.login({ user_id: 'S1', pin: '1111' });
+  const par = parentOf(t, teacher, 'S1', 'أم يوسف');
+  t.call('markPrayer', { date: isoDay(0), prayer: 'fajr', done: true }, kid);
+  t.call('markPrayer', { date: isoDay(0), prayer: 'dhuhr', done: true }, kid);
+  t.call('kidAchievement', { user_id: 'S1', kind: 'surah', title: 'سورة الناس' }, teacher);
+  const d = t.call('parentDigest', { kid_id: 'S1' }, par).data;
+  assert.strictEqual(d.prayers, 2); assert.strictEqual(d.stars, 10); assert.deepStrictEqual(d.achievements, ['سورة الناس']);
+  assert.strictEqual(t.call('parentDigest', { kid_id: s3 }, par).error, 'هذا الطفل غير مربوط بحسابك');
+  assert.ok(!t.call('parentDigest', { kid_id: 'S1' }, kid).ok, 'kid cannot call');
+  const pk = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/par', plan: [], prefs: { digest: true } }, par).data.key;
+  const kk = t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/kid', plan: [] }, kid).data.key;
+  assert.strictEqual(t.g.weeklyDigest(), 1);
+  const items = t.call('pullNotices', { key: pk }).data.items;
+  assert.strictEqual(items.length, 1);
+  assert.match(items[0].title, /ملخص أسبوع يوسف/);
+  assert.match(items[0].body, /الصلوات ٢ من ٣٥/);
+  assert.deepStrictEqual(t.call('pullNotices', { key: kk }).data.items, []);
+  // إيقاف الملخص من التفضيلات
+  t.call('pushSubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/par', plan: [], prefs: { digest: false } }, par);
+  assert.strictEqual(t.g.weeklyDigest(), 0);
+});
+
+test('تسجيل التلاوة: نوع وبصمة وحجم ومدة، وحد المنتظر، والسماع لصاحبه ومعلمة فصله وولي أمره فقط', () => {
+  const t = setup();
+  const { admin, s3 } = twoClasses(t);
+  const teacher = t.login({ name: 'معلمة ثانية', pin: '222222' }), kid = t.login({ user_id: 'S1', pin: '1111' }), kid2 = t.login({ user_id: 'S2', pin: '2222' }), kid3 = t.login({ user_id: s3, pin: '3333' });
+  const ok = { surah: 112, mime: 'audio/webm;codecs=opus', data: webm(4000), duration: 20 };
+  assert.strictEqual(t.call('submitRecitation', { ...ok, mime: 'application/pdf' }, kid).error, 'نوع التسجيل غير مدعوم');
+  assert.strictEqual(t.call('submitRecitation', { ...ok, data: Buffer.alloc(4000, 1).toString('base64') }, kid).error, 'الملف ليس تسجيلًا صوتيًا');
+  assert.match(t.call('submitRecitation', { ...ok, data: webm(3 * 1024 * 1024) }, kid).error, /أطول من المسموح/);
+  assert.match(t.call('submitRecitation', { ...ok, duration: 500 }, kid).error, /أطول من المسموح/);
+  assert.strictEqual(t.call('submitRecitation', { ...ok, surah: 2 }, kid).error, 'السورة غير معروفة');
+  assert.strictEqual(t.call('submitRecitation', ok, teacher).error, 'التسجيل للأطفال فقط');
+  const r1 = t.call('submitRecitation', ok, kid);
+  assert.ok(r1.ok, JSON.stringify(r1));
+  assert.strictEqual(r1.data.surah_name, 'الإخلاص');
+  assert.ok(!t.shared.includes(r1.data.file_id), 'not shared publicly');
+  t.call('submitRecitation', ok, kid); t.call('submitRecitation', ok, kid);
+  assert.match(t.call('submitRecitation', ok, kid).error, /تنتظر المعلمة/);
+  const fid = r1.data.file_id;
+  const par = parentOf(t, teacher, 'S1', 'أم يوسف'), par2 = parentOf(t, teacher, 'S2', 'أم مريم');
+  assert.ok(t.call('audioChunk', { id: fid }, kid).ok, 'owner');
+  assert.ok(t.call('audioChunk', { id: fid }, teacher).ok, 'class teacher');
+  assert.ok(t.call('audioChunk', { id: fid }, par).ok, 'linked parent');
+  for (const [who, tok] of [['other kid', kid2], ['other class kid', kid3], ['unlinked parent', par2]]) assert.strictEqual(t.call('audioChunk', { id: fid }, tok).error, 'التسجيل غير متاح', who);
+  // معلمة فصل آخر لا ترى ولا تراجع
+  assert.ok(t.call('addTeacher', { name: 'معلمة ب', pin: '774411', class_id: t.g.rows_('Users').find(u => u.user_id === s3).class_id }, admin).ok);
+  const tb = t.login({ name: 'معلمة ب', pin: '774411' });
+  assert.deepStrictEqual(t.call('recitations', {}, tb).data, []);
+  assert.strictEqual(t.call('reviewRecitation', { rec_id: r1.data.rec_id, rating: 3 }, tb).error, 'التسجيل غير موجود');
+  assert.strictEqual(t.call('audioChunk', { id: fid }, tb).error, 'التسجيل غير متاح');
+  assert.strictEqual(t.call('recitations', {}, teacher).data.length, 3);
+  const before = pointsOf(t, 'S1');
+  assert.strictEqual(t.call('reviewRecitation', { rec_id: r1.data.rec_id, rating: 3, note: 'ما شاء الله' }, teacher).data.stars, 2);
+  assert.strictEqual(t.call('reviewRecitation', { rec_id: r1.data.rec_id, rating: 2 }, teacher).data.stars, 0, 'stars once');
+  assert.strictEqual(pointsOf(t, 'S1') - before, 2);
+  assert.match(t.call('notices', {}, kid).data[0].text, /سمعت تلاوتك لسورة الإخلاص/);
+  const mine = t.call('myRecitations', {}, kid).data.find(r => r.rec_id === r1.data.rec_id);
+  assert.deepStrictEqual([mine.status, mine.rating, mine.note], ['reviewed', 2, '']);
+  assert.strictEqual(t.call('deleteRecitation', { rec_id: r1.data.rec_id }, kid).error, 'سمعته المعلمة، لا يمكن حذفه');
+  assert.strictEqual(t.call('deleteRecitation', { rec_id: r1.data.rec_id }, kid2).error, 'التسجيل غير موجود');
+  assert.ok(t.call('deleteRecitation', { rec_id: r1.data.rec_id }, teacher).ok);
+  assert.ok(t.call('submitRecitation', ok, kid).ok, 'room after review');
+  // تلاوة طفل لا تُرفق صوتًا لذكر أو دعاء (وإلا يسمعها الفصل كله)
+  const other = t.call('myRecitations', {}, kid).data[0].file_id;
+  assert.strictEqual(t.call('saveRelease', { kind: 'dua', item_id: 'sleep', classes: ['C1'], file_id: other, file_kind: 'audio' }, admin).error, 'الملف غير صالح');
+  assert.strictEqual(t.call('saveAzkarRelease', { zikr_id: 'ikhlas', classes: ['C1'], file_id: other, file_kind: 'audio' }, admin).error, 'الملف غير صالح');
+  // ولا تصير محاضرة أو صورة محاضرة (تُشارك للعامة)
+  assert.strictEqual(t.call('createLecture', { title: 'x', date: '2026-11-01', audio_file_id: other }, teacher).error, 'الملف غير صالح');
+  assert.strictEqual(t.call('addLectureImage', { lecture_id: 'L1', file_id: other }, teacher).error, 'الملف غير صالح');
+  assert.ok(!t.shared.includes(other), 'never shared');
+});
+
+test('حديقة جزء عمّ: نفس قائمة الموقع، مراجعة مرة يوميًا، وتأكيد المعلمة ١٠ نجوم مرة واحدة مشتركة مع «إتمام سورة»', () => {
+  const t = setup();
+  const json = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'src', 'content', 'juz-amma.json'), 'utf8'));
+  assert.deepStrictEqual(json.surahs.map(s => [s.n, s.name, s.ayahs]), t.g.JUZ_AMMA);
+  const { s3 } = twoClasses(t);
+  const teacher = t.login({ name: 'معلمة ثانية', pin: '222222' }), kid = t.login({ user_id: 'S1', pin: '1111' });
+  assert.deepStrictEqual(t.call('gardenReview', { surah: 112 }, kid).data, { reviews: 1, already: false });
+  assert.deepStrictEqual(t.call('gardenReview', { surah: 112 }, kid).data, { reviews: 1, already: true });
+  assert.strictEqual(t.call('gardenReview', { surah: 5 }, kid).error, 'السورة غير معروفة');
+  assert.strictEqual(t.call('garden', {}, kid).data.items.find(i => i.surah === 112).reviews, 1);
+  const before = pointsOf(t, 'S1');
+  assert.strictEqual(t.call('confirmSurah', { user_id: 'S1', surah: 112 }, teacher).data.stars, 10);
+  assert.strictEqual(t.call('confirmSurah', { user_id: 'S1', surah: 112 }, teacher).data.stars, 0);
+  assert.deepStrictEqual(t.call('notices', {}, kid).data.filter(n => /أكدت حفظك لسورة الإخلاص/.test(n.text)).length, 1, 'one notice');
+  assert.strictEqual(t.call('kidAchievement', { user_id: 'S1', kind: 'surah', title: 'سورة الإخلاص' }, teacher).error, 'مسجّل قبل كده لهذا الطفل');
+  assert.strictEqual(pointsOf(t, 'S1') - before, 10);
+  assert.ok(t.call('garden', {}, kid).data.items.find(i => i.surah === 112).confirmed);
+  assert.ok(!t.call('confirmSurah', { user_id: 'S1', surah: 112 }, kid).ok, 'kid cannot confirm');
+  assert.strictEqual(t.call('confirmSurah', { user_id: s3, surah: 112 }, teacher).error, 'الطالب غير موجود');
+  assert.strictEqual(t.call('confirmSurah', { user_id: 'S1', surah: 112, on: false }, teacher).data.stars, -10);
+  assert.strictEqual(pointsOf(t, 'S1') - before, 0);
+  // سورة سُجّلت يدويًا تظهر مؤكدة في الحديقة
+  t.call('kidAchievement', { user_id: 'S1', kind: 'surah', title: 'سورة الناس' }, teacher);
+  assert.ok(t.call('garden', { user_id: 'S1' }, teacher).data.items.find(i => i.surah === 114).confirmed);
+  // إتمام الجزء: ١٠ نجوم إضافية مرة واحدة
+  let juz = false;
+  t.g.JUZ_AMMA.forEach(s => { const r = t.call('confirmSurah', { user_id: 'S1', surah: s[0] }, teacher); assert.ok(r.ok, JSON.stringify(r)); if (r.data.juz) juz = true; });
+  assert.ok(juz && t.call('garden', {}, kid).data.juz);
+  assert.strictEqual(pointsOf(t, 'S1') - before, 37 * 10 + 10);
+  const par = parentOf(t, teacher, 'S1', 'أم يوسف');
+  assert.ok(t.call('garden', { kid_id: 'S1' }, par).data.juz, 'parent sees linked kid garden');
+  assert.strictEqual(t.call('garden', { kid_id: s3 }, par).error, 'هذا الطفل غير مربوط بحسابك');
+});
+
+test('لوحة الأعمال الصالحة: ولي الأمر لطفله المربوط فقط، نجمة لكل عمل حتى ٣ يوميًا، والحذف لصاحبه خلال يوم', () => {
+  const t = setup();
+  const { s3 } = twoClasses(t);
+  const teacher = t.login({ name: 'معلمة ثانية', pin: '222222' }), kid = t.login({ user_id: 'S1', pin: '1111' });
+  const par = parentOf(t, teacher, 'S1', 'أم يوسف'), par2 = parentOf(t, teacher, 'S2', 'أبو مريم');
+  const before = pointsOf(t, 'S1');
+  const ids = [];
+  for (let i = 0; i < 5; i++) { const r = t.call('addDeed', { kid_id: 'S1', deed: 'birr', note: 'قبّل يد أمه' }, par); assert.ok(r.ok, JSON.stringify(r)); ids.push(r.data); }
+  assert.deepStrictEqual(ids.map(x => x.stars), [1, 1, 1, 0, 0]);
+  assert.strictEqual(pointsOf(t, 'S1') - before, 3);
+  assert.strictEqual(t.call('addDeed', { kid_id: 'S1', deed: 'hack' }, par).error, 'العمل غير معروف');
+  assert.strictEqual(t.call('addDeed', { kid_id: 'S1', deed: 'birr' }, par2).error, 'هذا الطفل غير مربوط بحسابك');
+  assert.strictEqual(t.call('addDeed', { kid_id: s3, deed: 'birr' }, par).error, 'هذا الطفل غير مربوط بحسابك');
+  assert.ok(!t.call('addDeed', { kid_id: 'S1', deed: 'birr' }, kid).ok, 'kid cannot add');
+  for (let i = 0; i < 5; i++) t.call('addDeed', { kid_id: 'S1', deed: 'help' }, par);
+  assert.match(t.call('addDeed', { kid_id: 'S1', deed: 'help' }, par).error, /للحد اليومي/);
+  const board = t.call('kidDeeds', {}, kid).data;
+  assert.strictEqual(board.length, 10); assert.strictEqual(board[0].by, 'أم يوسف');
+  assert.strictEqual(t.call('parentDeeds', { kid_id: 'S1' }, par).data.filter(d => d.mine).length, 10);
+  assert.strictEqual(t.call('deleteDeed', { deed_id: ids[0].deed_id }, par2).error, 'الملصق غير موجود');
+  assert.ok(t.call('deleteDeed', { deed_id: ids[0].deed_id }, par).ok);
+  assert.strictEqual(pointsOf(t, 'S1') - before, 2);
+  // بعد يوم لا يُحذف
+  const realNow = Date.now; Date.now = () => realNow() + 2 * 864e5;
+  try { assert.strictEqual(t.call('deleteDeed', { deed_id: ids[1].deed_id }, par).error, 'لا يمكن الحذف بعد يوم'); } finally { Date.now = realNow; }
+});
+
+test('تحديات المواسم: المعلمة لفصلها، الطفل يسجّل يومه، وبلوغ الهدف ٥ نجوم مرة لكل من ساهم', () => {
+  const t = setup();
+  const { admin, s3 } = twoClasses(t);
+  const teacher = t.login({ name: 'معلمة ثانية', pin: '222222' }), kid = t.login({ user_id: 'S1', pin: '1111' }), kid2 = t.login({ user_id: 'S2', pin: '2222' }), kid3 = t.login({ user_id: s3, pin: '3333' });
+  const base = { title: 'ختمة الفصل في رمضان', season: 'ramadan', unit: 'صفحة', goal: 20, starts: isoDay(-1), ends: isoDay(10) };
+  assert.ok(!t.call('saveChallenge', base, kid).ok, 'kid cannot create');
+  assert.strictEqual(t.call('saveChallenge', { ...base, goal: 5 }, teacher).error, 'الهدف من ١٠ إلى ١٠٠٠٠٠');
+  assert.match(t.call('saveChallenge', { ...base, ends: isoDay(90) }, teacher).error, /٦٠ يومًا/);
+  const ch = t.call('saveChallenge', base, teacher).data.ch_id;
+  t.call('saveChallenge', base, teacher); t.call('saveChallenge', base, teacher);
+  assert.match(t.call('saveChallenge', base, teacher).error, /٣ تحديات فعّالة/);
+  assert.strictEqual(t.call('challenges', {}, kid).data.length, 3);
+  assert.deepStrictEqual(t.call('challenges', {}, kid3).data, []);
+  assert.strictEqual(t.call('challengeLog', { ch_id: ch, count: 5, date: isoDay(0) }, kid3).error, 'التحدي غير موجود');
+  assert.strictEqual(t.call('challengeLog', { ch_id: ch, count: 5, date: isoDay(3) }, kid).error, 'لا يمكن تسجيل هذا اليوم');
+  assert.strictEqual(t.call('challengeLog', { ch_id: ch, count: 50, date: isoDay(0) }, kid).error, 'العدد من ٠ إلى ٢٠');
+  assert.strictEqual(t.call('challengeLog', { ch_id: ch, count: 8, date: isoDay(0) }, kid).data.total, 8);
+  assert.strictEqual(t.call('challengeLog', { ch_id: ch, count: 9, date: isoDay(0) }, kid).data.total, 9, 'same day edits');
+  const b1 = pointsOf(t, 'S1'), b2 = pointsOf(t, 'S2');
+  const r = t.call('challengeLog', { ch_id: ch, count: 11, date: isoDay(0) }, kid2).data;
+  assert.deepStrictEqual([r.total, r.stars], [20, 5]);
+  assert.strictEqual(pointsOf(t, 'S1') - b1, 5); assert.strictEqual(pointsOf(t, 'S2') - b2, 5);
+  t.call('challengeLog', { ch_id: ch, count: 12, date: isoDay(0) }, kid2);
+  assert.strictEqual(pointsOf(t, 'S2') - b2, 5, 'once');
+  const c = t.call('challenges', {}, kid).data.find(x => x.ch_id === ch);
+  assert.deepStrictEqual([c.total, c.kids, c.mine_today], [21, 2, 9]);
+  // معلمة فصل آخر لا تنهي، والأدمن تنهي
+  assert.ok(t.call('addTeacher', { name: 'معلمة ب', pin: '774411', class_id: t.g.rows_('Users').find(u => u.user_id === s3).class_id }, admin).ok);
+  assert.strictEqual(t.call('endChallenge', { ch_id: ch }, t.login({ name: 'معلمة ب', pin: '774411' })).error, 'التحدي غير موجود');
+  assert.ok(t.call('endChallenge', { ch_id: ch }, teacher).ok);
+  assert.strictEqual(t.call('challengeLog', { ch_id: ch, count: 1, date: isoDay(0) }, kid).error, 'انتهى التحدي');
+  assert.ok(t.call('deleteChallenge', { ch_id: ch }, admin).ok);
+  assert.ok(!t.call('challenges', {}, kid).data.some(x => x.ch_id === ch));
+  // بعد بلوغ الهدف: من يسجّل ١ متأخرًا لا يأخذ نجوم التحدي
+  const ch2 = t.call('saveChallenge', { ...base, goal: 10 }, teacher).data.ch_id;
+  t.call('challengeLog', { ch_id: ch2, count: 10, date: isoDay(0) }, kid);
+  const late = pointsOf(t, 'S2');
+  assert.strictEqual(t.call('challengeLog', { ch_id: ch2, count: 1, date: isoDay(0) }, kid2).data.stars, 0);
+  assert.strictEqual(pointsOf(t, 'S2'), late);
+});
+
+test('الشهادات: سورة بعد تأكيد الحفظ، ومرحلة رحلة بعد حضور محاضرات أنبيائها، وولي الأمر لطفله فقط', () => {
+  const t = setup();
+  const { s3 } = twoClasses(t);
+  const teacher = t.login({ name: 'معلمة ثانية', pin: '222222' }), kid = t.login({ user_id: 'S1', pin: '1111' });
+  assert.deepStrictEqual(t.call('certificates', {}, kid).data.items, []);
+  t.call('confirmSurah', { user_id: 'S1', surah: 108 }, teacher);
+  ['adam', 'idris', 'noah', 'hud', 'salih'].forEach((pid, i) => {
+    t.sheets.Lectures.appendRow(['LP' + i, 'C1', 'قصة ' + pid, '2026-11-0' + (i + 1), 'f', 60, 'published', '', 'T1', 'x', pid]);
+    if (i < 4) assert.ok(t.call('markAttendance', { lecture_id: 'LP' + i }, kid).ok);
+  });
+  let c = t.call('certificates', {}, kid).data;
+  assert.deepStrictEqual(c.items.map(x => [x.kind, x.title]), [['surah', 'سورة الكوثر']]);
+  assert.strictEqual(c.kid.name, 'يوسف');
+  t.call('markAttendance', { lecture_id: 'LP4' }, kid);
+  c = t.call('certificates', {}, kid).data;
+  assert.ok(c.items.some(x => x.kind === 'stage' && /آدم إلى صالح عليهم السلام/.test(x.title)));
+  assert.match(c.items[0].id, /^[A-Z0-9]{8}$/);
+  assert.strictEqual(t.call('certificates', {}, kid).data.items[0].id, c.items[0].id, 'stable code');
+  const par = parentOf(t, teacher, 'S1', 'أم يوسف');
+  assert.strictEqual(t.call('certificates', { kid_id: 'S1' }, par).data.items.length, 2);
+  assert.strictEqual(t.call('certificates', { kid_id: s3 }, par).error, 'هذا الطفل غير مربوط بحسابك');
+  assert.strictEqual(t.call('certificates', { user_id: s3 }, teacher).error, 'الطالب غير موجود');
+});
+
 test('رابط الموقع في البوت: imuntaha.com من الجذر، والعنوان القديم على github.io تحت /Serah', () => {
   const t = setup();
   const sub = (o) => { if (o === null) delete t.props.SITE_ORIGIN; else t.props.SITE_ORIGIN = o; const jwt = t.g.vapidJwt_('https://fcm.googleapis.com/' + Math.random()); return JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString()).sub; };
@@ -1856,6 +2101,32 @@ test('رابط الموقع في البوت: imuntaha.com من الجذر، وا
   assert.strictEqual(sub('https://imuntaha.com'), 'https://imuntaha.com/');
   assert.strictEqual(sub('https://mrvoroo.github.io'), 'https://mrvoroo.github.io/Serah/');
   assert.strictEqual(sub('https://mrvoroo.github.io/Serah'), 'https://mrvoroo.github.io/Serah/');
+});
+
+test('نجوم الأذكار والأدعية: يوم الطفل فقط حسب منطقة الجهاز أو مكان المواقيت، وبدونهما أضيق نافذة', () => {
+  const t = setup();
+  const admin = t.login({ name: 'المعلمة', pin: '482615' }), kid = t.login({ user_id: 'S1', pin: '1111' }), kid2 = t.login({ user_id: 'S2', pin: '2222' });
+  t.call('saveAzkarRelease', { zikr_id: 'ikhlas', classes: ['C1'] }, admin);
+  t.call('saveRelease', { kind: 'dua', item_id: 'sleep', classes: ['C1'] }, admin);
+  const realNow = Date.now; Date.now = () => Date.parse('2026-11-25T22:30:00Z'); // الرياض: ٢٦ نوفمبر ١:٣٠ صباحًا
+  const bad = 'لا يمكن تسجيل هذا اليوم';
+  try {
+    // منطقة الرياض: اليوم ٢٦ فقط، ومساء ٢٥ مقبول لأنه قبل الخامسة صباحًا (أذكار المساء متأخرة)
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-25', tz: 'Asia/Riyadh' }, kid).error, bad);
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-27', tz: 'Asia/Riyadh' }, kid).error, bad);
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-26', tz: 'Asia/Riyadh' }, kid).data.stars, 1);
+    assert.strictEqual(t.call('azkarDone', { period: 'am', date: '2026-11-25', tz: 'Asia/Riyadh' }, kid).error, bad);
+    assert.strictEqual(t.call('azkarDone', { period: 'pm', date: '2026-11-25', tz: 'Asia/Riyadh' }, kid).data.stars, 2);
+    assert.strictEqual(t.call('azkarDone', { period: 'am', date: '2026-11-26', tz: 'Asia/Riyadh' }, kid).data.stars, 2);
+    // نيويورك: لسه ٢٥ (٥:٣٠ مساءً) — بكرة مرفوض
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-26', tz: 'America/New_York' }, kid2).error, bad);
+    // منطقة غير صالحة → خط طول مكان المواقيت (القاهرة ≈ +٢ ← ٢٦ نوفمبر ١٢:٣٠ صباحًا)
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-25', tz: 'x y', lng: 31.2 }, kid2).error, bad);
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-26', tz: 'x y', lng: 31.2 }, kid2).data.stars, 1);
+    // بدون منطقة ولا مكان: ٢٢:٣٠ جرينتش ← اليوم أو بكرة (مناطق الشرق)، لكن مش أمس
+    assert.strictEqual(t.call('azkarDone', { period: 'am', date: '2026-11-24' }, kid2).error, bad);
+    assert.strictEqual(t.call('azkarDone', { period: 'am', date: '2026-11-26' }, kid2).data.stars, 2);
+  } finally { Date.now = realNow; }
 });
 
 for (const [name, fn] of tests) {
