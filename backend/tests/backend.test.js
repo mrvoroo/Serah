@@ -1960,6 +1960,10 @@ test('تسجيل التلاوة: نوع وبصمة وحجم ومدة، وحد ا
   const other = t.call('myRecitations', {}, kid).data[0].file_id;
   assert.strictEqual(t.call('saveRelease', { kind: 'dua', item_id: 'sleep', classes: ['C1'], file_id: other, file_kind: 'audio' }, admin).error, 'الملف غير صالح');
   assert.strictEqual(t.call('saveAzkarRelease', { zikr_id: 'ikhlas', classes: ['C1'], file_id: other, file_kind: 'audio' }, admin).error, 'الملف غير صالح');
+  // ولا تصير محاضرة أو صورة محاضرة (تُشارك للعامة)
+  assert.strictEqual(t.call('createLecture', { title: 'x', date: '2026-11-01', audio_file_id: other }, teacher).error, 'الملف غير صالح');
+  assert.strictEqual(t.call('addLectureImage', { lecture_id: 'L1', file_id: other }, teacher).error, 'الملف غير صالح');
+  assert.ok(!t.shared.includes(other), 'never shared');
 });
 
 test('حديقة جزء عمّ: نفس قائمة الموقع، مراجعة مرة يوميًا، وتأكيد المعلمة ١٠ نجوم مرة واحدة مشتركة مع «إتمام سورة»', () => {
@@ -2054,7 +2058,13 @@ test('تحديات المواسم: المعلمة لفصلها، الطفل يس
   assert.ok(t.call('endChallenge', { ch_id: ch }, teacher).ok);
   assert.strictEqual(t.call('challengeLog', { ch_id: ch, count: 1, date: isoDay(0) }, kid).error, 'انتهى التحدي');
   assert.ok(t.call('deleteChallenge', { ch_id: ch }, admin).ok);
-  assert.ok(!t.g.rows_('ChallengeLog').some(x => x.ch_id === ch));
+  assert.ok(!t.call('challenges', {}, kid).data.some(x => x.ch_id === ch));
+  // بعد بلوغ الهدف: من يسجّل ١ متأخرًا لا يأخذ نجوم التحدي
+  const ch2 = t.call('saveChallenge', { ...base, goal: 10 }, teacher).data.ch_id;
+  t.call('challengeLog', { ch_id: ch2, count: 10, date: isoDay(0) }, kid);
+  const late = pointsOf(t, 'S2');
+  assert.strictEqual(t.call('challengeLog', { ch_id: ch2, count: 1, date: isoDay(0) }, kid2).data.stars, 0);
+  assert.strictEqual(pointsOf(t, 'S2'), late);
 });
 
 test('الشهادات: سورة بعد تأكيد الحفظ، ومرحلة رحلة بعد حضور محاضرات أنبيائها، وولي الأمر لطفله فقط', () => {

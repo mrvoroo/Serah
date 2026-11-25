@@ -40,7 +40,7 @@ export function CertificateView({ data, cert }: { data: Certs; cert: Cert }) {
         <p className="font-heading text-[2em] font-extrabold text-[#1E7A5E]">{data.kid.name}</p>
         {data.kid.class_name && <p className="text-[0.85em] opacity-80">{data.kid.class_name}</p>}
         <p className="text-[1.15em] leading-[1.9]">{what}</p>
-        <p className="text-[0.95em]">{f ? "بارك الله فيها، ونفع بها، وجعلها من أهل القرآن" : "بارك الله فيه، ونفع به، وجعله من أهل القرآن"}</p>
+        <p className="text-[0.95em]">{cert.kind === "stage" ? (f ? "بارك الله فيها، ونفعها بقصص الأنبياء عليهم السلام، وجعلها من الصالحين" : "بارك الله فيه، ونفعه بقصص الأنبياء عليهم السلام، وجعله من الصالحين") : f ? "بارك الله فيها، ونفع بها، وجعلها من أهل القرآن" : "بارك الله فيه، ونفع به، وجعله من أهل القرآن"}</p>
         <div className="mt-[2%] flex w-full items-end justify-between text-[0.75em]">
           <div className="text-start"><p className="opacity-70">التاريخ</p><p className="font-bold">{fmtLong(cert.at)}</p></div>
           <div className="text-center"><p className="opacity-70">رقم الشهادة</p><p dir="ltr" className="font-bold tracking-widest">{cert.id}</p></div>

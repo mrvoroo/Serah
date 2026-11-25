@@ -1271,6 +1271,8 @@ function rate_(key, max, sec) {
 function platformFile_(id) {
   const v = String(id || '');
   if (!/^[A-Za-z0-9_-]{1,200}$/.test(v)) throw new Error('الملف غير صالح');
+  // تلاوة الطفل خاصة به: لا تُستخدم في محاضرة أو صورة أو مرفق (وإلا تُشارك للعامة ويسمعها الفصل كله)
+  if (rows_('Recitations').some(r => String(r.file_id) === v)) throw new Error('الملف غير صالح');
   const folders = ['audio', 'images'].map(k => prop_('FOLDER_' + k)).filter(Boolean);
   try {
     const it = DriveApp.getFileById(v).getParents();
@@ -2955,8 +2957,6 @@ function saveReleaseRow_(sheet, ck, itemId, p, me) {
     const kind = ['image', 'audio', 'file'].indexOf(String(p.file_kind || '')) >= 0 ? String(p.file_kind) : '';
     const file_id = p.file_id ? platformFile_(p.file_id) : '';
     if (file_id && !kind) throw new Error('نوع المرفق غير معروف');
-    // تلاوة طفل خاصة به: لا تُرفق لفصل كامل (وإلا يسمعها كل الأطفال)
-    if (file_id && rows_('Recitations').some(r => String(r.file_id) === file_id)) throw new Error('الملف غير صالح');
     // نوع الملف الفعلي لازم يطابق النوع المختار (حتى لا يُشارَك تسجيل محاضرة غير منشورة على أنه صورة)
     if (file_id) {
       let mime = '';
@@ -3706,8 +3706,8 @@ Object.assign(ACTIONS, {
 
   deleteChallenge: (p, me) => withLock_(() => {
     const c = ownChallenge_(me, p.ch_id);
+    // سجل المساهمات يبقى (يُقرأ دائمًا بمعرّف التحدي)، فلا حذف صف صف تحت القفل
     remove_('Challenges', 'ch_id', c.ch_id);
-    rows_('ChallengeLog').filter(r => String(r.ch_id) === String(c.ch_id)).forEach(r => remove_('ChallengeLog', 'key', r.key));
     return true;
   }),
 
@@ -3724,11 +3724,13 @@ Object.assign(ACTIONS, {
       if (!truthy_(c.active)) throw new Error('انتهى التحدي');
       if (day < Number(c.starts) || day > Number(c.ends)) throw new Error('التحدي لم يبدأ أو انتهى');
       const key = c.ch_id + ':' + me.user_id + ':' + day, r = rows_('ChallengeLog').find(x => String(x.key) === key);
+      const was = r ? Number(r.count) || 0 : 0;
       if (r) update_('ChallengeLog', 'key', key, { count, at: now_() });
       else append_('ChallengeLog', { key, ch_id: c.ch_id, user_id: me.user_id, day, count, at: now_() });
       const t = chTotals_(c.ch_id);
       let stars = 0;
-      if (t.total >= Number(c.goal)) Object.keys(t.per).filter(u => t.per[u] > 0).forEach(u => {
+      // النجوم لحظة بلوغ الهدف فقط، لمن ساهم حتى تلك اللحظة (لا تُكسب بتسجيل ١ بعد اكتماله)
+      if (t.total >= Number(c.goal) && t.total - count + was < Number(c.goal)) Object.keys(t.per).filter(u => t.per[u] > 0).forEach(u => {
         if (awardOnce_('chg:' + c.ch_id + ':' + u, u, 'challenge', String(c.title), CH_STARS, 'تحدي الفصل: ' + c.title, me.user_id) && u === me.user_id) stars = CH_STARS;
       });
       return { total: t.total, goal: Number(c.goal), mine_today: count, stars };
