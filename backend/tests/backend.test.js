@@ -47,7 +47,7 @@ function boot() {
       base64Decode: (s) => [...Buffer.from(s, 'base64')].map(b => (b > 127 ? b - 256 : b)),
       base64Encode: (x) => Buffer.from(Uint8Array.from(x, (b) => b & 255)).toString('base64'),
       newBlob: (b, type, name) => ({ getDataAsString: () => Buffer.from(b).toString(), getContentType: () => type, getBytes: () => b, _b: { type, name, size: b.length } }),
-      formatDate: (d) => d.toISOString().slice(0, 10),
+      formatDate: (d, tz, fmt) => { const o = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz === 'GMT' ? 'UTC' : (tz || 'UTC'), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(d).map(x => [x.type, x.value])); return String(fmt || 'yyyy-MM-dd').replace('yyyy', o.year).replace('MM', o.month).replace('dd', o.day).replace('HH', o.hour); },
       sleep: (ms) => { slept += ms; }
     },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => JSON.parse(t) }), MimeType: { JSON: 1 } },
@@ -1698,8 +1698,7 @@ test('أذكار: نجمتان مرة واحدة لكل فترة في اليوم
   assert.strictEqual(t.call('azkarDone', { period: 'noon', date: todayIso() }, kid).error, 'الفترة غير معروفة');
   // قفل الذكر عن الفصل يمنع نجوم الأيام القادمة
   t.call('saveAzkarRelease', { zikr_id: 'ikhlas', classes: [] }, admin);
-  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
-  assert.strictEqual(t.call('azkarDone', { period: 'am', date: tomorrow }, kid).error, 'لم تُفتح أذكار بعد');
+  assert.strictEqual(t.call('azkarDone', { period: 'am', date: todayIso() }, kid).error, 'لم تُفتح أذكار بعد');
 });
 
 test('أذكار: فتح ذكر لفصل يرسل إشعار «ذكر جديد» لأطفاله، وتذكير الصباح لا يصل لطفل فصله بلا أذكار', () => {
@@ -2102,6 +2101,32 @@ test('رابط الموقع في البوت: imuntaha.com من الجذر، وا
   assert.strictEqual(sub('https://imuntaha.com'), 'https://imuntaha.com/');
   assert.strictEqual(sub('https://mrvoroo.github.io'), 'https://mrvoroo.github.io/Serah/');
   assert.strictEqual(sub('https://mrvoroo.github.io/Serah'), 'https://mrvoroo.github.io/Serah/');
+});
+
+test('نجوم الأذكار والأدعية: يوم الطفل فقط حسب منطقة الجهاز أو مكان المواقيت، وبدونهما أضيق نافذة', () => {
+  const t = setup();
+  const admin = t.login({ name: 'المعلمة', pin: '482615' }), kid = t.login({ user_id: 'S1', pin: '1111' }), kid2 = t.login({ user_id: 'S2', pin: '2222' });
+  t.call('saveAzkarRelease', { zikr_id: 'ikhlas', classes: ['C1'] }, admin);
+  t.call('saveRelease', { kind: 'dua', item_id: 'sleep', classes: ['C1'] }, admin);
+  const realNow = Date.now; Date.now = () => Date.parse('2026-11-25T22:30:00Z'); // الرياض: ٢٦ نوفمبر ١:٣٠ صباحًا
+  const bad = 'لا يمكن تسجيل هذا اليوم';
+  try {
+    // منطقة الرياض: اليوم ٢٦ فقط، ومساء ٢٥ مقبول لأنه قبل الخامسة صباحًا (أذكار المساء متأخرة)
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-25', tz: 'Asia/Riyadh' }, kid).error, bad);
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-27', tz: 'Asia/Riyadh' }, kid).error, bad);
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-26', tz: 'Asia/Riyadh' }, kid).data.stars, 1);
+    assert.strictEqual(t.call('azkarDone', { period: 'am', date: '2026-11-25', tz: 'Asia/Riyadh' }, kid).error, bad);
+    assert.strictEqual(t.call('azkarDone', { period: 'pm', date: '2026-11-25', tz: 'Asia/Riyadh' }, kid).data.stars, 2);
+    assert.strictEqual(t.call('azkarDone', { period: 'am', date: '2026-11-26', tz: 'Asia/Riyadh' }, kid).data.stars, 2);
+    // نيويورك: لسه ٢٥ (٥:٣٠ مساءً) — بكرة مرفوض
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-26', tz: 'America/New_York' }, kid2).error, bad);
+    // منطقة غير صالحة → خط طول مكان المواقيت (القاهرة ≈ +٢ ← ٢٦ نوفمبر ١٢:٣٠ صباحًا)
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-25', tz: 'x y', lng: 31.2 }, kid2).error, bad);
+    assert.strictEqual(t.call('duaDone', { date: '2026-11-26', tz: 'x y', lng: 31.2 }, kid2).data.stars, 1);
+    // بدون منطقة ولا مكان: ٢٢:٣٠ جرينتش ← اليوم أو بكرة (مناطق الشرق)، لكن مش أمس
+    assert.strictEqual(t.call('azkarDone', { period: 'am', date: '2026-11-24' }, kid2).error, bad);
+    assert.strictEqual(t.call('azkarDone', { period: 'am', date: '2026-11-26' }, kid2).data.stars, 2);
+  } finally { Date.now = realNow; }
 });
 
 for (const [name, fn] of tests) {

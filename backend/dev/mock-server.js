@@ -38,7 +38,7 @@ function boot() {
       base64Encode: (x) => Buffer.from(Uint8Array.from(x, (b) => b & 255)).toString('base64'),
       base64Decode: (s) => signed(Buffer.from(s, 'base64')),
       newBlob: (b, type, name) => ({ getDataAsString: () => Buffer.from(b).toString(), getContentType: () => type, getBytes: () => b, setName() { return this; }, _b: b, _t: type }),
-      formatDate: (d) => d.toISOString().slice(0, 10), sleep() {}
+      formatDate: (d, tz, fmt) => { const o = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz === 'GMT' ? 'UTC' : (tz || 'UTC'), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(d).map(x => [x.type, x.value])); return String(fmt || 'yyyy-MM-dd').replace('yyyy', o.year).replace('MM', o.month).replace('dd', o.day).replace('HH', o.hour); }, sleep() {}
     },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 1 } },
     CacheService: { getScriptCache: () => ({ get: (k) => { const e = cache[k]; if (!e) return null; if (e.t < Date.now()) { delete cache[k]; return null; } return e.v; }, put: (k, v, sec) => { cache[k] = { v: String(v), t: Date.now() + (sec || 600) * 1000 }; }, remove: (k) => { delete cache[k]; } }) },

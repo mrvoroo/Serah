@@ -2927,6 +2927,33 @@ function releasedFor_(class_id) { return azkarRows_().filter(r => r.classes.inde
 // الفصول التي فُتح لها ذكر واحد على الأقل (للإشعارات)
 function releasedClasses_() { const m = {}; azkarRows_().forEach(r => r.classes.forEach(c => { m[c] = 1; })); return m; }
 
+// الأيام المقبولة لنجوم الأذكار والأدعية: «اليوم» عند الطفل فقط (لا بكرة ولا أمس).
+// ١) منطقة الجهاز الزمنية tz (نفس منطقة مواقيت الصلاة في التطبيق) ٢) وإلا خط طول مكان المواقيت lng
+// ٣) وإلا اليوم بتوقيت جرينتش، ومعه اليوم المجاور فقط لو ممكن فعلًا في منطقة ما (من −١٢ إلى +١٤ ساعة).
+// evening: أذكار المساء بعد منتصف الليل وقبل الخامسة تُحسب لليوم السابق (نفس logicalDay في التطبيق)
+function zoneDay_(tz, ms) {
+  try {
+    const s = String(Utilities.formatDate(new Date(ms), tz, 'yyyyMMdd HH'));
+    const m = /^(\d{8}) (\d{2})$/.exec(s);
+    return m ? { day: Number(m[1]), hour: Number(m[2]) } : null;
+  } catch (e) { return null; }
+}
+function kidDays_(p, evening) {
+  const now = Date.now(), tz = String(p.tz || '');
+  let z = null, back = null;
+  if (/^[A-Za-z]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(tz) && tz.length <= 40) { z = zoneDay_(tz, now); back = z && zoneDay_(tz, now - 864e5); }
+  const lng = Number(p.lng);
+  if (!z && p.lng !== undefined && p.lng !== '' && isFinite(lng) && lng >= -180 && lng <= 180) {
+    const off = Math.round(lng / 15) * 3600e3;
+    z = zoneDay_('GMT', now + off); back = zoneDay_('GMT', now + off - 864e5);
+  }
+  if (z) return evening && z.hour < 5 && back ? [z.day, back.day] : [z.day];
+  const h = new Date(now).getUTCHours(), out = [dayOffset_(0)];
+  if (h >= 10) out.push(dayOffset_(1));            // مناطق شرق جرينتش دخلت اليوم التالي
+  if (h < (evening ? 17 : 12)) out.push(dayOffset_(-1)); // مناطق غرب جرينتش لسه في اليوم السابق
+  return out;
+}
+
 // نجوم لمرة واحدة لكل مفتاح (يُستدعى والقفل محجوز): يرجع false لو أُعطيت قبل كده
 function awardOnce_(key, user_id, kind, ref, stars, reason, by) {
   if (rows_('StarLog').some(r => String(r.key) === key)) return false;
@@ -3006,7 +3033,7 @@ Object.assign(ACTIONS, {
     const period = String(p.period || '');
     if (period !== 'am' && period !== 'pm') throw new Error('الفترة غير معروفة');
     const day = dayNum_(p.date);
-    if (day > dayOffset_(1) || day < dayOffset_(-1)) throw new Error('لا يمكن تسجيل هذا اليوم');
+    if (kidDays_(p, period === 'pm').indexOf(day) < 0) throw new Error('لا يمكن تسجيل هذا اليوم');
     if (!releasedFor_(me.class_id).length) throw new Error('لم تُفتح أذكار بعد');
     rate_('azd:' + me.user_id, 30, 3600);
     const reason = period === 'am' ? 'أذكار الصباح' : 'أذكار المساء';
@@ -3325,7 +3352,7 @@ Object.assign(ACTIONS, {
   duaDone: (p, me) => {
     if (me.role !== 'student') return { stars: 0 };
     const day = dayNum_(p.date);
-    if (day > dayOffset_(1) || day < dayOffset_(-1)) throw new Error('لا يمكن تسجيل هذا اليوم');
+    if (kidDays_(p, false).indexOf(day) < 0) throw new Error('لا يمكن تسجيل هذا اليوم');
     if (!releasedOf_('DuaRelease', me.class_id).length) throw new Error('لم تُفتح أدعية بعد');
     rate_('dud:' + me.user_id, 30, 3600);
     const first = withLock_(() => awardOnce_('du:' + me.user_id + ':' + day, me.user_id, 'dua', String(day), DUA_STARS, 'أدعية اليوم'));

@@ -11,7 +11,7 @@ import { useApi } from "@/hooks/use-api";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { api, driveImage } from "@/lib/api";
 import { g } from "@/lib/kid-text";
-import { loadPlace } from "@/lib/prayer";
+import { dayContext, loadPlace } from "@/lib/prayer";
 import { KID_ORDER, PERIOD_NAME, currentPeriod, fitsPeriod, loadCounts, saveCounts, textFor, titleFor, todayIso, logicalDay, zikrById, type Period, type Release } from "@/lib/azkar";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +60,7 @@ export function KidAzkar() {
     if (sent.current || period !== currentPeriod(loadPlace())) return;
     sent.current = true;
     try {
-      const r = await api<{ stars: number }>("azkarDone", { period, date: todayIso(logicalDay(period)) });
+      const r = await api<{ stars: number }>("azkarDone", { period, date: todayIso(logicalDay(period)), ...dayContext() });
       if (r.stars) toast.success(`${g("أحسنت", "أحسنتِ")}! ${g("كسبت", "كسبتِ")} ${r.stars.toLocaleString("ar-EG")} نجمة ⭐`);
     } catch { sent.current = false; }
   };

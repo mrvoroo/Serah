@@ -12,6 +12,7 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { api, driveImage } from "@/lib/api";
 import { invalidate } from "@/hooks/use-api";
 import { g } from "@/lib/kid-text";
+import { dayContext } from "@/lib/prayer";
 import { useMotionAllowed } from "@/lib/tier";
 import { DUA_ORDER, ar, duaById, isoToday, loadMarks, saveMarks, type ItemRelease } from "@/lib/eight";
 import { cn } from "@/lib/utils";
@@ -51,7 +52,7 @@ export function KidDuas() {
     if (sent.current) return;
     sent.current = true;
     try {
-      const r = await api<{ stars: number }>("duaDone", { date: isoToday() });
+      const r = await api<{ stars: number }>("duaDone", { date: isoToday(), ...dayContext() });
       invalidate("me"); invalidate("leaderboard");
       if (r.stars) {
         toast.success(`${g("أحسنت", "أحسنتِ")}! ${g("كسبت", "كسبتِ")} نجمة ⭐`);
