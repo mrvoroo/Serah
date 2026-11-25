@@ -17,7 +17,7 @@ import { Icon3D } from "@/components/icon3d";
 import { cn } from "@/lib/utils";
 import type { AdminUser } from "../page";
 
-const FILTERS: [string, Role | ""][] = [["الكل", ""], ["الأطفال", "student"], ["المعلمات", "teacher"], ["الأدمن", "admin"], ["المطوّر", "superadmin"]];
+const FILTERS: [string, Role | ""][] = [["الكل", ""], ["الأطفال", "student"], ["المعلمات", "teacher"], ["الأدمن", "admin"], ["المطوّر", "superadmin"], ["أولياء الأمور", "parent"]];
 const fmt = (iso: string) => { if (!iso) return "لم يدخل بعد"; const d = new Date(iso); return isNaN(+d) ? "—" : d.toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" }); };
 
 export default function AdminUsers() {
