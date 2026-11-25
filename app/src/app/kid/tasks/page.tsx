@@ -38,7 +38,7 @@ export default function KidTasks() {
         <div className="flex items-center gap-3">
           <Icon3D name="clipboard" size={56} float />
           <div>
-            <h1 className="font-heading text-3xl font-extrabold">اختبر نفسك</h1>
+            <h1 className="font-heading text-3xl font-extrabold">{g("اختبر نفسك", "اختبري نفسك")}</h1>
             <p className="text-muted-foreground">{g("اختبارات وواجبات تكسب منها نجوم", "اختبارات وواجبات تكسبي منها نجوم")}</p>
           </div>
         </div>

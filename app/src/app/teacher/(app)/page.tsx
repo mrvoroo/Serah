@@ -58,8 +58,8 @@ export default function TeacherHome() {
           <Murshida mood={!data ? "helping" : data.drafts ? "thinking" : "happy"} size={96} />
           <div className="min-w-0 flex-1">
             <p className="text-white/80">السلام عليكم ورحمة الله وبركاته</p>
-            <h1 className="font-heading text-2xl font-extrabold lg:text-3xl">مرحبًا بكِ، {teacherTitle(user?.name, user?.role)}</h1>
-            <p className="mt-1 text-white/85">{data?.drafts ? `لديكِ ${data.drafts.toLocaleString("ar-EG")} محاضرة بانتظار مراجعتكِ الكريمة قبل النشر` : "الحمد لله، جميع المحاضرات منشورة"}</p>
+            <h1 className="font-heading text-2xl font-extrabold lg:text-3xl">{user?.role === "superadmin" ? "مرحبًا بك" : "مرحبًا بكِ"}، {teacherTitle(user?.name, user?.role)}</h1>
+            <p className="mt-1 text-white/85">{data?.drafts ? `لديكِ ${data.drafts.toLocaleString("ar-EG")} محاضرة بانتظار مراجعتكِ الكريمة قبل النشر` : data && !data.lectures ? "لا توجد محاضرات بعد — أول تسجيل يُرفع من «رفع تسجيل» أو البوت" : data ? "الحمد لله، جميع المحاضرات منشورة" : ""}</p>
           </div>
         </div>
       </BlurFade>
@@ -101,22 +101,34 @@ export default function TeacherHome() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <Panel title="نسبة الحضور" className="flex flex-col items-center">
           {loading && !data ? <Skeleton className="size-36 rounded-full" /> : (
-            <AnimatedCircularProgressBar value={data?.attendanceRate ?? 0} gaugePrimaryColor="var(--primary)" gaugeSecondaryColor="var(--secondary)" className="size-36 font-heading text-2xl" />
+            <AnimatedCircularProgressBar value={data?.attendanceRate ?? 0} label={`${Math.round(data?.attendanceRate ?? 0).toLocaleString("ar-EG")}٪`} gaugePrimaryColor="var(--primary)" gaugeSecondaryColor="var(--secondary)" className="size-36 font-heading text-2xl" />
           )}
           <p className="mt-2 text-center text-sm text-muted-foreground">من المحاضرات المنشورة سمعها الأطفال</p>
         </Panel>
         <Panel title="الحضور في آخر المحاضرات" className="lg:col-span-2">
           {loading && !data ? <Skeleton className="h-52" /> : data?.perLecture?.length ? (
             <ChartContainer config={barCfg} className="h-52 w-full">
-              <BarChart data={data.perLecture} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+              <BarChart data={data.perLecture.map((l, k) => ({ ...l, n: (k + 1).toLocaleString("ar-EG") }))} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
                 <CartesianGrid vertical={false} strokeOpacity={0.4} />
-                <XAxis dataKey="title" tickLine={false} axisLine={false} tickMargin={8} interval={0} tickFormatter={(v: string) => v.slice(0, 8)} reversed />
+                {/* رقم المحاضرة تحت العمود، والعنوان كامل في القائمة تحت المخطط وفي التلميح (العناوين الطويلة كانت تتقص «قصة سيدن…») */}
+                <XAxis dataKey="n" tickLine={false} axisLine={false} tickMargin={8} interval={0} reversed />
                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} orientation="right" />
-                <ChartTooltip cursor={{ fill: "var(--secondary)", opacity: 0.5 }} content={<ChartTooltipContent />} />
+                <ChartTooltip cursor={{ fill: "var(--secondary)", opacity: 0.5 }} content={<ChartTooltipContent labelFormatter={(_, p) => String(p?.[0]?.payload?.title ?? "")} />} />
                 <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} maxBarSize={36} />
               </BarChart>
             </ChartContainer>
-          ) : <p className="py-10 text-center text-muted-foreground">لا توجد محاضرات منشورة بعد</p>}
+          ) : null}
+          {data?.perLecture?.length ? (
+            <ol data-testid="lecture-legend" className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
+              {data.perLecture.map((l, k) => (
+                <li key={k} className="flex min-w-0 items-center gap-2">
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-secondary text-xs font-bold">{(k + 1).toLocaleString("ar-EG")}</span>
+                  <span className="min-w-0 flex-1 truncate" title={l.title}>{l.title}</span>
+                  <span className="shrink-0 text-xs font-bold text-muted-foreground">{l.count.toLocaleString("ar-EG")} سمعوها</span>
+                </li>
+              ))}
+            </ol>
+          ) : !(loading && !data) && <p className="py-10 text-center text-muted-foreground">لا توجد محاضرات منشورة بعد</p>}
         </Panel>
       </div>
 

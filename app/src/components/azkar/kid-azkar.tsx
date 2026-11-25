@@ -100,7 +100,7 @@ export function KidAzkar() {
       {loading && !data ? <Skeleton className="h-56 rounded-[28px]" /> : error && !data ? (
         <div className="rounded-[28px] border bg-card p-5 text-center">
           <p className="font-bold">تعذّر تحميل الأذكار</p>
-          <button type="button" onClick={() => reload()} className="mt-3 rounded-2xl bg-secondary px-4 py-2 font-bold">حاول مرة أخرى</button>
+          <button type="button" onClick={() => reload()} className="mt-3 h-11 rounded-2xl bg-secondary px-4 font-bold">{g("حاول", "حاولي")} مرة أخرى</button>
         </div>
       ) : rel.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">

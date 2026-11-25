@@ -55,7 +55,7 @@ export function toStations(rows: ProphetRow[] | undefined): Station[] {
       // ﷺ كحرف واحد يتكدس كنقاط، فنكتبها سطرًا صغيرًا تحت الاسم
       sub: muhammad ? "صلى الله عليه وسلم" : undefined,
       title: r.title || (muhammad ? "سيدنا محمد ﷺ" : `سيدنا ${name} عليه السلام`),
-      tag: sym.name ? `المحطة ${num(i + 1)} · ${sym.name}` : `المحطة ${num(i + 1)}`,
+      tag: sym.name ? `المحطة ${num(i + 1)} — ${sym.name}` : `المحطة ${num(i + 1)}`,
       text: r.text,
       symbol: sym.symbol,
       symbolName: sym.name,

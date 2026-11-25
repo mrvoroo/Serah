@@ -60,10 +60,10 @@ export async function api<T = unknown>(action: string, params: Record<string, un
       body: JSON.stringify({ action, token: session.token(), ...params }),
     });
   } catch {
-    throw new ApiError("لا يوجد اتصال بالإنترنت، حاولي مرة أخرى");
+    throw new ApiError("لا يوجد اتصال بالإنترنت — تأكد من الشبكة ثم أعد المحاولة");
   }
   let j: { ok: boolean; data?: T; error?: string };
-  try { j = await res.json(); } catch { throw new ApiError("الخادم لا يستجيب الآن، حاولي بعد قليل"); }
+  try { j = await res.json(); } catch { throw new ApiError("الخادم لا يستجيب الآن — أعد المحاولة بعد قليل"); }
   if (!j.ok) {
     const msg = j.error || "حدث خطأ";
     const auth = /جلسة|مسجل|رمز غير صالح|الحساب موقوف/.test(msg);
@@ -103,7 +103,8 @@ export type Dashboard = {
 };
 export type Suggestion = { id: string; text: string; status: string; at: string; name: string };
 export const fmtDate = (d: string) => { try { return new Date(d).toLocaleDateString("ar-EG", { day: "numeric", month: "long" }); } catch { return String(d).slice(0, 10); } };
-export const fmtDur = (s: number | string) => { const n = Number(s) || 0; if (!n) return ""; const m = Math.round(n / 60); return m >= 60 ? `${Math.floor(m / 60)} س ${m % 60} د` : `${m} دقيقة`; };
+const arN = (n: number) => n.toLocaleString("ar-EG");
+export const fmtDur = (s: number | string) => { const n = Number(s) || 0; if (!n) return ""; const m = Math.max(1, Math.round(n / 60)); return m >= 60 ? `${arN(Math.floor(m / 60))} س ${arN(m % 60)} د` : `${arN(m)} ${m >= 3 && m <= 10 ? "دقائق" : "دقيقة"}`; };
 
 // ===== الاختبارات والواجبات =====
 export type QuizStatus = "draft" | "published";

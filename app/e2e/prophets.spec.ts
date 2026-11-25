@@ -48,7 +48,7 @@ test("الرحلة تقرأ الأقسام من الخلفية: الترتيب �
   await as(page, KID);
   await page.goto("/Serah/kid/journey/?tier=high");
   await expect.poll(() => page.locator("[data-station]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.station))).toEqual(["start", "noah", "adam", "yusuf", "sira", "quran"]);
-  await expect(page.locator("#station-noah")).toContainText("المحطة ١ · السفينة");
+  await expect(page.locator("#station-noah")).toContainText("المحطة ١ — السفينة");
   const enter = page.locator("#station-noah").getByRole("link", { name: "ادخل الصفحة" });
   await expect(enter).toHaveAttribute("href", "/Serah/kid/prophet/?id=noah");
   await expect(page.locator("#station-sira").getByRole("link", { name: "ادخل الصفحة" })).toHaveCount(0);
