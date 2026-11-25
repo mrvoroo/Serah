@@ -33,15 +33,20 @@ function ProgressFrame({ pct, done, pulse }: { pct: number; done: boolean; pulse
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const set = () => { const b = el.getBoundingClientRect(); setSize({ w: Math.round(b.width), h: Math.round(b.height) }); };
+    // مقاس الكارت الحقيقي (offsetWidth/Height لا يتأثران بحركة التكبير والسحب)، وليس getBoundingClientRect
+    // اللي كان يقيس الكارت وهو لسه ٩٧٪ وقت دخوله فيترسم الإطار أصغر من الكارت
+    const card = el.parentElement;
+    if (!card) return;
+    const set = () => setSize((o) => (o.w === card.offsetWidth && o.h === card.offsetHeight ? o : { w: card.offsetWidth, h: card.offsetHeight }));
     set();
-    if (!window.ResizeObserver) return;
-    const ro = new ResizeObserver(set); ro.observe(el);
+    if (!window.ResizeObserver) { window.addEventListener("resize", set); return () => window.removeEventListener("resize", set); }
+    const ro = new ResizeObserver(set); ro.observe(card);
     return () => ro.disconnect();
   }, []);
   const d = size.w > 10 && size.h > 10 ? frameD(size.w, size.h) : "";
   return (
-    <svg ref={ref} aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible">
+    <svg ref={ref} aria-hidden data-frame width={size.w || undefined} height={size.h || undefined} viewBox={size.w ? `0 0 ${size.w} ${size.h}` : undefined}
+      className="pointer-events-none absolute left-0 top-0 overflow-visible">
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#FFE08A" /><stop offset="50%" stopColor="#FFB020" /><stop offset="100%" stopColor="#FFE08A" />
@@ -145,18 +150,18 @@ export function AzkarDeck({ list, label, remaining, countOf, onTap, renderBody, 
     // overflow-x-clip: حركة دخول الكارت من الجنب أو السحب لا تعمل سكرول أفقي للصفحة
     <div className="flex min-w-0 flex-col gap-3 overflow-x-clip py-1">
       {/* قائمة الكروت: لمحة لكل ذكر وحلقة تقدّمه */}
-      <ol ref={menu} aria-label={label} className="flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <ol ref={menu} aria-label={label} className="flex snap-x gap-2 overflow-x-auto px-1 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {list.map((z, k) => {
           const zr = remaining(z), zc = countOf(z), zd = zr === 0, on = k === i;
           return (
             <li key={z.id} data-idx={k} className="shrink-0 snap-center">
               <button type="button" onClick={() => go(k)} aria-current={on ? "step" : undefined}
                 aria-label={`${ar(k + 1)}: ${short(z, k)}${zd ? " — تم" : zc > 1 ? ` — باقي ${ar(zr)}` : ""}`}
-                className={cn("relative flex h-16 w-24 flex-col items-center justify-center gap-0.5 rounded-2xl border px-2 text-center text-xs font-bold transition",
+                className={cn("relative flex h-[70px] w-24 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-2xl border px-2 pb-2 text-center text-xs font-bold transition",
                   on ? "border-gold bg-gold/15 shadow-soft" : zd ? "border-emerald-500/40 bg-emerald-500/10" : "bg-card")}>
                 <span className={cn("grid size-6 place-items-center rounded-full text-[11px]", zd ? "bg-emerald-500 text-white" : "bg-secondary")}>{zd ? <Check className="size-3.5" /> : ar(k + 1)}</span>
                 <span className="line-clamp-1 w-full text-[11px] text-muted-foreground">{short(z, k)}</span>
-                {zc > 1 && !zd && <span aria-hidden className="absolute inset-x-2 bottom-1 h-1 overflow-hidden rounded-full bg-secondary"><span className="block h-full rounded-full bg-gold transition-all" style={{ width: `${((zc - zr) / zc) * 100}%` }} /></span>}
+                {zc > 1 && !zd && <span aria-hidden data-chip-bar className="absolute inset-x-4 bottom-2 h-[3px] overflow-hidden rounded-full bg-foreground/10"><span className="block h-full rounded-full bg-gold transition-[width] duration-300" style={{ width: `${((zc - zr) / zc) * 100}%` }} /></span>}
               </button>
             </li>
           );
