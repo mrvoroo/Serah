@@ -45,14 +45,15 @@ function backend(opts: { duas?: string[]; hadith?: string[] } = {}) {
     if (b.action === "addDeed") { deeds.push({ deed_id: "D" + deeds.length, deed: b.deed, note: b.note, day: Number(today().replace(/-/g, "")), stars: 1, at: new Date().toISOString(), by: "أم زيد", by_gender: "f", mine: true }); data = { deed_id: "D", stars: 1 }; }
     if (b.action === "parentDeeds" || b.action === "kidDeeds") data = deeds.length ? deeds : [{ deed_id: "D0", deed: "birr", note: "", day: Number(today().replace(/-/g, "")), stars: 1, at: new Date().toISOString(), by: "أم زيد", by_gender: "f", mine: false }];
     if (b.action === "certificates") data = { kid: { name: "زيد", gender: "m", class_name: "الفصل الأول" }, teacher: "أ. مروة", items: [{ id: "AB12CD34", kind: "surah", title: "سورة الإخلاص", at: "2026-11-22T10:00:00Z" }, { id: "ZX98YT76", kind: "stage", title: "المرحلة الأولى: من آدم إلى صالح عليهم السلام", at: "2026-11-21T10:00:00Z" }] };
-    if (b.action === "me") data = { points: 10, attended: [], rank: 1, total: 2, gender: "m" };
+    if (b.action === "me") data = { points: 10, attended: [], rank: 1, total: 2 };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data }) });
   };
   return { calls, handler };
 }
 async function as(page: Page, be: ReturnType<typeof backend>, user: object) {
   await page.route(/script\.google\.com\/macros/, be.handler);
-  await page.addInitScript((u) => { localStorage.setItem("serah_token", "t"); localStorage.setItem("serah_user", JSON.stringify(u)); }, user);
+  // مرة واحدة فقط (حتى يمكن تبديل الحساب داخل الاختبار بدون أن يرجعه السكربت مع كل تنقل)
+  await page.addInitScript((u) => { if (!localStorage.getItem("serah_token")) { localStorage.setItem("serah_token", "t"); localStorage.setItem("serah_user", JSON.stringify(u)); } }, user);
 }
 const watch = (page: Page) => { const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message)); return errors; };
 
