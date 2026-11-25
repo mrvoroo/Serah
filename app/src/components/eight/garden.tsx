@@ -68,7 +68,7 @@ export function KidGarden() {
       const r = await api<{ reviews: number; already: boolean }>("gardenReview", { surah: pick, date: isoToday() });
       if (r.already) toast(g("راجعتها النهارده خلاص — تعالى بكرة 🌱", "راجعتيها النهارده خلاص — تعالي بكرة 🌱"));
       else { toast.success(`${g("شجرتك كبرت", "شجرتكِ كبرت")}! 🌳`); if (animate) confetti({ particleCount: 40, spread: 50, origin: { y: 0.7 }, colors: ["#22C55E", "#F59E0B"] }); }
-      invalidate("garden"); await reload(); setPick(null);
+      invalidate("garden"); invalidate("me"); await reload(); setPick(null);
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
   };
 
@@ -87,7 +87,7 @@ export function KidGarden() {
         </div>
       )}
       {loading && !data ? <Skeleton className="h-96 rounded-[28px]" /> : error && !data ? (
-        <div className="rounded-[28px] border bg-card p-5 text-center"><p className="font-bold">تعذّر تحميل الحديقة</p><button type="button" onClick={() => reload()} className="mt-3 rounded-2xl bg-secondary px-4 py-2 font-bold">حاول مرة أخرى</button></div>
+        <div className="rounded-[28px] border bg-card p-5 text-center"><p className="font-bold">تعذّر تحميل الحديقة</p><button type="button" onClick={() => reload()} className="mt-3 h-11 rounded-2xl bg-secondary px-4 font-bold">{g("حاول", "حاولي")} مرة أخرى</button></div>
       ) : data && <GardenGrid data={data} onPick={setPick} />}
       <p className="text-xs leading-6 text-muted-foreground">بذرة ← نبتة (مراجعة) ← شجيرة (٣ مراجعات) ← شجرة (٧ مراجعات) ← شجرة مثمرة (المعلمة أكدت الحفظ)</p>
 
@@ -100,7 +100,7 @@ export function KidGarden() {
           <div className="flex justify-center"><Tree stage={stageOf(it?.reviews ?? 0, !!it?.confirmed)} size={120} /></div>
           <p className="text-center text-sm font-bold">{ar(it?.reviews ?? 0)} مراجعة{it?.last_day === today ? " · راجعتها النهارده ✓" : ""}</p>
           <DialogFooter className="gap-2">
-            <Link href="/kid/quran/" className={buttonVariants({ variant: "secondary", size: "lg2" })}><BookOpen /> افتح المصحف</Link>
+            <Link href="/kid/quran/" className={buttonVariants({ variant: "secondary", size: "lg2" })}><BookOpen /> {g("افتح", "افتحي")} المصحف</Link>
             <Button variant="hero" size="lg2" disabled={busy || it?.last_day === today} onClick={() => void review()}>{busy ? <Loader2 className="animate-spin" /> : <Check />} راجعتها</Button>
           </DialogFooter>
         </DialogContent>

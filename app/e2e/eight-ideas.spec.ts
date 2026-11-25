@@ -15,7 +15,7 @@ function backend(opts: { duas?: string[]; hadith?: string[] } = {}) {
   (opts.hadith ?? []).forEach((id) => { rel.hadith[id] = ["C1"]; });
   const garden = { items: [{ surah: 114, reviews: 2, last_day: 0, confirmed: false }, { surah: 112, reviews: 8, last_day: 0, confirmed: true }], juz: false };
   const recs = [{ rec_id: "R1", user_id: "S1", name: "زيد", avatar: "", surah: 112, surah_name: "الإخلاص", file_id: "f1", duration_sec: 20, status: "pending", rating: 0, note: "", reviewed_at: "", created_at: "2026-11-24T10:00:00Z" }];
-  const challenges: Record<string, unknown>[] = [{ ch_id: "CH1", title: "ختمة الفصل في رمضان", season: "ramadan", unit: "صفحة", goal: 100, starts: today(), ends: today(), active: true, total: 40, kids: 3, mine_total: 4, mine_today: 0 }];
+  const challenges: Record<string, unknown>[] = [{ ch_id: "CH1", title: "ختمة الفصل في رمضان", season: "ramadan", unit: "صفحة", goal: 100, starts: today(), ends: today(), active: true, open: true, total: 40, kids: 3, mine_total: 4, mine_today: 0 }];
   const deeds: Record<string, unknown>[] = [];
   const handler = async (route: Route) => {
     const b = JSON.parse(route.request().postData() || "{}") as Call;

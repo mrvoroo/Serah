@@ -32,7 +32,7 @@ export function KidRecite() {
   useEffect(() => () => { if (rec) URL.revokeObjectURL(rec.url); }, [rec]);
 
   const start = async () => {
-    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) { toast.error("الجهاز ده ما بيدعمش التسجيل — جرّب متصفح كروم أو سفاري حديث"); return; }
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) { toast.error(g("الجهاز ده ما بيدعمش التسجيل — جرّب متصفح كروم أو سفاري حديث", "الجهاز ده ما بيدعمش التسجيل — جرّبي متصفح كروم أو سفاري حديث")); return; }
     let stream: MediaStream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
     catch { toast.error(g("محتاجين إذن الميكروفون — اسمح للموقع بالميكروفون وجرّب تاني", "محتاجين إذن الميكروفون — اسمحي للموقع بالميكروفون وجرّبي تاني")); return; }
@@ -130,7 +130,7 @@ export function KidRecite() {
                   {r.note && <p>المعلمة: {r.note}</p>}
                 </div>
               )}
-              {r.status === "pending" && <Button variant="ghost" size="lg" className="self-start text-destructive" onClick={() => void remove(r.rec_id)}><Trash2 /> حذف</Button>}
+              {r.status === "pending" && <Button variant="ghost" size="lg2" className="self-start text-destructive" onClick={() => void remove(r.rec_id)}><Trash2 /> حذف</Button>}
             </li>
           ))}
         </ul>

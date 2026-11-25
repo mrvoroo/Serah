@@ -16,7 +16,7 @@
 - Garden: 1 review per surah per day, ≤40/day; stages 0 / 1–2 / 3–6 / 7+ / confirmed.
 - Deeds: fixed ids, ≤10/day/kid, delete same day only by its parent.
 - Challenges: ≤3 active per class, goal 10..100000, ≤60 days, kid count 0..20 per day, date within ±1 day of today and inside the range.
-- Digest: Friday 16:00 trigger; ≤4 kids per parent; opt-out via `prefs.digest=false`.
+- Digest: Friday 16:00 trigger; ≤3 kids per parent; opt-out via `prefs.digest=false`.
 - Religious text only from reviewed JSON with refs. No secrets in repo. Backend VERSION bumped, not deployed.
 
 ## Review Focus

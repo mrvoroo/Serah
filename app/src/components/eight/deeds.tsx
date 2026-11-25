@@ -48,7 +48,7 @@ function WeekBoard({ list, parent }: { list: Deed[]; parent?: boolean }) {
 }
 
 export function KidDeeds() {
-  const { data, loading } = useApi<Deed[]>("kidDeeds");
+  const { data, loading, error, reload } = useApi<Deed[]>("kidDeeds");
   const list = Array.isArray(data) ? data : [];
   const week = list.filter((x) => last7().includes(dayIso(x.day)));
   return (
@@ -65,7 +65,7 @@ export function KidDeeds() {
         <p className="font-heading text-3xl font-extrabold">{ar(week.length)} عمل صالح 🌟</p>
         <p className="text-sm text-white/85">{week.length ? g("ما شاء الله عليك، كمّل!", "ما شاء الله عليكِ، كمّلي!") : g("يلا نبدأ بعمل حلو النهارده", "يلا نبدأ بعمل حلو النهارده")}</p>
       </div>
-      {loading && !data ? <Skeleton className="h-64 rounded-[24px]" /> : <WeekBoard list={list} />}
+      {loading && !data ? <Skeleton className="h-64 rounded-[24px]" /> : error && !data ? <div className="rounded-[24px] border bg-card p-5 text-center"><p className="font-bold">تعذّر تحميل اللوحة</p><button type="button" onClick={() => reload()} className="mt-3 h-11 rounded-2xl bg-secondary px-4 font-bold">{g("حاول", "حاولي")} مرة أخرى</button></div> : <WeekBoard list={list} />}
     </section>
   );
 }
@@ -93,12 +93,13 @@ export function ParentDeeds() {
     try {
       const r = await api<{ stars: number }>("addDeed", { kid_id: kid.user_id, deed: id, note, date: isoToday() });
       toast.success(r.stars ? `تم الملصق، و${kid.name} ${girl ? "كسبت" : "كسب"} نجمة ⭐` : "تم الملصق 🌟 (نجوم اليوم اكتملت)");
-      setNote(""); invalidate("parentDeeds"); await deeds.reload();
+      setNote(""); invalidate("parentDeeds"); invalidate("parentDigest"); invalidate("parentKid"); await deeds.reload();
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
   const del = async (id: string) => {
+    if (!window.confirm("حذف الملصق؟ تُسحب نجمته")) return;
     setBusy(id);
-    try { await api("deleteDeed", { deed_id: id }); invalidate("parentDeeds"); await deeds.reload(); } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
+    try { await api("deleteDeed", { deed_id: id }); invalidate("parentDeeds"); invalidate("parentDigest"); invalidate("parentKid"); await deeds.reload(); } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
 
   return (
@@ -120,7 +121,9 @@ export function ParentDeeds() {
           ))}
         </div>
       )}
-      {kids.loading && !kids.data ? <Skeleton className="h-40 rounded-[24px]" /> : !kid ? (
+      {kids.loading && !kids.data ? <Skeleton className="h-40 rounded-[24px]" /> : kids.error && !kids.data ? (
+        <div className="rounded-[24px] border bg-card p-5 text-center"><p className="font-bold">تعذّر التحميل</p><Button variant="secondary" size="lg2" className="mt-3" onClick={() => kids.reload()}>إعادة المحاولة</Button></div>
+      ) : !kid ? (
         <p className="rounded-[24px] border bg-card p-5 text-center text-sm text-muted-foreground">لا يوجد طفل مربوط بحسابك بعد</p>
       ) : (
         <>
@@ -143,7 +146,7 @@ export function ParentDeeds() {
                 {todayMine.map((x) => (
                   <li key={x.deed_id} className="flex items-center gap-2 text-sm">
                     <span aria-hidden>{deedOf(x.deed)?.icon}</span> <span className="min-w-0 flex-1 truncate">{deedOf(x.deed)?.label}{x.note ? ` — ${x.note}` : ""}</span>
-                    <Button variant="ghost" size="icon-sm" aria-label="حذف الملصق" disabled={!!busy} onClick={() => void del(x.deed_id)}><Trash2 className="size-4 text-destructive" /></Button>
+                    <Button variant="ghost" size="icon-xl" aria-label="حذف الملصق" disabled={!!busy} onClick={() => void del(x.deed_id)}><Trash2 className="size-4 text-destructive" /></Button>
                   </li>
                 ))}
               </ul>

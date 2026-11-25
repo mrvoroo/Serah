@@ -127,7 +127,7 @@ export function TeacherRecitations() {
   const me = useRequireRole(["teacher", "admin", "superadmin"]);
   const scope = useClassScope();
   const params = scope.class_id ? { class_id: scope.class_id } : {};
-  const { data, loading, reload } = useApi<Recitation[]>("recitations", params, { enabled: !!me && scope.ready });
+  const { data, loading, error, reload } = useApi<Recitation[]>("recitations", params, { enabled: !!me && scope.ready });
   const [edit, setEdit] = useState<{ r: Recitation; rating: number; note: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const list = Array.isArray(data) ? data : [];
@@ -156,7 +156,7 @@ export function TeacherRecitations() {
         </div>
       </div>
       <ClassSelect scope={scope} />
-      {loading && !data ? <Skeleton className="h-40 rounded-[24px]" /> : list.length === 0 ? <p className="rounded-[24px] border bg-card p-5 text-center text-sm text-muted-foreground">لا توجد تلاوات بعد</p> : (
+      {loading && !data ? <Skeleton className="h-40 rounded-[24px]" /> : error && !data ? <div className="rounded-[24px] border bg-card p-5 text-center"><p className="font-bold">تعذّر تحميل التلاوات</p><Button variant="secondary" size="lg2" className="mt-3" onClick={() => reload()}>حاولي مرة أخرى</Button></div> : list.length === 0 ? <p className="rounded-[24px] border bg-card p-5 text-center text-sm text-muted-foreground">لا توجد تلاوات بعد</p> : (
         <ul className="flex flex-col gap-3">
           {list.map((r) => (
             <li key={r.rec_id} data-testid="rec-row" className={cn("flex flex-col gap-2 rounded-[24px] border bg-card p-4 shadow-soft", r.status === "pending" && "border-amber-400/70")}>
@@ -168,8 +168,8 @@ export function TeacherRecitations() {
               <AudioPlayer id={r.file_id} />
               {r.note && <p className="text-sm text-muted-foreground">ملاحظتك: {r.note}</p>}
               <div className="flex gap-2">
-                <Button variant={r.status === "pending" ? "hero" : "secondary"} size="lg" onClick={() => setEdit({ r, rating: r.rating || 3, note: r.note })}>{r.status === "pending" ? "قيّمي" : "تعديل التقييم"}</Button>
-                <Button variant="ghost" size="lg" className="text-destructive" onClick={() => void del(r)}>حذف</Button>
+                <Button variant={r.status === "pending" ? "hero" : "secondary"} size="lg2" onClick={() => setEdit({ r, rating: r.rating || 3, note: r.note })}>{r.status === "pending" ? "قيّمي" : "تعديل التقييم"}</Button>
+                <Button variant="ghost" size="lg2" className="text-destructive" onClick={() => void del(r)}>حذف</Button>
               </div>
             </li>
           ))}

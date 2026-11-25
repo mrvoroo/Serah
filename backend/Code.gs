@@ -3369,7 +3369,7 @@ function digestItem_(kid, d) {
   return { kind: 'wk', title: 'ملخص أسبوع ' + kid.name + ' 🌟', body: parts.join(' · ').slice(0, 220), url: '/parent/' };
 }
 
-/** مشغّل أسبوعي (الجمعة عصرًا): إشعار لكل ولي أمر بملخص أسبوع كل طفل مربوط (حد ٤) */
+/** مشغّل أسبوعي (الجمعة عصرًا): إشعار لكل ولي أمر بملخص أسبوع كل طفل مربوط (حد ٣) */
 function weeklyDigest() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return 0;
@@ -3381,7 +3381,7 @@ function weeklyDigest() {
       if (!u || inactive_(u) || u.role !== 'parent') return;
       let prefs = {}; try { prefs = JSON.parse(s.prefs || '{}'); } catch (e) {}
       if (prefs.digest === false) return;
-      const kids = links.filter(l => l.parent_id === u.user_id).map(l => users[l.kid_id]).filter(k => k && k.role === 'student' && !inactive_(k)).slice(0, 4);
+      const kids = links.filter(l => l.parent_id === u.user_id).map(l => users[l.kid_id]).filter(k => k && k.role === 'student' && !inactive_(k)).slice(0, 3); // عامل الخدمة يعرض آخر ٣ عناصر
       if (!kids.length) return;
       kids.forEach(k => queuePush_(s.sub_id, digestItem_(k, memo[k.user_id] || (memo[k.user_id] = digestFor_(k.user_id)))));
       send.push(s);
@@ -3466,9 +3466,9 @@ Object.assign(ACTIONS, {
     if (bytes.length < 800) throw new Error('التسجيل قصير جدًا');
     if (bytes.length > REC_MAX_BYTES) throw new Error('التسجيل أطول من المسموح — دقيقتان على الأكثر');
     if (!audioMagic_(bytes)) throw new Error('الملف ليس تسجيلًا صوتيًا');
-    rate_('rec:' + me.user_id, REC_DAY, 86400);
     return withLock_(() => {
-      if (rows_('Recitations').filter(r => r.user_id === me.user_id && r.status === 'pending').length >= REC_PENDING) throw new Error('عندك ٣ تسجيلات تنتظر المعلمة — استنَّ ردها أولًا');
+      if (rows_('Recitations').filter(r => r.user_id === me.user_id && r.status === 'pending').length >= REC_PENDING) throw new Error('عندك ٣ تسجيلات تنتظر المعلمة — بعد ما تسمعها تقدر ترسل غيرها');
+      rate_('rec:' + me.user_id, REC_DAY, 86400); // الحد اليومي يُحسب على التسجيلات المقبولة فقط
       const folder = DriveApp.getFolderById(prop_('FOLDER_audio'));
       const f = folder.createFile(Utilities.newBlob(bytes, mime, 'tilawa-' + me.user_id + '-' + s[0] + '-' + Date.now() + '.' + REC_MIME[mime]));
       const row = append_('Recitations', { rec_id: id_('R'), user_id: me.user_id, class_id: me.class_id, surah: s[0], file_id: f.getId(), mime, duration_sec: dur,
@@ -3666,7 +3666,10 @@ function chTotals_(ch_id) {
 Object.assign(ACTIONS, {
   // الفعّالة أولًا ثم المنتهية خلال ٣٠ يومًا، مع تقدّم الفصل ومساهمة الطفل
   challenges: (p, me) => {
-    const cid = me.role === 'student' ? me.class_id : cls_(me, p), today = dayOffset_(0), old = dayOffset_(-30);
+    // «اليوم» بتاريخ جهاز الطفل (±١ يوم عن الخادم) حتى لا يختلف العداد بعد منتصف الليل المحلي
+    let today = dayOffset_(0);
+    if (p.date) { try { const d = dayNum_(p.date); if (d <= dayOffset_(1) && d >= dayOffset_(-1)) today = d; } catch (e) { /* اليوم حسب الخادم */ } }
+    const cid = me.role === 'student' ? me.class_id : cls_(me, p), old = dayOffset_(-30);
     const logs = rows_('ChallengeLog');
     return rows_('Challenges').filter(c => String(c.class_id) === String(cid) && (chOpen_(c) || Number(c.ends) >= old))
       .sort((a, b) => (chOpen_(a) ? 0 : 1) - (chOpen_(b) ? 0 : 1) || Number(b.starts) - Number(a.starts)).slice(0, 10).map(c => {
@@ -3674,7 +3677,7 @@ Object.assign(ACTIONS, {
         const per = {}; let total = 0; mine.forEach(r => { const n = Number(r.count) || 0; per[r.user_id] = (per[r.user_id] || 0) + n; total += n; });
         const t = mine.find(r => r.user_id === me.user_id && Number(r.day) === today);
         return { ch_id: String(c.ch_id), title: String(c.title), season: String(c.season), unit: String(c.unit), goal: Number(c.goal), starts: isoDay_(Number(c.starts)), ends: isoDay_(Number(c.ends)),
-          active: chOpen_(c), total, kids: Object.keys(per).filter(k => per[k] > 0).length, mine_total: per[me.user_id] || 0, mine_today: t ? Number(t.count) || 0 : 0 };
+          active: chOpen_(c), open: truthy_(c.active) && today >= Number(c.starts) && today <= Number(c.ends), total, kids: Object.keys(per).filter(k => per[k] > 0).length, mine_total: per[me.user_id] || 0, mine_today: t ? Number(t.count) || 0 : 0 };
       });
   },
 

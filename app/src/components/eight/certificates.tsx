@@ -25,7 +25,7 @@ export function CertificateView({ data, cert }: { data: Certs; cert: Cert }) {
   const what = cert.kind === "stage" ? <>{f ? "قد أتمّت" : "قد أتمّ"} <b>{head}</b> من رحلة الأنبياء{tail ? <>:<br /><b>{tail.trim()}</b></> : null}</>
     : <>{f ? "قد أتمّت حفظ" : "قد أتمّ حفظ"} <b className="surah-name text-[1.4em]">{cert.title}</b></>;
   return (
-    <div data-testid="certificate" className="cert-print relative mx-auto aspect-[297/210] w-full max-w-4xl overflow-hidden rounded-[18px] bg-[#FFFDF6] text-[#3A2A10] shadow-soft print:rounded-none print:shadow-none" dir="rtl">
+    <div data-testid="certificate" style={{ containerType: "inline-size" }} className="cert-print relative mx-auto aspect-[297/210] w-full max-w-4xl overflow-hidden rounded-[18px] bg-[#FFFDF6] text-[#3A2A10] shadow-soft print:rounded-none print:shadow-none" dir="rtl">
       <svg viewBox="0 0 297 210" className="absolute inset-0 size-full" aria-hidden preserveAspectRatio="none">
         <rect x="6" y="6" width="285" height="198" fill="none" stroke="#B88A2B" strokeWidth="1.6" />
         <rect x="10" y="10" width="277" height="190" fill="none" stroke="#1E7A5E" strokeWidth=".6" />
@@ -33,7 +33,7 @@ export function CertificateView({ data, cert }: { data: Certs; cert: Cert }) {
         {Array.from({ length: 13 }, (_, i) => <Star8 key={"t" + i} x={34 + i * 19} y={10} r={1.4} fill="#1E7A5E" />)}
         {Array.from({ length: 13 }, (_, i) => <Star8 key={"b" + i} x={34 + i * 19} y={200} r={1.4} fill="#1E7A5E" />)}
       </svg>
-      <div className="absolute inset-[9%] flex flex-col items-center justify-center gap-[2.2%] text-center" style={{ fontSize: "clamp(9px, 2.1vw, 20px)" }}>
+      <div className="absolute inset-[8%] flex flex-col items-center justify-center gap-[1.6%] text-center leading-snug" style={{ fontSize: "1.9cqw" }}>
         <p className="font-heading text-[0.9em] font-bold tracking-wide text-[#1E7A5E]">بسم الله الرحمن الرحيم</p>
         <p className="font-heading text-[2.4em] font-extrabold leading-tight text-[#8A5E10]">شهادة تقدير</p>
         <p className="text-[1em]">{f ? "تشهد منصة المُنْتَهَى بأن الطالبة" : "تشهد منصة المُنْتَهَى بأن الطالب"}</p>
@@ -69,13 +69,13 @@ export function Certificates({ parent = false }: { parent?: boolean }) {
 
   if (open) return (
     <div className="flex flex-col gap-3">
-      <style>{`@media print { @page { size: A4 landscape; margin: 0 } body * { visibility: hidden !important } .cert-print, .cert-print * { visibility: visible !important } .cert-print { position: fixed; inset: 0; width: 100vw; max-width: none; } }`}</style>
+      <style>{`@media print { @page { size: A4 landscape; margin: 0 } html, body { height: 100%; overflow: hidden !important } body * { visibility: hidden !important } .cert-print, .cert-print * { visibility: visible !important } .cert-print { position: fixed; inset: 0; width: 100vw; max-width: none; } }`}</style>
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <Link href={base} className={buttonVariants({ variant: "secondary", size: "lg2" })}><ArrowRight /> الشهادات</Link>
         {cert && <Button variant="hero" size="lg2" onClick={() => window.print()}><Printer /> طباعة / حفظ PDF</Button>}
       </div>
       {loading && !data ? <Skeleton className="aspect-[297/210] w-full rounded-[18px]" /> : cert && data ? <CertificateView data={data} cert={cert} /> : <p className="rounded-[24px] border bg-card p-5 text-center">الشهادة غير موجودة</p>}
-      <p className="text-xs text-muted-foreground print:hidden">من نافذة الطباعة اختر «حفظ كـ PDF» لتنزيلها، والأفضل «أفقي» بدون هوامش.</p>
+      <p className="text-xs text-muted-foreground print:hidden">من نافذة الطباعة اختيار «حفظ كـ PDF» ينزّلها، والأفضل «أفقي» بدون هوامش.</p>
     </div>
   );
 

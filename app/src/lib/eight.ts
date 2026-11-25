@@ -60,7 +60,7 @@ export function saveMarks(day: string, ids: string[]) {
 }
 
 export type Recitation = { rec_id: string; user_id: string; name: string; avatar: string; surah: number; surah_name: string; file_id: string; duration_sec: number; status: "pending" | "reviewed"; rating: number; note: string; reviewed_at: string; created_at: string };
-export type Challenge = { ch_id: string; title: string; season: Season["id"]; unit: string; goal: number; starts: string; ends: string; active: boolean; total: number; kids: number; mine_total: number; mine_today: number };
+export type Challenge = { ch_id: string; title: string; season: Season["id"]; unit: string; goal: number; starts: string; ends: string; active: boolean; open: boolean; total: number; kids: number; mine_total: number; mine_today: number };
 export type GardenItem = { surah: number; reviews: number; last_day: number; confirmed: boolean };
 export type Garden = { items: GardenItem[]; juz: boolean };
 export type Cert = { id: string; kind: "surah" | "juz" | "stage"; title: string; at: string };

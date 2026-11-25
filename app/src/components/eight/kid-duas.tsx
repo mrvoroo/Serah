@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useApi } from "@/hooks/use-api";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { api, driveImage } from "@/lib/api";
+import { invalidate } from "@/hooks/use-api";
 import { g } from "@/lib/kid-text";
 import { useMotionAllowed } from "@/lib/tier";
 import { DUA_ORDER, ar, duaById, isoToday, loadMarks, saveMarks, type ItemRelease } from "@/lib/eight";
@@ -51,6 +52,7 @@ export function KidDuas() {
     sent.current = true;
     try {
       const r = await api<{ stars: number }>("duaDone", { date: isoToday() });
+      invalidate("me"); invalidate("leaderboard");
       if (r.stars) {
         toast.success(`${g("أحسنت", "أحسنتِ")}! ${g("كسبت", "كسبتِ")} نجمة ⭐`);
         if (animate) confetti({ particleCount: 70, spread: 70, origin: { y: 0.7 } });
@@ -73,7 +75,7 @@ export function KidDuas() {
       {loading && !data ? <Skeleton className="h-56 rounded-[28px]" /> : error && !data ? (
         <div className="rounded-[28px] border bg-card p-5 text-center">
           <p className="font-bold">تعذّر تحميل الأدعية</p>
-          <button type="button" onClick={() => reload()} className="mt-3 rounded-2xl bg-secondary px-4 py-2 font-bold">حاول مرة أخرى</button>
+          <button type="button" onClick={() => reload()} className="mt-3 h-11 rounded-2xl bg-secondary px-4 font-bold">{g("حاول", "حاولي")} مرة أخرى</button>
         </div>
       ) : list.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">

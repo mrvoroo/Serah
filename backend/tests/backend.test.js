@@ -28,7 +28,8 @@ function boot() {
       setFrozenRows() {},
       appendRow: (row) => data.push(row.slice()),
       deleteRow: (i) => { data.splice(i - 1, 1); },
-      getDataRange: () => ({ getValues: () => { const w = sh.getLastColumn(); return data.map(r => Array.from({ length: w }, (_, i) => r[i] ?? '')); } }),
+      // مثل Sheets: النص المسبوق بـ ' (حماية الصيغ في cell_) يُقرأ بدون العلامة
+      getDataRange: () => ({ getValues: () => { const w = sh.getLastColumn(); const un = (v) => (typeof v === 'string' && v[0] === "'" ? v.slice(1) : v); return data.map(r => Array.from({ length: w }, (_, i) => un(r[i] ?? ''))); } }),
       _data: data
     };
     return (sheets[name] = sh);

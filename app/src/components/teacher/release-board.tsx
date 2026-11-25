@@ -70,7 +70,10 @@ export function ReleaseBoard({ kind, items, title, hint, icon }: { kind: Release
         </div>
       </div>
 
-      {(rel.loading && !rel.data) || (cls.loading && !cls.data) ? <div className="grid gap-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-36 rounded-[24px]" />)}</div> : (
+      {(rel.loading && !rel.data) || (cls.loading && !cls.data) ? <div className="grid gap-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-36 rounded-[24px]" />)}</div> : (rel.error && !rel.data) || (cls.error && !cls.data) ? (
+        // بدون البيانات الحالية لا نسمح بالضغط (وإلا يُرسل فصل واحد فيقفل العنصر عن باقي الفصول)
+        <div role="alert" className="rounded-[24px] border bg-card p-5 text-center"><p className="font-bold">تعذّر تحميل الفصول أو المفتوح حاليًا</p><Button variant="secondary" size="lg2" className="mt-3" onClick={() => { void rel.reload(); void cls.reload(); }}>حاولي مرة أخرى</Button></div>
+      ) : (
         <ol className="flex flex-col gap-3">
           {items.map((it, k) => {
             const r = rowOf(it.id), open = r?.classes ?? [], all = classes.length > 0 && classes.every((c) => open.includes(c.class_id));
@@ -106,7 +109,7 @@ export function ReleaseBoard({ kind, items, title, hint, icon }: { kind: Release
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   {r?.note && <span className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 font-bold"><StickyNote className="size-4" /> ملاحظة</span>}
                   {r?.file_id && <span className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 font-bold">{r.file_kind === "image" ? <ImageIcon className="size-4" /> : r.file_kind === "audio" ? <Mic className="size-4" /> : <FileText className="size-4" />} {r.file_name || "مرفق"}</span>}
-                  <Button variant="ghost" size="lg" className="ms-auto" onClick={() => setEdit({ id: it.id, note: r?.note ?? "", file_id: r?.file_id ?? "", file_kind: r?.file_kind ?? "", file_name: r?.file_name ?? "" })}>
+                  <Button variant="ghost" size="lg2" className="ms-auto" onClick={() => setEdit({ id: it.id, note: r?.note ?? "", file_id: r?.file_id ?? "", file_kind: r?.file_kind ?? "", file_name: r?.file_name ?? "" })}>
                     <Paperclip /> ملاحظة ومرفق
                   </Button>
                 </div>
@@ -127,7 +130,7 @@ export function ReleaseBoard({ kind, items, title, hint, icon }: { kind: Release
                 <div className="flex items-center gap-2 rounded-2xl bg-secondary p-3 text-sm font-bold">
                   {edit.file_kind === "image" ? <ImageIcon className="size-4" /> : edit.file_kind === "audio" ? <Mic className="size-4" /> : <FileText className="size-4" />}
                   <span className="min-w-0 flex-1 truncate">{edit.file_name || "مرفق"}</span>
-                  <button type="button" aria-label="حذف المرفق" onClick={() => setEdit({ ...edit, file_id: "", file_kind: "", file_name: "" })}><X className="size-4" /></button>
+                  <button type="button" aria-label="حذف المرفق" className="grid size-10 place-items-center rounded-xl hover:bg-background" onClick={() => setEdit({ ...edit, file_id: "", file_kind: "", file_name: "" })}><X className="size-4" /></button>
                 </div>
               ) : (
                 <Button variant="secondary" size="lg2" disabled={pct !== null} onClick={() => file.current?.click()}>

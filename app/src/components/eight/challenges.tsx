@@ -34,7 +34,7 @@ function ChallengeBar({ c }: { c: Challenge }) {
 
 export function KidChallenges() {
   const animate = useMotionAllowed();
-  const { data, loading, reload } = useApi<Challenge[]>("challenges");
+  const { data, loading, error, reload } = useApi<Challenge[]>("challenges", { date: isoToday() });
   const [draft, setDraft] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const list = Array.isArray(data) ? data : [];
@@ -45,7 +45,7 @@ export function KidChallenges() {
       const r = await api<{ total: number; stars: number }>("challengeLog", { ch_id: c.ch_id, count, date: isoToday() });
       if (r.stars) { toast.success(`الفصل وصل للهدف! ${g("كسبت", "كسبتِ")} ${ar(r.stars)} نجوم ⭐`); if (animate) confetti({ particleCount: 120, spread: 90, origin: { y: 0.6 } }); }
       else toast.success(g("اتسجّلت مساهمتك، جزاك الله خيرًا 🤍", "اتسجّلت مساهمتكِ، جزاكِ الله خيرًا 🤍"));
-      invalidate("challenges"); await reload();
+      invalidate("challenges"); invalidate("me"); invalidate("leaderboard"); await reload();
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
 
@@ -58,7 +58,9 @@ export function KidChallenges() {
           <p className="text-sm text-muted-foreground">الفصل كله فريق واحد! {g("سجّل", "سجّلي")} اللي {g("عملته", "عملتيه")} النهارده، ولما نوصل للهدف كل واحد ساهم ياخد ٥ نجوم ⭐</p>
         </div>
       </header>
-      {loading && !data ? <Skeleton className="h-48 rounded-[28px]" /> : list.length === 0 ? (
+      {loading && !data ? <Skeleton className="h-48 rounded-[28px]" /> : error && !data ? (
+        <div className="rounded-[28px] border bg-card p-5 text-center"><p className="font-bold">تعذّر تحميل التحديات</p><button type="button" onClick={() => reload()} className="mt-3 h-11 rounded-2xl bg-secondary px-4 font-bold">{g("حاول", "حاولي")} مرة أخرى</button></div>
+      ) : list.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">
           <Icon3D name="calendar" size={64} float />
           <p className="font-heading text-lg font-extrabold">مفيش تحدي دلوقتي</p>
@@ -81,7 +83,8 @@ export function KidChallenges() {
                 <ChallengeBar c={c} />
                 <p className="flex items-center gap-1 text-xs font-bold text-muted-foreground"><Users className="size-4" /> {ar(c.kids)} ساهموا · مساهمتي كلها {ar(c.mine_total)}</p>
                 {done && <p className="rounded-2xl bg-emerald-500/15 p-2 text-center text-sm font-bold text-emerald-700 dark:text-emerald-300">ما شاء الله! الفصل وصل للهدف 🎉</p>}
-                {c.active && (
+                {c.active && !c.open && <p className="rounded-2xl bg-secondary p-2 text-center text-sm font-bold">{isoToday() < c.starts ? `يبدأ التحدي يوم ${fmtDate(c.starts)} إن شاء الله` : "انتهت أيام التحدي"}</p>}
+                {c.open && (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-bold">النهارده:</span>
                     <Button variant="secondary" size="icon-xl" aria-label="أقل" disabled={v <= 0} onClick={() => setDraft({ ...draft, [c.ch_id]: Math.max(0, v - 1) })}><Minus /></Button>
@@ -160,8 +163,8 @@ export function TeacherChallenges() {
               <div className="flex items-start justify-between gap-2">
                 <div><p className="font-heading text-lg font-extrabold">{seasonOf(c.season).icon} {c.title}</p><p className="text-xs text-muted-foreground">{fmtDate(c.starts)} — {fmtDate(c.ends)} · {ar(c.kids)} طفل ساهم{c.active ? "" : " · انتهى"}</p></div>
                 <div className="flex gap-1">
-                  {c.active && <Button variant="secondary" size="lg" disabled={busy} onClick={() => { if (window.confirm("إنهاء التحدي؟ الأطفال لن يسجلوا بعده")) void run(() => api("endChallenge", { ch_id: c.ch_id }), "انتهى التحدي"); }}><Square /> إنهاء</Button>}
-                  <Button variant="ghost" size="icon-lg" aria-label="حذف التحدي" disabled={busy} onClick={() => { if (window.confirm("حذف التحدي وكل مساهماته؟")) void run(() => api("deleteChallenge", { ch_id: c.ch_id }), "اتحذف التحدي"); }}><Trash2 className="text-destructive" /></Button>
+                  {c.active && <Button variant="secondary" size="lg2" disabled={busy} onClick={() => { if (window.confirm("إنهاء التحدي؟ الأطفال لن يسجلوا بعده")) void run(() => api("endChallenge", { ch_id: c.ch_id }), "انتهى التحدي"); }}><Square /> إنهاء</Button>}
+                  <Button variant="ghost" size="icon-xl" aria-label="حذف التحدي" disabled={busy} onClick={() => { if (window.confirm("حذف التحدي وكل مساهماته؟")) void run(() => api("deleteChallenge", { ch_id: c.ch_id }), "اتحذف التحدي"); }}><Trash2 className="text-destructive" /></Button>
                 </div>
               </div>
               <ChallengeBar c={c} />

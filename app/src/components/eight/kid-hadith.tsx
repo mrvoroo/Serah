@@ -34,13 +34,13 @@ export function KidHadith() {
       {loading && !data ? <Skeleton className="h-56 rounded-[28px]" /> : error && !data ? (
         <div className="rounded-[28px] border bg-card p-5 text-center">
           <p className="font-bold">تعذّر تحميل الأحاديث</p>
-          <button type="button" onClick={() => reload()} className="mt-3 rounded-2xl bg-secondary px-4 py-2 font-bold">حاول مرة أخرى</button>
+          <button type="button" onClick={() => reload()} className="mt-3 h-11 rounded-2xl bg-secondary px-4 font-bold">{g("حاول", "حاولي")} مرة أخرى</button>
         </div>
       ) : list.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[28px] border bg-card p-6 text-center">
           <Icon3D name="gift" size={64} float />
           <p className="font-heading text-lg font-extrabold">{g("أحاديثك جاية قريب", "أحاديثكِ جاية قريب")} 🤍</p>
-          <p className="text-sm leading-7 text-muted-foreground">المعلمة هتفتح لك حديثًا جديدًا تحفظه.</p>
+          <p className="text-sm leading-7 text-muted-foreground">المعلمة هتفتح لك حديثًا جديدًا {g("تحفظه", "تحفظيه")}.</p>
         </div>
       ) : (
         <>
