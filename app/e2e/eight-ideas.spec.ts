@@ -199,10 +199,18 @@ test("الشهادات: القائمة وفتح الشهادة للطباعة ب
   expect(lastLine!.y + lastLine!.height).toBeLessThan(foot!.y);
   await cert.screenshot({ path: test.info().outputPath("stage-cert.png") });
   // الطباعة: مقاس ثابت بالمليمتر (279mm × 197.4mm بنسبة A4) مهما كان عرض الشاشة — لا تُرسم صغيرة في ركن الورقة كما كان على الآيفون
+  // وهي نسخة مستقلة أول شيء في body تبدأ من حافة الورقة (سفاري الآيفون كان يطبع نصفها بسبب position:fixed)
   await page.emulateMedia({ media: "print" });
-  const pbox = await cert.boundingBox();
+  await expect(cert).toBeHidden();
+  const pcert = page.getByTestId("certificate-print");
+  await expect(pcert).toBeVisible();
+  await expect(pcert).toContainText("زيد");
+  const pbox = await pcert.boundingBox();
   expect(Math.abs(pbox!.width - 279 * 96 / 25.4)).toBeLessThan(2);
   expect(Math.abs(pbox!.height - 197.4 * 96 / 25.4)).toBeLessThan(2);
+  expect(pbox!.y).toBeLessThan(6 * 96 / 25.4 + 1);
+  expect(pbox!.x).toBeGreaterThanOrEqual(0);
+  expect(await page.evaluate(() => [...document.body.children].filter((e) => getComputedStyle(e).display !== "none").map((e) => e.className))).toEqual(["cert-print-portal"]);
   expect(errors).toEqual([]);
 });
 

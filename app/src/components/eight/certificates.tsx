@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Award, Printer } from "lucide-react";
@@ -32,6 +33,8 @@ export function Certificates({ parent = false }: { parent?: boolean }) {
   const base = parent ? "/parent/certificates/" : "/kid/certificates/";
   const cert = data?.items.find((c) => c.id === open);
   const f = data?.kid.gender === "f";
+  const [mounted, setMounted] = useState(false); // نسخة الطباعة تُضاف لـ body بعد التحميل فقط
+  useEffect(() => { setMounted(true); }, []); // eslint-disable-line react-hooks/set-state-in-effect
 
   if (open) return (
     <div className="flex flex-col gap-3">
@@ -41,6 +44,7 @@ export function Certificates({ parent = false }: { parent?: boolean }) {
         {cert && <Button variant="hero" size="lg2" onClick={() => window.print()}><Printer /> طباعة / حفظ PDF</Button>}
       </div>
       {loading && !data ? <Skeleton className="aspect-[297/210] w-full rounded-[18px]" /> : cert && data ? <CertificateView data={data} cert={cert} /> : <p className="rounded-[24px] border bg-card p-5 text-center">الشهادة غير موجودة</p>}
+      {mounted && cert && data && createPortal(<div className="cert-print-portal" aria-hidden><CertificateView data={data} cert={cert} print /></div>, document.body)}
       <p className="text-xs text-muted-foreground print:hidden">من نافذة الطباعة اختيار «حفظ كـ PDF» ينزّلها. الشهادة بتطلع أفقي ومالية الورقة.</p>
     </div>
   );
