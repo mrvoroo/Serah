@@ -12,8 +12,9 @@ export function Ambient() {
   useEffect(() => setMounted(true), []);
   if (!mounted || tier === "static" || tier === "low") return null;
   const dark = resolvedTheme !== "light";
+  // أطول من الشاشة لتحت: لو سفاري آيفون زحزح الطبقات الثابتة أثناء السكرول ما يبانش آخرها كشريط
   return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10">
+    <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 -bottom-[60svh] -z-10">
       <div className="absolute inset-0 bg-[radial-gradient(60%_45%_at_80%_0%,var(--glow),transparent_70%),radial-gradient(50%_40%_at_10%_90%,var(--glow),transparent_70%)]" />
       <Particles className="absolute inset-0" quantity={tier === "high" ? 70 : 40} staticity={40} ease={60} size={dark ? 0.6 : 0.8} color={dark ? "#FFE7B0" : "#7B5CFF"} refresh={false} key={dark ? "d" : "l"} />
     </div>

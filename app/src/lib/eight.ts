@@ -30,10 +30,10 @@ export const SEASONS: Season[] = (seasonsData as unknown as { seasons: Season[] 
 export const ar = (n: number) => n.toLocaleString("ar-EG");
 export const isoToday = (now = new Date()) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-// مراحل شجرة السورة في الحديقة
+// مراحل نخلة السورة في الحديقة
 export type Stage = 0 | 1 | 2 | 3 | 4;
 export const stageOf = (reviews: number, confirmed: boolean): Stage => (confirmed ? 4 : reviews >= 7 ? 3 : reviews >= 3 ? 2 : reviews >= 1 ? 1 : 0);
-export const STAGE_NAME = ["بذرة", "نبتة", "شجيرة", "شجرة", "شجرة مثمرة"];
+export const STAGE_NAME = ["نواة", "فسيلة", "نخلة صغيرة", "نخلة", "نخلة مثمرة"];
 
 // الأعمال الصالحة (نفس معرّفات DEEDS في الخلفية)
 export const DEEDS: { id: string; label: string; icon: string }[] = [

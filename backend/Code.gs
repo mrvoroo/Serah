@@ -3573,7 +3573,7 @@ function gardenOf_(kid_id) {
 Object.assign(ACTIONS, {
   garden: (p, me) => gardenOf_(gardenKid_(me, p).user_id),
 
-  // مراجعة واحدة لكل سورة في اليوم (تكبر بها الشجرة)
+  // مراجعة واحدة لكل سورة في اليوم (تكبر بها النخلة)
   gardenReview: (p, me) => {
     if (me.role !== 'student') throw new Error('للأطفال فقط');
     const s = surahOf_(p.surah);
@@ -3602,7 +3602,7 @@ Object.assign(ACTIONS, {
       else if (on) append_('Garden', Object.assign({ key: gk, user_id: kid.user_id, surah: s[0], reviews: 0, last_day: '' }, patch));
       let stars = 0, juz = false;
       if (on) {
-        if (awardOnce_(key, kid.user_id, 'surah', 'سورة ' + s[1], SURAH_STARS, 'حفظ سورة ' + s[1], me.user_id)) { stars += SURAH_STARS; kidNotice_(kid, 'المعلمة أكدت حفظك لسورة ' + s[1] + ' 🍎 وطلعت لها شهادة — +١٠ نجوم ⭐'); }
+        if (awardOnce_(key, kid.user_id, 'surah', 'سورة ' + s[1], SURAH_STARS, 'حفظ سورة ' + s[1], me.user_id)) { stars += SURAH_STARS; kidNotice_(kid, 'المعلمة أكدت حفظك لسورة ' + s[1] + ' 🌴 وطلعت لها شهادة — +١٠ نجوم ⭐'); }
         const have = {}; rows_('StarLog').forEach(r => { if (r.user_id === kid.user_id) have[String(r.key)] = 1; });
         if (JUZ_AMMA.every(x => have[surahKey_(kid.user_id, x[1])]) && awardOnce_(juzKey_(kid.user_id), kid.user_id, 'surah', JUZ_TITLE, SURAH_STARS, 'إتمام ' + JUZ_TITLE, me.user_id)) { stars += SURAH_STARS; juz = true; }
       } else {
