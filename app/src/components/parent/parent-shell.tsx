@@ -34,7 +34,7 @@ export function ParentShell({ children }: { children: ReactNode }) {
     session.clear(); router.replace("/parent/login/");
   };
   return (
-    <div className="relative min-h-svh pb-28">
+    <div className="relative flex min-h-svh flex-col">
       <header className="sticky top-0 z-30 px-3 pt-3">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 rounded-3xl border bg-card/85 px-3 py-2 shadow-soft backdrop-blur-md">
           <Link href="/parent/" className="flex items-center gap-2" aria-label="المُنْتَهَى — الرئيسية"><BrandMark /></Link>
@@ -45,8 +45,10 @@ export function ParentShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-4 pt-4">{user ? children : null}</main>
-      <nav aria-label="التنقل الرئيسي" className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-md pb-safe">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-6 pt-4">{user ? children : null}</main>
+      {/* الشريط جزء من الصفحة (sticky) مش مثبّت على الشاشة (fixed): سفاري آيفون — خصوصًا التطبيق المثبّت على الشاشة الرئيسية —
+          كان يزحزح العناصر الثابتة لنص الشاشة أثناء السكرول، ودلوقتي آخر الصفحة دايمًا يطلع فوقه */}
+      <nav aria-label="التنقل الرئيسي" data-bottom-nav className="sticky bottom-0 z-40 mx-auto w-full max-w-md px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-between rounded-[28px] border bg-card/90 p-2 shadow-soft backdrop-blur-md">
           {NAV.map((n) => {
             const on = n.href === "/parent/" ? path === "/parent" || path === "/parent/" : path.startsWith(n.href.replace(/\/$/, ""));

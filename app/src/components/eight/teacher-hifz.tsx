@@ -86,7 +86,7 @@ export function TeacherHifz() {
           </div>
           {tab === "surah" ? (garden.loading && !garden.data ? <Skeleton className="h-80 rounded-[24px]" /> : garden.data && (
             <>
-              <p className="text-sm font-bold">🌳 {ar(garden.data.items.filter((i) => i.confirmed).length)} سورة مؤكدة{garden.data.juz ? ` · ${kid.gender === "f" ? "أتمّت" : "أتمّ"} جزء عمّ 🏆` : ""}</p>
+              <p className="text-sm font-bold">🌴 {ar(garden.data.items.filter((i) => i.confirmed).length)} سورة مؤكدة{garden.data.juz ? ` · ${kid.gender === "f" ? "أتمّت" : "أتمّ"} جزء عمّ 🏆` : ""}</p>
               <GardenGrid data={garden.data} onPick={setPick} busy={typeof busy === "number" ? busy : null} />
             </>
           )) : (

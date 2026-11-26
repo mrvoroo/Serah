@@ -134,6 +134,12 @@ export function QuranReader({ staff = false }: { staff?: boolean } = {}) {
   };
 
   // تغيير السورة أو الشيخ أو الوضع يوقف التشغيل الحالي
+  // رابط مباشر لسورة (?s=113)، مثل «افتح المصحف» في حديقة جزء عمّ: يفتحها من أولها
+  useEffect(() => {
+    const s = Number(new URLSearchParams(window.location.search).get("s"));
+    if (!Number.isInteger(s) || s < 1 || s > 114) return;
+    setAyahs(null); setCurrent(1); setManualPage(null); update({ surah: s, ayah: 1, page: 0 }); // eslint-disable-line react-hooks/set-state-in-effect
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const change = (patch: Partial<QuranPrefs>) => {
     audio.current?.pause(); stopTimer(); setPhase("idle");
     if (!staff && patch.reciter && fixMode({ ...prefs, ...patch }).mode !== (patch.mode ?? prefs.mode)) patch = { ...patch, mode: "turn" };
