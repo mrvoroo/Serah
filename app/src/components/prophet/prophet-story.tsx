@@ -66,8 +66,9 @@ export function ProphetStory({ id, content, story, title }: { id: string; conten
 
   const applyMood = useCallback((k: number) => {
     const c = ch[k];
-    world.current?.morph(`s${c.img}`);
-    world.current?.setMood?.(c.interact === "hold" && heldRef.current && c.moodAfter ? c.moodAfter : c.mood);
+    const after = c.interact === "hold" && heldRef.current;
+    world.current?.morph(`s${after && c.imgAfter != null ? c.imgAfter : c.img}`);
+    world.current?.setMood?.(after && c.moodAfter ? c.moodAfter : c.mood);
     fx.current?.leaves(!!c.leaves);
   }, [ch]);
 
@@ -141,7 +142,10 @@ export function ProphetStory({ id, content, story, title }: { id: string; conten
   const finishHold = useCallback(() => {
     heldRef.current = true; setHeld(true); setBar(1);
     const c = ch[holdIdx];
-    if (c?.moodAfter && activeRef.current === holdIdx) world.current?.setMood?.(c.moodAfter);
+    if (activeRef.current === holdIdx) {
+      if (c?.imgAfter != null) world.current?.morph(`s${c.imgAfter}`);
+      if (c?.moodAfter) world.current?.setMood?.(c.moodAfter);
+    }
     const r = stage.current?.getBoundingClientRect();
     if (r) for (let i = 0; i < 4; i++) fx.current?.burst(r.width * (0.35 + i * 0.1), r.height * 0.12, GOLD, 22, { down: true });
   }, [ch, holdIdx]);
@@ -184,7 +188,7 @@ export function ProphetStory({ id, content, story, title }: { id: string; conten
           <canvas ref={canvas} aria-hidden className="absolute inset-0 size-full" />
           {failed && /^[a-z_]+$/.test(id) && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={`${BASE}/scenes/${id}/${cur.img + 1}-960.webp`} alt="" className="absolute inset-0 size-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+            <img src={`${BASE}/scenes/${id}/${(held && cur.imgAfter != null ? cur.imgAfter : cur.img) + 1}-960.webp`} alt="" className="absolute inset-0 size-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
           )}
           <canvas ref={fxCanvas} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
           <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-[#0d0926]/85 to-transparent" />
