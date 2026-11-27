@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "out",
+  "build": { "env": { "NEXT_PUBLIC_BASE_PATH": "" } },
+  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" = \"scenes-noah-template\" ]; then exit 1; else exit 0; fi",
+  "headers": [{ "source": "/(.*)", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] }]
+}
