@@ -161,7 +161,7 @@ export function ProphetStory({ id, content, story, title }: { id: string; conten
   useEffect(() => () => { if (holdRaf.current) cancelAnimationFrame(holdRaf.current); }, []);
 
   const hint = cur.interact === "earth" ? g("المس التراب وشوف ألوان الأرض", "المسي التراب وشوفي ألوان الأرض")
-    : cur.interact === "clink" ? g("انقر على الصلصال واسمع صوته", "انقري على الصلصال واسمعي صوته")
+    : cur.interact === "clink" ? g("انقر على الطين الناشف واسمع صوته", "انقري على الطين الناشف واسمعي صوته")
     : cur.interact === "names" ? g("المس النقط الذهبية", "المسي النقط الذهبية")
     : null;
   const names = story.names ?? [];
