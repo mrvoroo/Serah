@@ -15,6 +15,25 @@ import { g } from "@/lib/kid-text";
 type World = { morph: (id: string) => void; setMood?: (m: StoryMood) => void; dispose: () => void };
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const GOLD = ["#ffe7a3", "#ffd06b", "#ffb93f", "#fff3d1"];
+const CLAY = ["#b07a52", "#d9a77a", "#8a5a3a", "#f0d2b0"];
+// صوت «صلصلة» الطين الناشف: نقرة فخار قصيرة مولّدة (بدون ملفات صوت)
+let audio: AudioContext | null = null;
+function clink() {
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    audio ??= new AC();
+    const t = audio.currentTime, out = audio.createGain();
+    out.gain.value = 0.22; out.connect(audio.destination);
+    // ترددات غير متناسقة = صوت فخار مش جرس
+    [[1180, 0.18], [1760, 0.12], [2690, 0.08], [3910, 0.05]].forEach(([f, d], i) => {
+      const o = audio!.createOscillator(), gn = audio!.createGain();
+      o.type = "sine"; o.frequency.value = f * (0.97 + Math.random() * 0.06);
+      gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(1 / (i + 1), t + 0.004); gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(gn); gn.connect(out); o.start(t); o.stop(t + d + 0.02);
+    });
+  } catch { /* الصوت اختياري */ }
+}
 // أماكن النقاط الذهبية حول الشجرة (نسبة من عرض/ارتفاع المشهد)
 const ORBS: [number, number][] = [[34, 30], [62, 26], [48, 18], [28, 50], [70, 46], [52, 40]];
 // وقت يكفي لقراءة آية الدعاء بتأنٍّ (ملاحظة الشيخ)
@@ -103,7 +122,8 @@ export function ProphetStory({ id, content, story, title }: { id: string; conten
     if ((e.target as HTMLElement).closest("button")) return;
     setTouched(true);
     const [x, y] = local(e.clientX, e.clientY);
-    fx.current?.burst(x, y, cur.interact === "earth" && story.earth ? story.earth : GOLD, cur.interact === "earth" ? 34 : 18);
+    if (cur.interact === "clink") clink();
+    fx.current?.burst(x, y, cur.interact === "earth" && story.earth ? story.earth : cur.interact === "clink" ? CLAY : GOLD, cur.interact === "earth" ? 34 : 18);
   };
   const onOrb = (k: number, e: React.MouseEvent<HTMLButtonElement>) => {
     setTouched(true);
@@ -141,6 +161,7 @@ export function ProphetStory({ id, content, story, title }: { id: string; conten
   useEffect(() => () => { if (holdRaf.current) cancelAnimationFrame(holdRaf.current); }, []);
 
   const hint = cur.interact === "earth" ? g("المس التراب وشوف ألوان الأرض", "المسي التراب وشوفي ألوان الأرض")
+    : cur.interact === "clink" ? g("انقر على الصلصال واسمع صوته", "انقري على الصلصال واسمعي صوته")
     : cur.interact === "names" ? g("المس النقط الذهبية", "المسي النقط الذهبية")
     : null;
   const names = story.names ?? [];
@@ -207,7 +228,8 @@ export function ProphetStory({ id, content, story, title }: { id: string; conten
               <div className={cn("pointer-events-auto mx-auto w-full max-w-xl rounded-3xl border border-white/10 p-4 text-white shadow-soft motion-safe:transition-opacity motion-safe:duration-700 [&_.surah-name]:text-[#ffd77a]",
                 glass, noIO || k === active ? "opacity-100" : "opacity-40")}>
                 <h3 className="mb-1 font-heading text-lg font-extrabold text-gold">{c.label}</h3>
-                <p className="text-base leading-8 text-white/92"><RT text={content.more[c.more]} /></p>
+                <p className="text-base leading-8 text-white/92"><RT text={c.text ?? (c.more != null ? content.more[c.more] : "")} /></p>
+                {c.ref && <p className="mt-1 text-xs text-white/60">المرجع: <RT text={c.ref} /></p>}
                 {c.interact === "hold" && (
                   <div className="mt-3 flex flex-col items-center gap-2">
                     <button type="button" aria-disabled={held}

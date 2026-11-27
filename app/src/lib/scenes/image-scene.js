@@ -35,6 +35,8 @@ uniform vec4 uLights[4];
 uniform vec3 uEdge;
 // «جو» المرحلة في قصة السكرول (كلها صفر في المشهد العادي): تعتيم، ضباب داكن عند الجذع، عمود نور، دفء ذهبي
 uniform float uDim, uMist, uBeam, uGold;
+// مراحل خلق سيدنا آدم على أرضية الصورة (بلا أي هيئة): ألوان التراب، البلل، اللزوجة، السواد، الجفاف والتشقق
+uniform float uSoil, uWet, uSticky, uDark, uDry;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -42,6 +44,15 @@ float noise(vec2 p) {
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
 }
 float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
+// خلايا (Voronoi): المسافة لحافة أقرب خلية، للشقوق في الطين الناشف
+float cellEdge(vec2 p) {
+  vec2 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 o = vec2(float(x), float(y)); vec2 r = o + vec2(hash(i + o), hash(i + o + 17.3)) - f;
+    float d = dot(r, r); if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+  }
+  return sqrt(d2) - sqrt(d1);
+}
 float fbm3(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
 
 vec2 coverUv(vec2 focus, float depth) {
@@ -86,6 +97,34 @@ void main() {
     float d = distance(uv, L.xy) / L.z;
     float fl = 0.75 + 0.25 * sin(uTime * 7.0 + float(i) * 1.7) * sin(uTime * 3.1 + float(i));
     col += vec3(1.0, 0.72, 0.36) * exp(-d * d * 2.2) * L.w * mix(1.0, fl, uMotion);
+  }
+  // مراحل الطين: على الأرض فقط (أسفل الصورة)، وبعيدًا عن النبات الأخضر
+  float clay = uSoil + uWet + uSticky + uDark + uDry;
+  if (clay > 0.001) {
+    float ground = smoothstep(0.5, 0.28, uv.y);
+    float green = smoothstep(0.02, 0.12, col.g - max(col.r, col.b));
+    float gm = ground * (1.0 - green);
+    float gy = dot(col, vec3(0.299, 0.587, 0.114));
+    vec3 c = col;
+    // تراب من جميع الأرض: بقع أحمر وأبيض وأسود وبين ذلك
+    float n1 = fbm3(uv * 7.0 + 3.1), n2 = fbm3(uv * 5.0 - 7.7);
+    vec3 soil = mix(mix(vec3(0.55, 0.24, 0.14), vec3(0.86, 0.8, 0.68), smoothstep(0.45, 0.7, n1)), vec3(0.12, 0.08, 0.06), smoothstep(0.5, 0.75, n2));
+    soil = mix(soil, vec3(0.72, 0.5, 0.26), 0.25);
+    c = mix(c, soil * (0.55 + gy * 1.6), uSoil * 0.75);
+    // بلل: أغمق وأكثر تشبعًا مع لمعة تتحرك ببطء
+    c = mix(c, c * vec3(0.62, 0.55, 0.5), uWet * 0.8);
+    float sheen = pow(noise(uv * vec2(40.0, 26.0) + vec2(uTime * 0.15, 0.0)), 6.0);
+    c += vec3(1.0, 0.92, 0.8) * sheen * (uWet * 0.35 + uSticky * 0.9) * uMotion;
+    // لزوجة: سطح ناعم متصل (نقلل التفاصيل) ولمعة أعرض
+    c = mix(c, vec3(dot(c, vec3(0.33))) * vec3(1.05, 0.9, 0.78) * 0.8 + c * 0.2, uSticky * 0.45);
+    // حمأ مسنون: طين أسود متغير
+    c = mix(c, vec3(0.07, 0.06, 0.055) + c * 0.25, uDark * 0.85);
+    // صلصال: ناشف فاتح كالفخار، وشقوق
+    vec3 dry = vec3(0.62, 0.42, 0.28) * (0.7 + gy * 0.8);
+    float e = cellEdge(uv * vec2(22.0, 14.0));
+    dry *= mix(0.35, 1.0, smoothstep(0.02, 0.07, e));
+    c = mix(c, dry, uDry * 0.9);
+    col = mix(col, c, gm);
   }
   // جو القصة: ضباب داكن رفيع يلتف عند أسفل المشهد (الوسوسة) بلا أي هيئة
   if (uMist > 0.001) {
@@ -165,7 +204,7 @@ export function createImageScene(canvas, opts = {}) {
     uFrom: { value: blank }, uTo: { value: blank }, uProg: { value: 1 }, uTime: { value: 0 }, uAspect: { value: 1 }, uZoom: { value: 1 },
     uSeed: { value: 0 }, uShimmer: { value: cfg.shimmer ?? 1 }, uMotion: { value: reduced ? 0 : 1 },
     uFocusFrom: { value: new THREE.Vector2(0.5, 0.5) }, uFocusTo: { value: new THREE.Vector2(0.5, 0.5) }, uPointer: { value: new THREE.Vector2() },
-    uLights: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 1, 0)) }, uDim: { value: 0 }, uMist: { value: 0 }, uBeam: { value: 0 }, uGold: { value: 0 }, uEdge: { value: new THREE.Color().setStyle(cfg.edge || '#ffc861', THREE.LinearSRGBColorSpace) },
+    uLights: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 1, 0)) }, uDim: { value: 0 }, uMist: { value: 0 }, uBeam: { value: 0 }, uGold: { value: 0 }, uSoil: { value: 0 }, uWet: { value: 0 }, uSticky: { value: 0 }, uDark: { value: 0 }, uDry: { value: 0 }, uEdge: { value: new THREE.Color().setStyle(cfg.edge || '#ffc861', THREE.LinearSRGBColorSpace) },
   };
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
@@ -244,8 +283,8 @@ export function createImageScene(canvas, opts = {}) {
   canvas.parentElement?.addEventListener('pointerup', onLeave);
 
   // جو القصة: الهدف يتغير مع الفقرة، والقيم الفعلية تقترب منه بنعومة
-  const MOOD = ['uDim', 'uMist', 'uBeam', 'uGold'];
-  const mood = { uDim: 0, uMist: 0, uBeam: 0, uGold: 0 }, moodTo = { ...mood };
+  const MOOD = ['uDim', 'uMist', 'uBeam', 'uGold', 'uSoil', 'uWet', 'uSticky', 'uDark', 'uDry'];
+  const mood = Object.fromEntries(MOOD.map((k) => [k, 0])), moodTo = { ...mood };
   const stepMood = (dt) => {
     let moving = false;
     for (const k of MOOD) {
@@ -328,10 +367,10 @@ export function createImageScene(canvas, opts = {}) {
     tier: tierName,
     morph(id) { const n = Number(String(id).replace(/\D/g, '')) || 0; go(n); },
     setTheme() {},
-    // قصة السكرول: { dim, mist, beam, gold } من صفر لواحد
+    // قصة السكرول: { dim, mist, beam, gold, soil, wet, sticky, dark, dry } من صفر لواحد
     setMood(m = {}) {
       const v = (x) => Math.min(1, Math.max(0, Number(x) || 0));
-      moodTo.uDim = v(m.dim); moodTo.uMist = v(m.mist); moodTo.uBeam = v(m.beam); moodTo.uGold = v(m.gold);
+      moodTo.uDim = v(m.dim); moodTo.uMist = v(m.mist); moodTo.uBeam = v(m.beam); moodTo.uGold = v(m.gold); moodTo.uSoil = v(m.soil); moodTo.uWet = v(m.wet); moodTo.uSticky = v(m.sticky); moodTo.uDark = v(m.dark); moodTo.uDry = v(m.dry);
       if (!running || reduced) { for (const k of MOOD) mood[k] = moodTo[k]; stepMood(1); draw(lastT); } else kick();
     },
     debug() { return { shape: `s${index}`, progress, loaded: loaded.filter(Boolean).length, total: cfg.steps.length, pixel, size, downgraded: perf.down, kind: 'image-scene', id: opts.id }; },
