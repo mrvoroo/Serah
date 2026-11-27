@@ -33,6 +33,8 @@ uniform float uProg, uTime, uAspect, uZoom, uSeed, uShimmer, uMotion;
 uniform vec2 uFocusFrom, uFocusTo, uPointer;
 uniform vec4 uLights[4];
 uniform vec3 uEdge;
+// «جو» المرحلة في قصة السكرول (كلها صفر في المشهد العادي): تعتيم، ضباب داكن عند الجذع، عمود نور، دفء ذهبي
+uniform float uDim, uMist, uBeam, uGold;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -84,6 +86,24 @@ void main() {
     float fl = 0.75 + 0.25 * sin(uTime * 7.0 + float(i) * 1.7) * sin(uTime * 3.1 + float(i));
     col += vec3(1.0, 0.72, 0.36) * exp(-d * d * 2.2) * L.w * mix(1.0, fl, uMotion);
   }
+  // جو القصة: ضباب داكن رفيع يلتف عند أسفل المشهد (الوسوسة) بلا أي هيئة
+  if (uMist > 0.001) {
+    float mn = fbm(vec2(uv.x * 3.2 + uTime * 0.05, uv.y * 5.0 - uTime * 0.09));
+    float mm = smoothstep(0.55, 0.12, abs(vUv.x - 0.5)) * smoothstep(0.02, 0.22, vUv.y) * smoothstep(0.62, 0.28, vUv.y);
+    col = mix(col, vec3(0.05, 0.04, 0.09), clamp(uMist * mm * smoothstep(0.35, 0.75, mn) * 1.4, 0.0, 0.85));
+  }
+  if (uDim > 0.001) {
+    float gy = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(col, vec3(gy) * vec3(0.72, 0.78, 1.0), uDim * 0.55) * (1.0 - uDim * 0.42);
+  }
+  // عمود نور ذهبي ينزل من فوق ويتسع حتى الأرض (التوبة)
+  if (uBeam > 0.001) {
+    float bx = abs(vUv.x - 0.5) / (0.07 + 0.2 * (1.0 - vUv.y));
+    float beam = exp(-bx * bx * 1.7) * smoothstep(0.0, 0.25, vUv.y + 0.08);
+    beam *= 0.86 + 0.14 * sin(uTime * 1.3 + vUv.y * 9.0) * uMotion;
+    col += vec3(1.0, 0.8, 0.42) * beam * uBeam * 0.5;
+  }
+  col = mix(col, col * vec3(1.1, 0.99, 0.8), uGold);
   // إطار خفيف يركّز النظر في الوسط
   float vig = smoothstep(1.15, 0.35, length((vUv - 0.5) * vec2(uAspect, 1.0) * 0.9));
   col *= mix(0.82, 1.0, vig);
@@ -144,7 +164,7 @@ export function createImageScene(canvas, opts = {}) {
     uFrom: { value: blank }, uTo: { value: blank }, uProg: { value: 1 }, uTime: { value: 0 }, uAspect: { value: 1 }, uZoom: { value: 1 },
     uSeed: { value: 0 }, uShimmer: { value: cfg.shimmer ?? 1 }, uMotion: { value: reduced ? 0 : 1 },
     uFocusFrom: { value: new THREE.Vector2(0.5, 0.5) }, uFocusTo: { value: new THREE.Vector2(0.5, 0.5) }, uPointer: { value: new THREE.Vector2() },
-    uLights: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 1, 0)) }, uEdge: { value: new THREE.Color().setStyle(cfg.edge || '#ffc861', THREE.LinearSRGBColorSpace) },
+    uLights: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 1, 0)) }, uDim: { value: 0 }, uMist: { value: 0 }, uBeam: { value: 0 }, uGold: { value: 0 }, uEdge: { value: new THREE.Color().setStyle(cfg.edge || '#ffc861', THREE.LinearSRGBColorSpace) },
   };
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
@@ -222,6 +242,18 @@ export function createImageScene(canvas, opts = {}) {
   canvas.parentElement?.addEventListener('pointerleave', onLeave);
   canvas.parentElement?.addEventListener('pointerup', onLeave);
 
+  // جو القصة: الهدف يتغير مع الفقرة، والقيم الفعلية تقترب منه بنعومة
+  const MOOD = ['uDim', 'uMist', 'uBeam', 'uGold'];
+  const mood = { uDim: 0, uMist: 0, uBeam: 0, uGold: 0 }, moodTo = { ...mood };
+  const stepMood = (dt) => {
+    let moving = false;
+    for (const k of MOOD) {
+      const d = moodTo[k] - mood[k];
+      if (Math.abs(d) > 0.002) { mood[k] += d * Math.min(1, dt * 1.6); moving = true; } else mood[k] = moodTo[k];
+      U[k].value = mood[k];
+    }
+    return moving;
+  };
   let lastT = 0;
   function draw(t) {
     if (disposed) return;
@@ -251,6 +283,7 @@ export function createImageScene(canvas, opts = {}) {
     }
     perf.acc += raw; perf.frames++;
     if (perf.acc > 2) { const avg = perf.acc / perf.frames; perf.acc = perf.frames = 0; if (avg > 0.034 && perf.down < 2) { perf.down++; pixel = Math.max(0.75, pixel * 0.72); renderer.setPixelRatio(pixel); resize(); } }
+    stepMood(dt);
     pointer.x += (pointer.tx - pointer.x) * 0.05; pointer.y += (pointer.ty - pointer.y) * 0.05;
     draw(time);
     raf = requestAnimationFrame(frame);
@@ -291,6 +324,12 @@ export function createImageScene(canvas, opts = {}) {
     tier: tierName,
     morph(id) { const n = Number(String(id).replace(/\D/g, '')) || 0; go(n); },
     setTheme() {},
+    // قصة السكرول: { dim, mist, beam, gold } من صفر لواحد
+    setMood(m = {}) {
+      const v = (x) => Math.min(1, Math.max(0, Number(x) || 0));
+      moodTo.uDim = v(m.dim); moodTo.uMist = v(m.mist); moodTo.uBeam = v(m.beam); moodTo.uGold = v(m.gold);
+      if (!running || reduced) { for (const k of MOOD) mood[k] = moodTo[k]; stepMood(1); draw(lastT); } else kick();
+    },
     debug() { return { shape: `s${index}`, progress, loaded: loaded.filter(Boolean).length, total: cfg.steps.length, pixel, size, downgraded: perf.down, kind: 'image-scene', id: opts.id }; },
     dispose() {
       disposed = true; running = false; lost = true;

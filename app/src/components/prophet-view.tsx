@@ -8,6 +8,8 @@ import type { ContentItem, ProphetRow } from "@/lib/prophets";
 import { imageSceneSteps, prophetContent, shapeSequence } from "@/content/prophets";
 import { SymbolStage } from "@/components/prophet/symbol-stage";
 import { ProphetBio } from "@/components/prophet/prophet-bio";
+import { ProphetStory } from "@/components/prophet/prophet-story";
+import { storyOf } from "@/content/prophet-stories";
 import { ImageGallery } from "@/components/prophet/image-gallery";
 import { cn } from "@/lib/utils";
 import { RT } from "@/components/religious-text";
@@ -59,6 +61,8 @@ export function ProphetView({ prophet, items, lectures, lectureHref = (id) => `/
   const shapeSteps = useMemo(() => shapeSequence(prophet.prophet_id), [prophet.prophet_id]);
   const steps = imageSteps ?? shapeSteps;
   const scene = prophet.prophet_id === "noah" ? "noah" : imageSteps ? "image" : undefined;
+  // قصة السكرول التفاعلية (آدم أولًا): تحل مكان المشهد والنبذة
+  const story = content && imageSteps ? storyOf(prophet.prophet_id) : null;
   const images = items.filter((it) => it.kind === "image");
   const firstImage = images[0]?.item_id;
   return (
@@ -69,8 +73,10 @@ export function ProphetView({ prophet, items, lectures, lectureHref = (id) => `/
         <p className="mt-3 text-base leading-8 text-white/85"><RT text={prophet.text} /></p>
       </header>
 
-      {steps.length > 0 && <SymbolStage key={prophet.prophet_id} steps={steps} title={`رمز سيدنا ${honored}`} scene={scene} sceneId={prophet.prophet_id} />}
-      {content && <ProphetBio content={content} />}
+      {story && content ? <ProphetStory key={prophet.prophet_id} id={prophet.prophet_id} content={content} story={story} title={`قصة سيدنا ${honored}`} /> : <>
+        {steps.length > 0 && <SymbolStage key={prophet.prophet_id} steps={steps} title={`رمز سيدنا ${honored}`} scene={scene} sceneId={prophet.prophet_id} />}
+        {content && <ProphetBio content={content} />}
+      </>}
 
       {items.map((it) => it.kind !== "image" ? <Item key={it.item_id} it={it} />
         : it.item_id === firstImage ? <ImageGallery key="gallery" images={images.map((x) => ({ id: x.item_id, file_id: x.file_id, title: x.title, body: x.body }))} /> : null)}
