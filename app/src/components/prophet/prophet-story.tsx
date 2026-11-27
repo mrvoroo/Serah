@@ -17,7 +17,8 @@ const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const GOLD = ["#ffe7a3", "#ffd06b", "#ffb93f", "#fff3d1"];
 // أماكن النقاط الذهبية حول الشجرة (نسبة من عرض/ارتفاع المشهد)
 const ORBS: [number, number][] = [[34, 30], [62, 26], [48, 18], [28, 50], [70, 46], [52, 40]];
-const HOLD_MS = 1600;
+// وقت يكفي لقراءة آية الدعاء بتأنٍّ (ملاحظة الشيخ)
+const HOLD_MS = 6500;
 
 export function ProphetStory({ id, content, story, title }: { id: string; content: ProphetContent; story: Story; title: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -172,7 +173,7 @@ export function ProphetStory({ id, content, story, title }: { id: string; conten
         )}
         {cur.interact === "names" && found.length > 0 && (
           <span className="pointer-events-none absolute inset-x-0 top-14 mx-auto w-fit rounded-full bg-black/40 px-3 py-1 text-xs font-bold text-white backdrop-blur">
-            {found.length < names.length ? `${arNum(found.length)} من ${arNum(names.length)}` : "علّمه الله الأسماء كلها ✨"}
+            {found.length < names.length ? `${arNum(found.length)} من ${arNum(names.length)}` : "هذه أمثلة قليلة… وعلّم الله سيدنا آدم الأسماء كلها ✨"}
           </span>
         )}
       </div>
@@ -192,13 +193,18 @@ export function ProphetStory({ id, content, story, title }: { id: string; conten
                     onPointerDown={holdDown} onPointerUp={holdUp} onPointerLeave={holdUp} onPointerCancel={holdUp}
                     onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !held) { e.preventDefault(); finishHold(); } }}
                     onContextMenu={(e) => e.preventDefault()}
-                    aria-label={held ? "تاب الله عليه" : g("اضغط مطوّلًا وأنت تقرأ الدعاء", "اضغطي مطوّلًا وأنتِ تقرئين الدعاء")}
-                    className="relative h-12 w-full max-w-xs touch-none select-none overflow-hidden rounded-full bg-white/12 font-bold text-white">
+                    aria-label={held ? "فتاب عليه" : g("اقرأ دعاء سيدنا آدم عليه السلام، واضغط مطوّلًا", "اقرئي دعاء سيدنا آدم عليه السلام، واضغطي مطوّلًا")}
+                    className="relative min-h-12 w-full max-w-xs px-3 py-2 touch-none select-none overflow-hidden rounded-full bg-white/12 font-bold text-white">
                     <span aria-hidden className="absolute inset-y-0 start-0 bg-gradient-to-l from-[#ffd06b] to-[#ffb93f]" style={{ width: `${Math.round(hold * 100)}%` }} />
                     <span className={cn("relative flex items-center justify-center gap-1.5", hold > 0.5 && "text-[#3D2600]")}>
-                      {held ? <><Sparkles className="size-4" /> فتاب الله عليه</> : <><Hand className="size-4" /> {g("اضغط مطوّلًا وأنت تقرأ الدعاء", "اضغطي مطوّلًا وأنتِ تقرئين الدعاء")}</>}
+                      {held ? <><Sparkles className="size-4" /> <RT text="﴿فَتَابَ عَلَيْهِ﴾" /></> : <><Hand className="size-4 shrink-0" /> <span className="text-sm leading-5">{g("اقرأ دعاء سيدنا آدم عليه السلام، واضغط مطوّلًا", "اقرئي دعاء سيدنا آدم عليه السلام، واضغطي مطوّلًا")}</span></>}
                     </span>
                   </button>
+                  {held && (
+                    <p className="text-center text-sm leading-7 text-white/85 motion-safe:animate-in motion-safe:fade-in">
+                      والله يقبل توبة من يتوب: <RT text="﴿وَهُوَ الَّذِي يَقْبَلُ التَّوْبَةَ عَنْ عِبَادِهِ﴾" /> <span className="text-xs text-white/60">(<RT text="الشورى: ٢٥" />)</span>
+                    </p>
+                  )}
                 </div>
               )}
               {k === 0 && <p className="mt-2 flex items-center justify-center gap-1 text-xs text-white/60"><ChevronsDown className="size-4 motion-safe:animate-bounce" /> {g("انزل علشان تكمل القصة", "انزلي علشان تكملي القصة")}</p>}

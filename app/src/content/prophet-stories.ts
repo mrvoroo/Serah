@@ -19,21 +19,23 @@ export type ProphetStory = {
   earth?: string[];
   // أسماء أشياء تظهر عند لمس النقاط الذهبية (توضيح لـ«الأسماء كلها»، بلا ادعاء أنها هي بعينها) — ⚠️ تحتاج مراجعة الشيخ
   names?: string[];
+  // ⚠️ فقرة «الشجرة» على صورة الشجرة الصغيرة: الصورتان ٣ و٤ فيهما كرات ذهبية مستديرة قد توحي بثمر محدد (ملاحظة الشيخ)،
+  // تُستبدلان بصور بلا كرات ثم ترجع الفقرة لصورة الشجرة الكبيرة.
   // الفقرات اللي تظهر بعد القصة كخاتمة صغيرة (السور والمراجع)
   footer?: number[];
 };
 
 export const STORIES: Record<string, ProphetStory> = {
   adam: {
-    earth: ["#8f3b22", "#c9883f", "#e9dcc1", "#4a2e1e", "#d4a95c", "#6b4a2b"],
-    names: ["الماء", "الجبل", "النجم", "الطير", "الشمس", "الشجرة"],
+    earth: ["#8f3b22", "#c9883f", "#e9dcc1", "#4a2e1e", "#d4a95c", "#2a1c14"],
+    names: ["الماء", "الجبل", "النجم", "الطير", "الشمس", "القمر"],
     chapters: [
       { label: "من الأرض", more: 0, img: 0, mood: { beam: 0.45, gold: 0.08 }, interact: "earth" },
       { label: "الأسماء", more: 1, img: 1, mood: { beam: 0.25, gold: 0.12 }, interact: "names" },
-      { label: "الشجرة", more: 2, img: 2, mood: { dim: 0.5, mist: 0.9 }, leaves: true },
+      { label: "الشجرة", more: 2, img: 1, mood: { dim: 0.5, mist: 0.9 }, leaves: true },
       { label: "التوبة", more: 3, img: 3, mood: { dim: 0.35, mist: 0.45 }, interact: "hold", moodAfter: { beam: 1, gold: 0.3 } },
-      { label: "نبيٌّ مُكلَّم", more: 4, img: 3, mood: { beam: 0.4, gold: 0.2 } },
-      { label: "درس لنا", more: 6, img: 3, mood: { beam: 0.6, gold: 0.35 } },
+      { label: "نبيٌّ كلّمه الله", more: 4, img: 3, mood: { beam: 0.4, gold: 0.2 } },
+      { label: "نتعلّم من القصة", more: 6, img: 3, mood: { beam: 0.6, gold: 0.35 } },
     ],
     footer: [5],
   },
