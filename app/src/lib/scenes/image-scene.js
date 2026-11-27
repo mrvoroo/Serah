@@ -42,6 +42,7 @@ float noise(vec2 p) {
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
 }
 float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
+float fbm3(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
 
 vec2 coverUv(vec2 focus, float depth) {
   vec2 scale = (uAspect > 1.0 ? vec2(1.0, 1.0 / uAspect) : vec2(uAspect, 1.0)) / uZoom;
@@ -88,7 +89,7 @@ void main() {
   }
   // جو القصة: ضباب داكن رفيع يلتف عند أسفل المشهد (الوسوسة) بلا أي هيئة
   if (uMist > 0.001) {
-    float mn = fbm(vec2(uv.x * 3.2 + uTime * 0.05, uv.y * 5.0 - uTime * 0.09));
+    float mn = fbm3(vec2(uv.x * 3.2 + uTime * 0.05, uv.y * 5.0 - uTime * 0.09));
     float mm = smoothstep(0.55, 0.12, abs(vUv.x - 0.5)) * smoothstep(0.02, 0.22, vUv.y) * smoothstep(0.62, 0.28, vUv.y);
     col = mix(col, vec3(0.05, 0.04, 0.09), clamp(uMist * mm * smoothstep(0.35, 0.75, mn) * 1.4, 0.0, 0.85));
   }
@@ -272,9 +273,12 @@ export function createImageScene(canvas, opts = {}) {
   const clock = new THREE.Clock();
   let running = !reduced, lost = false, visible = true, raf = 0, time = 0;
   const perf = { acc: 0, frames: 0, down: 0 };
+  let skip = false;
   function frame() {
     raf = 0;
     if (!running || lost || !visible) return;
+    // الأجهزة الضعيفة: ٣٠ فريم في الثانية تكفي لمشهد هادئ
+    if (tierName === 'low') { skip = !skip; if (skip) { raf = requestAnimationFrame(frame); return; } }
     const raw = clock.getDelta(), dt = Math.min(raw, 0.05);
     time += dt;
     if (progress < 1) {
@@ -344,6 +348,7 @@ export function createImageScene(canvas, opts = {}) {
       canvas.parentElement?.removeEventListener('pointerup', onLeave);
       textures.forEach((t) => t !== blank && t.dispose());
       blank.dispose(); quadGeo.dispose(); quadMat.dispose(); dustGeo?.dispose(); dustMat?.dispose();
+      renderer.forceContextLoss();
       renderer.dispose();
     },
   };
